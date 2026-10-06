@@ -35,6 +35,8 @@
 | 切片 2 | 数据源 | ✅ 完成（`b78857f`） | 事件订阅 + 双折叠器 + 3 个纯函数内核 + 115 测试 |
 | 切片 3 | 实时通道 | ✅ 完成（`d4b74ad` 批次 A + 本批） | SSE 双端点 + 续传 + 22 条路由全量落地 + 265 测试 |
 | 切片 4 | 悬浮条 | ✅ 完成（`02e729c`） | whale-hud 主进程 + 渲染层，真窗口验收 A1/A4/A5/A8/A10/A11 + R-1，349 测试 |
+| 切片 5 | 小窗 | ✅ 完成（批次 A `c4e8c91` / B `6592e42` / C `9b0f237`） | whale-window 主进程 6 模块 + 渲染层 7 文件；**回补 C7/C8/C12**；B1–B7 实测；487 测试 |
+| 切片 6 | 页面按钮 | ⬜ **下一步** | `whale-bridge/lib/client.js` + `whale-button/` |
 
 ---
 
@@ -59,17 +61,17 @@
 
 | 目录 | 状态 |
 |---|---|
-| `docs/` | 11 份规划文档 + `pages/` 汇报页 |
-| `docs/pages/` | 9 张汇报页 HTML + 9 份 `.am.md` 稿件 |
+| `docs/` | 12 份规划文档（含切片声明与范围声明）+ `pages/` 汇报页 |
+| `docs/pages/` | 11 张汇报页 HTML + 11 份 `.am.md` 稿件 |
 | `references/` | 5 份唯一可信源（21.7 KB） |
-| `tools/` | 6 个闸门脚本 + `check-reply.mjs` + `whale-icon.mjs` + `bridge-dev-server.mjs` + `hud-probe.cjs` + `gate-log.ndjson`（本地留痕，已忽略） |
+| `tools/` | 6 个闸门脚本 + `check-reply.mjs` + `whale-icon.mjs` + `bridge-dev-server.mjs` + `hud-probe.cjs` + `window-probe.cjs` + `open-window-e2e.mjs` + `bridge-preflight.mjs` + `accept-real-host.mjs` + `gate-log.ndjson`（本地留痕，已忽略） |
 | `.githooks/` | `pre-commit`（sh 入口）+ `pre-commit.mjs` |
-| `tests/` | 354 个测试：`tests/unit/` 单测、`tests/contract/` 契约、`tests/*.test.mjs` 冒烟；夹具在 `tests/helpers/` |
-| `runtime/` | **空**（等待 Electron 解包；已 gitignore） |
-| `whale-bridge/` | 切片 1–3 已完成：`host.js` + `lib/` 十二个模块 |
-| `whale-button/` | **空** |
-| `whale-hud/` | 切片 4 已完成：主进程（`main.cjs` / `preload.cjs` / `run.ps1` / `lib/` 五个模块）+ 渲染层（`renderer/` 四个文件） |
-| `whale-window/` | **空**（切片 5） |
+| `tests/` | 487 个测试：`tests/unit/` 单测、`tests/contract/` 契约、`tests/*.test.mjs` 冒烟；夹具在 `tests/helpers/` |
+| `runtime/` | Electron 44.0.0 已解包（已 gitignore） |
+| `whale-bridge/` | 切片 1–3 已完成：`host.js` + `lib/` 十二个模块；**已通过真实宿主验收** |
+| `whale-button/` | **空**（切片 6） |
+| `whale-hud/` | 切片 4 已完成：主进程（`main.cjs` / `preload.cjs` / `run.ps1` / `lib/` 六个模块）+ 渲染层（`renderer/` 四个文件） |
+| `whale-window/` | 切片 5 已完成：主进程（`main.cjs` / `preload.cjs` / `run.ps1` / `lib/` 七个模块）+ 渲染层（`renderer/` 七个文件） |
 | `_inbox/` | 用户输入包（含**禁用**的既有源码）；已 gitignore |
 | `_notes/` | 原型文本化稿与网络探针；已 gitignore |
 | `_probe/` | 一次性探查脚本 + 配置备份；已 gitignore |
@@ -223,3 +225,4 @@
 | v1.4 | 2026-10-06 | 切片 3 完成：SSE 双端点 + `Last-Event-ID` 续传 + 22 条路由全量落地；265 测试全绿；新增**闸门 7 正文守门器**（`tools/check-reply.mjs`，把「回复正文不得含内部摘要」变成机械检查）；规范强制项增至 37 条；新增 3 项环境坑（11/12/13）。遗留：C7/C8/C12 待切片 5 回补 |
 | v1.5 | 2026-10-06 | 切片 4 完成：`whale-hud/` 从空目录到可运行悬浮条（主进程 5 模块 + 渲染层 4 文件）；真 Electron 窗口实测 A1/A4/A5/A8/A10/A11 与 R-1 全过；测试 354 全绿。新增工程工具三个（图标机械内联 / 桥独立开发服务器 / 验收探针）；新增 5 项环境坑（14–18）；记录一处决策补全（球展开触发方式）与一处架构偏离（几何不走 HWND，S4-D1）。修掉一个**偶发**闸门失败：开发服务器与 smoke-slice3 撞 19391 端口 |
 | v1.6 | 2026-10-06 | 切片 5 批次 A+B 完成：`whale-window/` 可运行小窗（主进程 6 模块 + 渲染层 6 文件）；**回补切片 3 遗留的 C7/C8/C12**（真进程取证：拉窗 pid 存活、复用同 pid、dispose 后进程死）；消息流/状态条/任务坞/发送/排队/中断实测通过；测试 473 全绿。**首次把桥装进真实宿主**并完成 B5/B6/B7 实测，装的过程暴露并修掉三处真缺陷（inject 缺失 / inject 含不存在的服务名 / async admission 被当同步用），验完即卸并恢复宿主（保留用户新增的 `ui-theme` 设置）。新增 5 项环境坑（19–23） |
+| v1.7 | 2026-10-06 | **切片 5 完成**（批次 C `9b0f237`）：斜杠命令面板（F7）/ ☰ 菜单（F8）/ 会话切换三档标签（F9）/ 资料抽屉；抽出 `render.js`，`app.js` 由 503 行降到 301 行（原超 500 上限被闸门 6 拦下）。探针新增四项检查，真窗口 × 两种回合状态全过；测试 487 全绿、七道闸门全过。下一片为切片 6 页面按钮 |
