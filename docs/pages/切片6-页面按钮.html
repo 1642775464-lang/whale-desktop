@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="blueprint" data-mode="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Answer me with HTML 0.2.2">
+<title>切片 6 完成：六片全部交付</title>
+<style>
+html[data-theme="blueprint"], html[data-theme="blueprint"][data-mode="light"] {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --radius: 0px;
+  --shadow: none;
+  --bw: 1.5px;
+  --head-font: var(--font-sans);
+  --bg: #f6f6f3;
+  --paper: #ffffff;
+  --ink: #16181d;
+  --ink-2: #4b5260;
+  --ink-3: #8b929e;
+  --line: #1d2026;
+  --line-2: #d6dae1;
+  --fill: #f3f5f8;
+  --accent: #1d5fbf;
+  --accent-bg: #e4ecf8;
+  --ok: #1d5fbf;
+  --ok-bg: #e4ecf8;
+  --err: #c62828;
+  --err-bg: #fbeaea;
+  --warn: #a8620a;
+  --warn-bg: #fdf3e2;
+  --head-bg: #16181d;
+  --head-fg: #ffffff;
+}
+html[data-theme="blueprint"][data-mode="dark"] {
+  --bg: #081322;
+  --paper: #0d1c31;
+  --ink: #e6edf7;
+  --ink-2: #a9b8cc;
+  --ink-3: #6b7f99;
+  --line: #c9d6e8;
+  --line-2: #23385a;
+  --fill: #12253f;
+  --accent: #6ea8ff;
+  --accent-bg: #16305a;
+  --ok: #6ea8ff;
+  --ok-bg: #16305a;
+  --err: #ff7070;
+  --err-bg: #3b1620;
+  --warn: #f0b14a;
+  --warn-bg: #3a2a10;
+  --head-bg: #e6edf7;
+  --head-fg: #081322;
+}
+@media (prefers-color-scheme: dark) {
+html[data-theme="blueprint"][data-mode="auto"] {
+  --bg: #081322;
+  --paper: #0d1c31;
+  --ink: #e6edf7;
+  --ink-2: #a9b8cc;
+  --ink-3: #6b7f99;
+  --line: #c9d6e8;
+  --line-2: #23385a;
+  --fill: #12253f;
+  --accent: #6ea8ff;
+  --accent-bg: #16305a;
+  --ok: #6ea8ff;
+  --ok-bg: #16305a;
+  --err: #ff7070;
+  --err-bg: #3b1620;
+  --warn: #f0b14a;
+  --warn-bg: #3a2a10;
+  --head-bg: #e6edf7;
+  --head-fg: #081322;
+}
+}
+
+html[data-theme="shadcn"], html[data-theme="shadcn"][data-mode="light"] {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --radius: 8px;
+  --shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+  --bw: 1px;
+  --head-font: var(--font-sans);
+  --bg: #fafafa;
+  --paper: #ffffff;
+  --ink: #09090b;
+  --ink-2: #71717a;
+  --ink-3: #a1a1aa;
+  --line: #e4e4e7;
+  --line-2: #f0f0f2;
+  --fill: #f4f4f5;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --ok: #16a34a;
+  --ok-bg: #f0fdf4;
+  --err: #dc2626;
+  --err-bg: #fef2f2;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --head-bg: #18181b;
+  --head-fg: #fafafa;
+}
+html[data-theme="shadcn"][data-mode="dark"] {
+  --bg: #09090b;
+  --paper: #121215;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  --line: #27272a;
+  --line-2: #1c1c1f;
+  --fill: #18181b;
+  --accent: #60a5fa;
+  --accent-bg: #172554;
+  --ok: #4ade80;
+  --ok-bg: #052e16;
+  --err: #f87171;
+  --err-bg: #450a0a;
+  --warn: #fbbf24;
+  --warn-bg: #451a03;
+  --head-bg: #fafafa;
+  --head-fg: #18181b;
+}
+@media (prefers-color-scheme: dark) {
+html[data-theme="shadcn"][data-mode="auto"] {
+  --bg: #09090b;
+  --paper: #121215;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  --line: #27272a;
+  --line-2: #1c1c1f;
+  --fill: #18181b;
+  --accent: #60a5fa;
+  --accent-bg: #172554;
+  --ok: #4ade80;
+  --ok-bg: #052e16;
+  --err: #f87171;
+  --err-bg: #450a0a;
+  --warn: #fbbf24;
+  --warn-bg: #451a03;
+  --head-bg: #fafafa;
+  --head-fg: #18181b;
+}
+}
+
+/* Answer me with HTML base — 只引用主题变量，禁止写死颜色（主题 token 见 themes/index.js） */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-sans); font-size: 14px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+code, pre, kbd { font-family: var(--font-mono); }
+
+/* ── 工具栏 ─────────────────────────────── */
+.am-toolbar {
+  position: fixed; top: 12px; right: 12px; z-index: 10; display: flex; gap: 6px;
+}
+.am-btn {
+  font: 12px/1 var(--font-sans); color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line-2); border-radius: var(--radius); padding: 7px 10px; cursor: pointer;
+}
+.am-btn:hover { border-color: var(--ink-3); }
+.am-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 页头 ───────────────────────────────── */
+.am-head { margin: 0 0 20px; padding-right: 260px; }
+.am-head h1 { margin: 0; font-size: 24px; line-height: 1.25; letter-spacing: -0.01em; }
+.am-sub { margin: 4px 0 0; color: var(--ink-2); }
+.am-head-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+.am-head-meta b { font-family: var(--font-mono); font-weight: 400; color: var(--ink-3); margin-right: 6px; }
+.am-intro { margin-top: 12px; max-width: 80ch; }
+
+/* ── sheet 图纸板 ────────────────────────── */
+.am-sheet { max-width: 1680px; margin: 0 auto; padding: 32px 28px 40px; }
+.am-frame { position: relative; }
+.am-grid {
+  display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 20px; align-items: start;
+}
+.am-ruler { display: none; }
+html[data-theme="blueprint"] .am-frame { border: 1px solid var(--line); padding: 30px; }
+html[data-theme="blueprint"] .am-frame::before {
+  content: ""; position: absolute; inset: 18px; border: 1px solid var(--line); pointer-events: none;
+}
+html[data-theme="blueprint"] .am-ruler {
+  display: flex; position: absolute; font: 10px/1 var(--font-mono); color: var(--ink-3);
+}
+.am-ruler span { flex: 1; display: flex; align-items: center; justify-content: center; }
+.am-ruler--top, .am-ruler--bottom { left: 18px; right: 18px; height: 18px; }
+.am-ruler--top { top: 0; }
+.am-ruler--bottom { bottom: 0; }
+.am-ruler--left, .am-ruler--right { top: 18px; bottom: 18px; width: 18px; flex-direction: column; }
+.am-ruler--left { left: 0; }
+.am-ruler--right { right: 0; }
+.am-ruler--top span + span, .am-ruler--bottom span + span { border-left: 1px solid var(--line); }
+.am-ruler--left span + span, .am-ruler--right span + span { border-top: 1px solid var(--line); }
+
+/* ── 面板 ───────────────────────────────── */
+.am-panel {
+  background: var(--paper); border: var(--bw) solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); min-width: 0; overflow: hidden;
+}
+.am-panel-head {
+  display: flex; align-items: stretch; gap: 0; border-bottom: var(--bw) solid var(--line); min-height: 34px;
+}
+.am-panel-id {
+  display: flex; align-items: center; justify-content: center; min-width: 34px; padding: 0 8px;
+  background: var(--head-bg); color: var(--head-fg); font-weight: 600; font-size: 14px;
+}
+html[data-theme="shadcn"] .am-panel-id { border-radius: 6px; min-width: 24px; height: 24px; margin: 9px 0 9px 14px; font-size: 12px; }
+html[data-theme="shadcn"] .am-panel-head { border-bottom-width: 1px; }
+.am-panel-head h2 { margin: 0; padding: 7px 12px; font-size: 15px; font-weight: 600; flex: 1; display: flex; align-items: center; }
+.am-panel-meta { align-self: center; padding: 0 12px; font: 11px/1.3 var(--font-mono); color: var(--ink-2); text-align: right; }
+.am-panel-body { padding: 14px 16px 16px; }
+.am-panel-body > * + * { margin-top: 12px; }
+
+/* ── Markdown 正文 ───────────────────────── */
+.am-md > :first-child { margin-top: 0; }
+.am-md > :last-child { margin-bottom: 0; }
+.am-md p { margin: 0 0 8px; }
+.am-md ul, .am-md ol { margin: 0 0 8px; padding-left: 20px; }
+.am-md li + li { margin-top: 3px; }
+.am-md h3, .am-md h4 { margin: 14px 0 6px; font-size: 13px; }
+.am-md a { color: var(--accent); }
+.am-md blockquote { margin: 0 0 8px; padding: 2px 12px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
+.am-md :not(pre) > code { font-size: 0.9em; background: var(--fill); padding: 1px 5px; border-radius: 4px; }
+.am-md hr { border: 0; border-top: 1px solid var(--line-2); margin: 12px 0; }
+.am-md table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.am-md th {
+  text-align: left; font: 11px/1.3 var(--font-mono); color: var(--ink-2); font-weight: 400;
+  padding: 6px 10px; border-bottom: 1px solid var(--line-2);
+}
+.am-md td { padding: 7px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.am-md tbody tr:nth-child(even) td { background: var(--fill); }
+.am-table-wrap { overflow-x: auto; }
+.am-code {
+  margin: 0; padding: 12px 14px; background: var(--fill); border: 1px solid var(--line-2);
+  border-radius: var(--radius); overflow-x: auto; font-size: 12.5px; line-height: 1.5;
+}
+
+/* ── 状态徽章 ok / no / warn ──────────────── */
+.am-status { white-space: nowrap; font-weight: 500; }
+.am-status--ok { color: var(--ok); }
+.am-status--no { color: var(--err); }
+.am-status--warn { color: var(--warn); }
+.am-status-icon { display: inline-block; width: 1.1em; font-weight: 700; }
+
+/* ── callout ─────────────────────────────── */
+.am-callout {
+  border: 1px solid var(--line-2); border-left: 3px solid var(--accent); background: var(--accent-bg);
+  padding: 10px 14px; border-radius: var(--radius);
+}
+.am-callout--ok { border-left-color: var(--ok); background: var(--ok-bg); }
+.am-callout--warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.am-callout--err { border-left-color: var(--err); background: var(--err-bg); }
+.am-callout-title { font-weight: 600; margin-bottom: 4px; }
+
+/* ── kv 标题栏格 ─────────────────────────── */
+.am-kv {
+  display: grid; grid-template-columns: repeat(var(--kv-cols, 2), minmax(0, 1fr)); margin: 0;
+  border-top: var(--bw) solid var(--line); border-left: var(--bw) solid var(--line);
+}
+.am-kv-cell { border-right: var(--bw) solid var(--line); border-bottom: var(--bw) solid var(--line); padding: 6px 10px 8px; min-width: 0; }
+.am-kv-cell--wide { grid-column: 1 / -1; }
+.am-kv dt { font: 11px/1.4 var(--font-mono); color: var(--ink-2); }
+.am-kv dd { margin: 2px 0 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.am-kv-cell--wide dd { font-size: 17px; font-weight: 600; }
+html[data-theme="shadcn"] .am-kv { border-color: var(--line); border-radius: var(--radius); overflow: hidden; }
+
+/* ── timeline ────────────────────────────── */
+.am-timeline { list-style: none; margin: 0; padding: 0; }
+.am-timeline--h { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); padding-top: 4px; }
+.am-timeline--h li { position: relative; text-align: center; padding: 0 6px; }
+.am-timeline--h li::before {
+  content: ""; position: absolute; top: 31px; left: 0; right: 0; border-top: var(--bw) solid var(--line);
+}
+.am-timeline--h li:first-child::before { left: 50%; }
+.am-timeline--h li:last-child::before { right: 50%; }
+.am-tl-when { display: block; font-size: 15px; font-weight: 500; height: 24px; }
+.am-tl-dot {
+  position: relative; display: block; width: 11px; height: 11px; margin: 2px auto 8px;
+  border: var(--bw) solid var(--line); border-radius: 50%; background: var(--paper);
+}
+.am-tl-item--hi .am-tl-dot { background: var(--accent); border-color: var(--accent); }
+.am-tl-title { display: block; font-size: 12.5px; font-weight: 500; }
+.am-tl-text { display: block; font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+.am-timeline--v li { position: relative; padding: 0 0 14px 22px; }
+.am-timeline--v li::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: -6px; border-left: var(--bw) solid var(--line-2); }
+.am-timeline--v li:last-child::before { display: none; }
+.am-timeline--v .am-tl-dot { position: absolute; left: 0; top: 4px; margin: 0; }
+.am-timeline--v .am-tl-when { display: inline; height: auto; font: 12px var(--font-mono); color: var(--ink-2); margin-right: 8px; }
+.am-timeline--v .am-tl-title { display: inline; font-size: 14px; }
+.am-timeline--v .am-tl-text { margin-top: 2px; }
+
+/* ── annot 句子标注 ──────────────────────── */
+.am-annot + .am-annot { border-top: 1px solid var(--line-2); padding-top: 12px; }
+.am-annot-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.am-annot-meta { font: 11px var(--font-mono); font-weight: 400; color: var(--ink-2); }
+.am-annot-scroll { overflow-x: auto; }
+.am-annot-line {
+  position: relative; display: inline-block; white-space: pre; font: 14px/1.6 var(--font-mono);
+  padding-bottom: calc(var(--rows, 0) * 17px + 14px);
+}
+.am-annot-line--wrap { display: block; white-space: normal; padding-bottom: 10px; }
+.am-annot-line--wrap .am-seg { white-space: nowrap; }
+.am-seg { position: relative; }
+.am-seg::after {
+  content: ""; position: absolute; left: 1px; right: 1px; top: calc(100% + 1px); height: 5px;
+  border: 1px solid var(--accent); border-top: 0;
+}
+.am-seg-n {
+  position: absolute; left: 0; top: calc(100% + 8px + var(--row, 0) * 17px);
+  font: 11px/16px var(--font-sans); color: var(--accent); white-space: nowrap;
+}
+.am-seg--err { color: var(--err); }
+.am-seg--err::after { border-color: var(--err); }
+.am-seg--err .am-seg-n { color: var(--err); }
+.am-annot-caption { font-size: 12px; color: var(--ink-2); }
+
+/* ── limits 限值条 ───────────────────────── */
+.am-lim + .am-lim { margin-top: 14px; }
+.am-lim-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 4px; }
+.am-lim-val { font: 12px var(--font-mono); color: var(--accent); white-space: nowrap; }
+.am-lim-track { position: relative; height: 12px; border: 1px solid var(--line-2); background: var(--fill); border-radius: calc(var(--radius) / 2); }
+.am-lim-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-bg); border-right: 1px solid var(--accent); }
+.am-lim-mark { position: absolute; top: -4px; bottom: -4px; border-left: 2px solid var(--accent); }
+.am-lim.is-over .am-lim-fill { background: var(--err-bg); border-right-color: var(--err); }
+.am-lim.is-over .am-lim-val { color: var(--err); }
+.am-lim-ticks { position: relative; height: 16px; font: 10px/16px var(--font-mono); color: var(--ink-3); }
+.am-lim-ticks span { position: absolute; transform: translateX(-50%); }
+.am-lim-ticks span:first-child { transform: none; }
+.am-lim-note { font-size: 11px; color: var(--ink-2); margin-left: 6px; }
+
+/* ── tree 结构树 ─────────────────────────── */
+.am-tree { font-size: 13px; }
+.am-tree-root { display: flex; justify-content: center; position: relative; padding-bottom: 18px; }
+.am-tree-root::after { content: ""; position: absolute; bottom: 0; left: 50%; height: 18px; border-left: var(--bw) solid var(--line); }
+.am-tree-root--solo { padding-bottom: 12px; }
+.am-tree-root--solo::after { display: none; }
+.am-tree-box {
+  border: var(--bw) solid var(--line); background: var(--paper); padding: 6px 14px; text-align: center;
+  border-radius: var(--radius); font-weight: 600;
+}
+.am-tree-box small { display: block; font-weight: 400; color: var(--ink-2); font-size: 12px; }
+.am-tree-box--root { background: var(--accent-bg); font-size: 15px; padding: 8px 28px; }
+.am-tree-cols { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); }
+.am-tree-col { position: relative; padding: 18px 8px 0; min-width: 0; }
+.am-tree-col::before { content: ""; position: absolute; top: 0; left: 0; right: 0; border-top: var(--bw) solid var(--line); }
+.am-tree-col:first-child::before { left: 50%; }
+.am-tree-col:last-child::before { right: 50%; }
+.am-tree-col::after { content: ""; position: absolute; top: 0; left: 50%; height: 18px; border-left: var(--bw) solid var(--line); }
+.am-tree-list, .am-tree-list ul { list-style: none; margin: 0; padding: 0; }
+.am-tree-col > .am-tree-list { margin: 8px 0 0 14px; }
+.am-tree-list ul { margin-left: 16px; }
+.am-tree-list li { position: relative; padding: 3px 0 3px 18px; }
+.am-tree-list li::before { content: ""; position: absolute; left: 0; top: 0.95em; width: 12px; border-top: 1px solid var(--ink-3); }
+.am-tree-list li::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: 1px solid var(--ink-3); }
+.am-tree-list li:last-child::after { bottom: auto; height: 0.95em; }
+.am-tree-tag { font: 11px var(--font-mono); color: var(--ink-3); margin-right: 4px; }
+.am-tree code { font: 12px var(--font-mono); }
+.am-tree-sub { display: block; font-size: 11.5px; color: var(--ink-2); }
+.am-tree-hi > .am-tree-label { color: var(--accent); font-weight: 600; }
+
+/* ── 图（flow / sequence）───────────────── */
+.am-diagram { margin: 0; overflow-x: auto; text-align: center; }
+.am-diagram svg { max-width: 100%; height: auto; font-family: var(--font-sans); }
+.am-diagram text { fill: var(--ink); font-size: 13px; }
+.am-node-shape { fill: var(--paper); stroke: var(--line); stroke-width: var(--bw); }
+.am-node--hi .am-node-shape { fill: var(--accent-bg); stroke: var(--accent); }
+.am-node--hi text { fill: var(--accent); font-weight: 600; }
+.am-edge { fill: none; stroke: var(--ink-2); stroke-width: 1.3; }
+.am-edge--dashed { stroke-dasharray: 5 4; }
+.am-arrow { fill: var(--ink-2); }
+.am-edge-label rect { fill: var(--paper); }
+.am-diagram .am-edge-label text { fill: var(--accent); font-size: 11.5px; }
+.am-cluster { fill: var(--fill); stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 4 3; }
+.am-diagram .am-cluster-label { fill: var(--ink-2); font: 11px var(--font-mono); }
+.am-lifeline { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 4 4; }
+.am-actor { fill: var(--paper); stroke: var(--line); stroke-width: var(--bw); }
+.am-note { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1; }
+.am-diagram .am-step { fill: var(--ink-3); font: 10px var(--font-mono); }
+
+/* ── doc 线性讲解 ────────────────────────── */
+.am-doc { max-width: 1120px; margin: 0 auto; padding: 40px 28px 64px; }
+.am-doc-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
+.am-doc-layout--notoc { grid-template-columns: minmax(0, 1fr); max-width: 860px; }
+.am-toc { position: sticky; top: 24px; font-size: 13px; }
+.am-toc a { display: block; color: var(--ink-2); text-decoration: none; padding: 4px 0 4px 10px; border-left: 2px solid var(--line-2); }
+.am-toc a:hover { color: var(--ink); border-left-color: var(--accent); }
+.am-doc-body > .am-panel + .am-panel { margin-top: 20px; }
+
+/* ── 响应式与打印 ─────────────────────────── */
+@media (max-width: 1100px) {
+  .am-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .am-grid > .am-panel { grid-column: auto !important; }
+  .am-grid > .am-panel.am-span-wide { grid-column: 1 / -1 !important; }
+}
+@media (max-width: 760px) {
+  .am-sheet, .am-doc { padding: 56px 12px 24px; }
+  .am-head { padding-right: 0; }
+  .am-grid { grid-template-columns: minmax(0, 1fr); }
+  .am-grid > .am-panel.am-span-wide { grid-column: auto !important; }
+  html[data-theme="blueprint"] .am-frame { padding: 0; border: 0; }
+  html[data-theme="blueprint"] .am-frame::before, html[data-theme="blueprint"] .am-ruler { display: none; }
+  .am-doc-layout { grid-template-columns: minmax(0, 1fr); }
+  .am-toc { position: static; }
+  .am-timeline--h { grid-template-columns: minmax(0, 1fr); }
+  .am-tree-cols { grid-template-columns: minmax(0, 1fr); }
+}
+.am-colophon { text-align: center; padding: 0 0 28px; font: 11px var(--font-mono); color: var(--ink-3); }
+
+@media print {
+  .am-toolbar { display: none; }
+  body { background: var(--paper); }
+  .am-panel { break-inside: avoid; box-shadow: none; }
+}
+.am-panel--bare { border: 0; background: transparent; box-shadow: none; }
+.am-panel--bare > .am-panel-body { padding: 0; }
+.am-panel--bare .am-kv { background: var(--paper); }
+
+</style>
+</head>
+<body>
+<div class="am-toolbar">
+<button class="am-btn" type="button" data-am="theme" data-labels="{&quot;blueprint&quot;:&quot;主题：图纸&quot;,&quot;shadcn&quot;:&quot;主题：卡片&quot;}">主题：图纸</button>
+<button class="am-btn" type="button" data-am="mode" data-labels="{&quot;auto&quot;:&quot;明暗：跟随系统&quot;,&quot;light&quot;:&quot;明暗：亮&quot;,&quot;dark&quot;:&quot;明暗：暗&quot;}">明暗：跟随系统</button>
+<button class="am-btn" type="button" data-am="copy" data-done="已复制 ✓">复制源稿</button>
+</div>
+<main class="am-sheet">
+<header class="am-head"><h1>切片 6 完成：六片全部交付</h1></header>
+<div class="am-frame">
+<div class="am-ruler am-ruler--top" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div><div class="am-ruler am-ruler--bottom" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div><div class="am-ruler am-ruler--left" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class="am-ruler am-ruler--right" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div>
+<div class="am-grid" style="--cols: 3">
+<section class="am-panel" id="panel-A">
+<header class="am-panel-head"><span class="am-panel-id">A</span><h2>一句话验收</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>页面右下角多了一枚小鲸鱼。点它，悬浮条和小窗一起出来。</p>
+<p><strong>六个切片全部做完，三件套 + 桥可以日用了。</strong></p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>按钮</dt><dd>40×40 圆形，右下角，挂 shell.overlay 槽</dd></div><div class="am-kv-cell"><dt>单击</dt><dd>并行拉起悬浮条与小窗</dd></div><div class="am-kv-cell"><dt>验收</dt><dd>E1–E6 全过（其中 E4/E5 的证据来自你点那一下）</dd></div><div class="am-kv-cell"><dt>测试</dt><dd>502 个全绿（切片 5 为 487）</dd></div><div class="am-kv-cell"><dt>七道闸门</dt><dd>全过</dd></div></dl></div>
+</section>
+<section class="am-panel" id="panel-B">
+<header class="am-panel-head"><span class="am-panel-id">B</span><h2>装配链路</h2></header>
+<div class="am-panel-body"><figure class="am-diagram am-flow"><svg viewBox="0 0 451 239" width="451" height="239" role="img" aria-label="流程图：按钮[页面右下角鲸鱼]、|POST /whale/open| 桥[127.0.0.1、桥、|spawn| HUD[悬浮条进程]、|spawn| WIN[小窗进程]" xmlns="http://www.w3.org/2000/svg"><defs><marker id="am1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="am-arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs><g></g><g><path class="am-edge am-edge--dashed" d="M167.3,40 L190.8,40 Q214.3,40 237.7,40 L261.2,40" marker-end="url(#am1-arrow)"/><g class="am-edge-label"><rect x="191.3" y="31" width="45.9" height="18" rx="3"/><text x="214.3" y="40" text-anchor="middle" dominant-baseline="central">19387]</text></g><path class="am-edge am-edge--dashed" d="M122.7,169.5 L168.5,184.3 Q214.3,199 240.3,199 L266.3,199" marker-end="url(#am1-arrow)"/><path class="am-edge am-edge--dashed" d="M122.7,149 L168.5,134.2 Q214.3,119.5 240.4,119.5 L266.5,119.5" marker-end="url(#am1-arrow)"/></g><g><g class="am-node am-node--rect"><rect class="am-node-shape" x="14" y="22.5" width="153.3" height="35" rx="3"/><text x="90.7" y="40" text-anchor="middle" dominant-baseline="central">按钮[页面右下角鲸鱼]</text></g><g class="am-node am-node--rect"><rect class="am-node-shape" x="261.2" y="14" width="175.7" height="52" rx="3"/><text x="349" y="31.5" text-anchor="middle" dominant-baseline="central">|POST /whale/open| 桥</text><text x="349" y="48.5" text-anchor="middle" dominant-baseline="central">[127.0.0.1</text></g><g class="am-node am-node--rect"><rect class="am-node-shape" x="58.7" y="141.8" width="64" height="35" rx="3"/><text x="90.7" y="159.3" text-anchor="middle" dominant-baseline="central">桥</text></g><g class="am-node am-node--rect"><rect class="am-node-shape" x="266.3" y="173" width="165.5" height="52" rx="3"/><text x="349" y="190.5" text-anchor="middle" dominant-baseline="central">|spawn| HUD[悬浮条进</text><text x="349" y="207.5" text-anchor="middle" dominant-baseline="central">程]</text></g><g class="am-node am-node--rect"><rect class="am-node-shape" x="266.5" y="102" width="165" height="35" rx="3"/><text x="349" y="119.5" text-anchor="middle" dominant-baseline="central">|spawn| WIN[小窗进程]</text></g></g></svg></figure>
+<div class="am-md"><p>按钮<strong>只走 HTTP</strong>，不自己起进程——拉起窗口是桥的职责（铁律 A-2）。
+桥有进程表、能复用、能防重；按钮自己 spawn 会绕过那条唯一通路。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-C">
+<header class="am-panel-head"><span class="am-panel-id">C</span><h2>一个超出范围、但躲不掉的改动</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>写按钮时才发现：<strong>桥原来完全不管悬浮条进程</strong>——<code>windows.mjs</code> 是小窗专用的，入口写死。</p>
+<p>按钮要「同时拉起两个」，桥就必须能拉悬浮条。这超出我范围声明里写的「不改桥路由」，
+所以我先列了影响清单请你确认，你点头后才动。</p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>改动</dt><dd>windows.mjs 泛化出 TARGETS 表 + /whale/open 加可选 target 参数</dd></div><div class="am-kv-cell"><dt>不破坏</dt><dd>缺省仍是 window，既有小窗行为不变（windows 单测 17 个全过）</dd></div><div class="am-kv-cell"><dt>关键修复</dt><dd>复用改为<strong>按目标分开</strong></dd></div></dl>
+<div class="am-md"><p>最后那条是泛化时才显现的坑：原先是「任意窗口存活就复用」。
+泛化后如果照搬，<strong>存活的悬浮条会挡住拉起小窗</strong>，表现就是「点按钮只起来一个」。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-D">
+<header class="am-panel-head"><span class="am-panel-id">D</span><h2>我犯的一个错，和它引出的防线</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>写图标时我<strong>凭印象编了一段鲸鱼 path</strong>，还在注释里声称「与源文件同一形状」。
+实际上它跟真图标完全不是一条鲸鱼。</p>
+<p>而 PRD 早就警告过这件事：</p>
+</div>
+<div class="am-callout am-callout--warn" role="note"><div class="am-callout-title">PRD 原文：不要试图手抄或用 edit 替换整串，会抄错</div></div>
+<div class="am-md"><p>那条 path 有 <strong>3394 个字符</strong>，人抄必错。项目里本来就有 <code>tools/whale-icon.mjs</code>
+处理悬浮条的同类问题，我照它的做法补了 <code>tools/whale-btn-icon.mjs</code>：</p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>注入</dt><dd>从 favicon-whale.svg 机械抽取，写进 client.js 的标记块之间</dd></div><div class="am-kv-cell"><dt>校验</dt><dd>--check 模式比对注入结果与源文件</dd></div><div class="am-kv-cell"><dt>独立复核</dt><dd>verify-btn-icon.mjs 另写一套抽取逻辑再比一次</dd></div><div class="am-kv-cell"><dt>实测</dt><dd>3394 字符逐字符一致</dd></div></dl>
+<div class="am-md"><p><strong>为什么要「独立复核」，而不是听工具自己报</strong>：<code>--check</code> 用的是它自己的抽取函数，
+万一两边错得一致（比如正则同时匹配到别的东西），自校验会一致地通过。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-E">
+<header class="am-panel-head"><span class="am-panel-id">E</span><h2>依赖扫描：不是放宽，是换把更严的尺子</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>按钮是浏览器文件，它 <code>require(&quot;react&quot;)</code> —— 但 React 来自宿主的模块表，不是 npm 依赖。</p>
+<p>依赖扫描当场拦下了它。我没有「把 client.js 加进忽略名单」——那会留个洞
+（将来往客户端里 <code>import fs</code> 也没人拦）。改成按 <code>exports[&quot;./client&quot;]</code> 识别浏览器侧文件，
+然后给它一把<strong>更严</strong>的尺子：</p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>宿主侧</dt><dd>只允许 node: 内置与相对路径</dd></div><div class="am-kv-cell"><dt>浏览器侧</dt><dd>允许宿主模块表模块（react 等），但<strong>禁止 node: 内置模块</strong></dd></div></dl>
+<div class="am-md"><p>第二行是收紧：浏览器里根本没有 <code>fs</code>，引了必崩，现在会被拦住。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-F">
+<header class="am-panel-head"><span class="am-panel-id">F</span><h2>这一片最值钱的对照</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>同一件事（把插件装进真宿主），两片的做法不同，代价差得很远。</p>
+</div>
+<div class="am-limits"><div class="am-lim">
+<div class="am-lim-head"><span>切片 5 手工装的坑</span><span class="am-lim-val">3 / max 3 个</span></div>
+<div class="am-lim-track"><div class="am-lim-fill" style="width: 60%"></div><div class="am-lim-mark" style="left: 60%"></div></div>
+<div class="am-lim-ticks" aria-hidden="true"><span style="left: 0%">0</span><span style="left: 20%">1</span><span style="left: 40%">2</span><span style="left: 60%">3</span><span style="left: 80%">4</span><span style="left: 100%">5</span></div>
+</div><div class="am-lim">
+<div class="am-lim-head"><span>切片 6 正规装的坑</span><span class="am-lim-val">0 / max 3 个</span></div>
+<div class="am-lim-track"><div class="am-lim-fill" style="width: 0%"></div><div class="am-lim-mark" style="left: 60%"></div></div>
+<div class="am-lim-ticks" aria-hidden="true"><span style="left: 0%">0</span><span style="left: 20%">1</span><span style="left: 40%">2</span><span style="left: 60%">3</span><span style="left: 80%">4</span><span style="left: 100%">5</span></div>
+</div></div>
+<div class="am-md"><div class="am-table-wrap"><table>
+<thead>
+<tr>
+<th>对比</th>
+<th>切片 5（手工）</th>
+<th>切片 6（正规）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>写 profile 配置</td>
+<td>我手写</td>
+<td>工具代写</td>
+</tr>
+<tr>
+<td>装完踩坑</td>
+<td>3 个</td>
+<td><strong>0 个</strong></td>
+</tr>
+<tr>
+<td>卸载</td>
+<td>按行手删，要小心别碰你的设置</td>
+<td>一条命令</td>
+</tr>
+</tbody></table></div>
+<p>上一片那三个坑（inject 缺失 / inject 含幽灵服务名 / 卸载方式），
+有一部分本可以由正规通道避免——<code>cordis-plugin-development</code> 明确写着
+「不要手写 profile 配置」，<strong>我当初没照做</strong>。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-G">
+<header class="am-panel-head"><span class="am-panel-id">G</span><h2>验收判据与证据来源</h2></header>
+<div class="am-panel-body"><dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>E1 按钮在右下角</dt><dd>你目视确认</dd></div><div class="am-kv-cell"><dt>E2 40×40 圆形</dt><dd>契约测试 + 目视</dd></div><div class="am-kv-cell"><dt>E3 图标是那枚鲸鱼</dt><dd>与源 svg 逐字符一致（3394 字符）</dd></div><div class="am-kv-cell"><dt>E4 单击拉起悬浮条</dt><dd>窗口表出现 target=&quot;hud&quot;</dd></div><div class="am-kv-cell"><dt>E5 单击拉起小窗</dt><dd>窗口表出现 target=&quot;window&quot;</dd></div><div class="am-kv-cell"><dt>E6 能点动</dt><dd>你点成功了 —— 这条最容易失败</dd></div></dl>
+<div class="am-md"><p><strong>E4/E5 的证据出自你</strong>：窗口表里那两个进程的 <code>reason</code> 是 <code>button</code>，
+是你点出来的，不是我脚本模拟的。这比自测更硬。</p>
+<p>E6 值得单说：<code>shell.overlay</code> 这一层是 <strong>click-through</strong> 的
+（宿主原文：<em>entries opt back into pointer events</em>）。
+忘了写 <code>pointerEvents: &#39;auto&#39;</code> 时按钮<strong>看得见但点不动</strong>，且不报错。
+我把这条做成了契约测试断言。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-H">
+<header class="am-panel-head"><span class="am-panel-id">H</span><h2>卸载核对</h2></header>
+<div class="am-panel-body"><dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>依赖</dt><dd>已移除，总数回到 12</dd></div><div class="am-kv-cell"><dt>bundles</dt><dd>已移除，总数回到 17</dd></div><div class="am-kv-cell"><dt>既有插件</dt><dd>8 个抽查全部完好</dd></div><div class="am-kv-cell"><dt>你的主题设置</dt><dd>保留</dd></div></dl>
+<div class="am-md"><p>顺带记了一条<strong>工具的小缺口</strong>：<code>remove_bundle</code> 清了依赖与 bundles，
+但没删 <code>node_modules/</code> 下的符号链接——我手动删了。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-I">
+<header class="am-panel-head"><span class="am-panel-id">I</span><h2>六片全貌</h2></header>
+<div class="am-panel-body"><ol class="am-timeline am-timeline--h" style="--n: 6"><li class="am-tl-item"><span class="am-tl-when">切片 1</span><span class="am-tl-dot"></span><span class="am-tl-title">桥骨架</span><span class="am-tl-text">4 条只读路由，35 测试</span></li><li class="am-tl-item"><span class="am-tl-when">切片 2</span><span class="am-tl-dot"></span><span class="am-tl-title">数据源</span><span class="am-tl-text">事件订阅 + 双折叠器，115 测试</span></li><li class="am-tl-item"><span class="am-tl-when">切片 3</span><span class="am-tl-dot"></span><span class="am-tl-title">实时通道</span><span class="am-tl-text">SSE 双端点 + 22 条路由，265 测试</span></li><li class="am-tl-item"><span class="am-tl-when">切片 4</span><span class="am-tl-dot"></span><span class="am-tl-title">悬浮条</span><span class="am-tl-text">真窗口验收 A1/A4/A5/A8/A10/A11，349 测试</span></li><li class="am-tl-item"><span class="am-tl-when">切片 5</span><span class="am-tl-dot"></span><span class="am-tl-title">小窗</span><span class="am-tl-text">回补 C7/C8/C12 + B5/B6/B7 真宿主实测，487 测试</span></li><li class="am-tl-item am-tl-item--hi"><span class="am-tl-when">切片 6</span><span class="am-tl-dot"></span><span class="am-tl-title">页面按钮</span><span class="am-tl-text">E1–E6 全过，502 测试</span></li></ol></div>
+</section>
+<section class="am-panel am-span-wide" id="panel-J" style="grid-column: span 3">
+<header class="am-panel-head"><span class="am-panel-id">J</span><h2>下一步</h2></header>
+<div class="am-panel-body"><div class="am-md"><p><strong>没有待办。</strong> 六片做完，三件套 + 桥可日用。</p>
+<p>若还要往前，是二期范围（侧边工作台、语音输入、<code>/whale/models</code> 真目录），需另行立片。</p>
+</div></div>
+</section>
+</div>
+</div>
+</main>
+<footer class="am-colophon">Generated by Answer me with HTML 0.2.2 · 2026-10-06 17:56</footer>
+<textarea id="am-source" hidden readonly aria-hidden="true"># 切片 6 完成：六片全部交付
+
+## 一句话验收
+
+页面右下角多了一枚小鲸鱼。点它，悬浮条和小窗一起出来。
+
+**六个切片全部做完，三件套 + 桥可以日用了。**
+
+```kv
+按钮: 40×40 圆形，右下角，挂 shell.overlay 槽
+单击: 并行拉起悬浮条与小窗
+验收: E1–E6 全过（其中 E4/E5 的证据来自你点那一下）
+测试: 502 个全绿（切片 5 为 487）
+七道闸门: 全过
+```
+
+## 装配链路
+
+```flow LR
+按钮[页面右下角鲸鱼] --&gt;|POST /whale/open| 桥[127.0.0.1:19387]
+桥 --&gt;|spawn| HUD[悬浮条进程]
+桥 --&gt;|spawn| WIN[小窗进程]
+```
+
+按钮**只走 HTTP**，不自己起进程——拉起窗口是桥的职责（铁律 A-2）。
+桥有进程表、能复用、能防重；按钮自己 spawn 会绕过那条唯一通路。
+
+## 一个超出范围、但躲不掉的改动
+
+写按钮时才发现：**桥原来完全不管悬浮条进程**——`windows.mjs` 是小窗专用的，入口写死。
+
+按钮要「同时拉起两个」，桥就必须能拉悬浮条。这超出我范围声明里写的「不改桥路由」，
+所以我先列了影响清单请你确认，你点头后才动。
+
+```kv
+改动: windows.mjs 泛化出 TARGETS 表 + /whale/open 加可选 target 参数
+不破坏: 缺省仍是 window，既有小窗行为不变（windows 单测 17 个全过）
+关键修复: 复用改为**按目标分开**
+```
+
+最后那条是泛化时才显现的坑：原先是「任意窗口存活就复用」。
+泛化后如果照搬，**存活的悬浮条会挡住拉起小窗**，表现就是「点按钮只起来一个」。
+
+## 我犯的一个错，和它引出的防线
+
+写图标时我**凭印象编了一段鲸鱼 path**，还在注释里声称「与源文件同一形状」。
+实际上它跟真图标完全不是一条鲸鱼。
+
+而 PRD 早就警告过这件事：
+
+```callout warn PRD 原文：不要试图手抄或用 edit 替换整串，会抄错
+```
+
+那条 path 有 **3394 个字符**，人抄必错。项目里本来就有 `tools/whale-icon.mjs`
+处理悬浮条的同类问题，我照它的做法补了 `tools/whale-btn-icon.mjs`：
+
+```kv
+注入: 从 favicon-whale.svg 机械抽取，写进 client.js 的标记块之间
+校验: --check 模式比对注入结果与源文件
+独立复核: verify-btn-icon.mjs 另写一套抽取逻辑再比一次
+实测: 3394 字符逐字符一致
+```
+
+**为什么要「独立复核」，而不是听工具自己报**：`--check` 用的是它自己的抽取函数，
+万一两边错得一致（比如正则同时匹配到别的东西），自校验会一致地通过。
+
+## 依赖扫描：不是放宽，是换把更严的尺子
+
+按钮是浏览器文件，它 `require(&quot;react&quot;)` —— 但 React 来自宿主的模块表，不是 npm 依赖。
+
+依赖扫描当场拦下了它。我没有「把 client.js 加进忽略名单」——那会留个洞
+（将来往客户端里 `import fs` 也没人拦）。改成按 `exports[&quot;./client&quot;]` 识别浏览器侧文件，
+然后给它一把**更严**的尺子：
+
+```kv
+宿主侧: 只允许 node: 内置与相对路径
+浏览器侧: 允许宿主模块表模块（react 等），但**禁止 node: 内置模块**
+```
+
+第二行是收紧：浏览器里根本没有 `fs`，引了必崩，现在会被拦住。
+
+## 这一片最值钱的对照
+
+同一件事（把插件装进真宿主），两片的做法不同，代价差得很远。
+
+```limits
+切片 5 手工装的坑 | 3 / 3 | 个
+切片 6 正规装的坑 | 0 / 3 | 个
+```
+
+| 对比 | 切片 5（手工） | 切片 6（正规） |
+|---|---|---|
+| 写 profile 配置 | 我手写 | 工具代写 |
+| 装完踩坑 | 3 个 | **0 个** |
+| 卸载 | 按行手删，要小心别碰你的设置 | 一条命令 |
+
+上一片那三个坑（inject 缺失 / inject 含幽灵服务名 / 卸载方式），
+有一部分本可以由正规通道避免——`cordis-plugin-development` 明确写着
+「不要手写 profile 配置」，**我当初没照做**。
+
+## 验收判据与证据来源
+
+```kv
+E1 按钮在右下角: 你目视确认
+E2 40×40 圆形: 契约测试 + 目视
+E3 图标是那枚鲸鱼: 与源 svg 逐字符一致（3394 字符）
+E4 单击拉起悬浮条: 窗口表出现 target=&quot;hud&quot;
+E5 单击拉起小窗: 窗口表出现 target=&quot;window&quot;
+E6 能点动: 你点成功了 —— 这条最容易失败
+```
+
+**E4/E5 的证据出自你**：窗口表里那两个进程的 `reason` 是 `button`，
+是你点出来的，不是我脚本模拟的。这比自测更硬。
+
+E6 值得单说：`shell.overlay` 这一层是 **click-through** 的
+（宿主原文：*entries opt back into pointer events*）。
+忘了写 `pointerEvents: &#39;auto&#39;` 时按钮**看得见但点不动**，且不报错。
+我把这条做成了契约测试断言。
+
+## 卸载核对
+
+```kv
+依赖: 已移除，总数回到 12
+bundles: 已移除，总数回到 17
+既有插件: 8 个抽查全部完好
+你的主题设置: 保留
+```
+
+顺带记了一条**工具的小缺口**：`remove_bundle` 清了依赖与 bundles，
+但没删 `node_modules/` 下的符号链接——我手动删了。
+
+## 六片全貌
+
+```timeline
+切片 1 | 桥骨架 | 4 条只读路由，35 测试
+切片 2 | 数据源 | 事件订阅 + 双折叠器，115 测试
+切片 3 | 实时通道 | SSE 双端点 + 22 条路由，265 测试
+切片 4 | 悬浮条 | 真窗口验收 A1/A4/A5/A8/A10/A11，349 测试
+切片 5 | 小窗 | 回补 C7/C8/C12 + B5/B6/B7 真宿主实测，487 测试
+*切片 6 | 页面按钮 | E1–E6 全过，502 测试
+```
+
+## 下一步
+
+**没有待办。** 六片做完，三件套 + 桥可日用。
+
+若还要往前，是二期范围（侧边工作台、语音输入、`/whale/models` 真目录），需另行立片。
+</textarea>
+<script>
+(() => {
+  const root = document.documentElement;
+  const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
+  const label = (btn, value) => {
+    const map = JSON.parse(btn.dataset.labels || '{}');
+    btn.textContent = map[value] || value;
+  };
+  const bind = (name, attr, values) => {
+    const btn = document.querySelector(`[data-am="${name}"]`);
+    if (!btn) return;
+    label(btn, root.getAttribute(attr));
+    btn.addEventListener('click', () => {
+      const next = cycle(values, root.getAttribute(attr));
+      root.setAttribute(attr, next);
+      label(btn, next);
+    });
+  };
+  bind('theme', 'data-theme', ['blueprint', 'shadcn']);
+  bind('mode', 'data-mode', ['auto', 'light', 'dark']);
+
+  const copyBtn = document.querySelector('[data-am="copy"]');
+  copyBtn?.addEventListener('click', async () => {
+    const text = document.getElementById('am-source').value;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = Object.assign(document.createElement('textarea'), { value: text });
+      document.body.append(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    const original = copyBtn.textContent;
+    copyBtn.textContent = copyBtn.dataset.done;
+    setTimeout(() => { copyBtn.textContent = original; }, 1400);
+  });
+})();
+</script>
+</body>
+</html>
