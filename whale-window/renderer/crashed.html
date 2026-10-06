@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    />
+    <title>小窗崩溃</title>
+    <link rel="stylesheet" href="skin.css" />
+  </head>
+  <body class="whale">
+    <!--
+      崩溃兜底页（F13）。
+      文案必须诚实说明发生了什么，**不使用模糊措辞**（规范 6.3）。
+      写死「连续崩溃超过 3 次」而不是「出错了」，因为用户需要知道
+      这是反复失败、不是偶发。
+    -->
+    <div class="win">
+      <header class="topbar">
+        <span class="tb-title">小窗界面崩溃</span>
+        <button class="ico" id="btnQuit" aria-label="退出小窗">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </header>
+
+      <main class="stream">
+        <div class="msg ai">
+          <div class="role">DSH</div>
+          <div>这扇窗的界面进程连续崩溃了 4 次，已停止自动重载，以免一直闪。</div>
+          <div style="margin-top: 8px">崩溃的是**渲染进程**，你的会话没有受影响 —— 消息都在宿主里。</div>
+        </div>
+      </main>
+
+      <footer class="composer">
+        <div class="input-row">
+          <button class="cbtn wide" id="btnRetry">再试一次</button>
+          <span class="spacer"></span>
+          <button class="cbtn" id="btnHide">隐藏窗口</button>
+        </div>
+      </footer>
+    </div>
+
+    <script src="crashed.js"></script>
+  </body>
+</html>

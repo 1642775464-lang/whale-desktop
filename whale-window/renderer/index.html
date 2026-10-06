@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CSP 必须放行 'self'：只写 'unsafe-inline' 的话，<script src="app.js"> 与
+      <link href="skin.css"> 会被**静默拦截**——窗口里只剩 HTML 字面文本，
+      没样式没数据，且除了渲染进程控制台之外看不到任何报错
+      （小窗 PRD 5.8 / 陷阱 4）。
+      connect-src 只放行回环，与桥的监听地址一致。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src http://127.0.0.1:* http://localhost:*; img-src 'self' data:"
+    />
+    <title>Whale Window</title>
+    <link rel="stylesheet" href="skin.css" />
+  </head>
+  <body class="whale">
+    <!--
+      窗口 = 内容 + 四周 SHADOW_PAD(16)，由 body 的 padding 收回。
+      body 的 --shadow-pad 必须等于主进程的 SHADOW_PAD，否则阴影被硬切成直边。
+    -->
+    <div class="win" id="win">
+      <!-- 顶栏 42px：本身就是拖拽区（无边框窗口需要渲染层把位移交给主进程） -->
+      <header class="topbar" id="topbar">
+        <button class="ico" id="btnMin" aria-label="最小化">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+            <path d="M3.5 8h9" />
+          </svg>
+        </button>
+
+        <button class="ico" id="btnPin" aria-label="钉住">
+          <!--
+            真图钉剪影：顶部宽横帽先定下「这是图钉」，下面才是梯形身和针。
+            横帽必须用 <path> 写闭合矩形而不是 <rect>——
+            全局 .ico svg rect{fill:none} 会把它清成空心（陷阱 5）。
+          -->
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.6 3.2h6.8v1.7H4.6z" />
+            <path d="M5.6 4.9h4.8l-.9 4.4H6.5z" />
+            <path d="M8 9.3v3.5" />
+          </svg>
+        </button>
+
+        <span class="brand-dot" aria-hidden="true"></span>
+
+        <span class="tb-title" id="tbTitle">未连接</span>
+
+        <button class="ico" id="btnGear" aria-label="侧边工作台">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+            <circle cx="8" cy="8" r="2.4" />
+            <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1" />
+          </svg>
+        </button>
+
+        <button class="ico" id="btnMenu" aria-label="更多">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+          </svg>
+        </button>
+      </header>
+
+      <!-- 会话标题行：标题 + 「同源会话」角标 + 副标题 -->
+      <div class="session-head">
+        <div class="sh-line">
+          <span class="sh-title" id="shTitle">未连接</span>
+          <!-- 文案固定，不得改写：明确告诉用户「这扇窗里的对话就是主窗那个会话」 -->
+          <span class="sh-badge">同源会话</span>
+        </div>
+        <div class="sh-sub" id="shSub">桥未连接 · 重试中</div>
+      </div>
+
+      <!-- 消息流（批次 B 接入；此处先占位，保证布局成立） -->
+      <main class="stream" id="stream">
+        <div class="empty" id="streamEmpty">还没有消息</div>
+      </main>
+
+      <!-- 输入区（批次 B 接入） -->
+      <footer class="composer" id="composer">
+        <div class="input-box">
+          <textarea id="input" placeholder="问点什么…  Enter 发送 / Shift+Enter 换行"></textarea>
+          <div class="input-row">
+            <button class="cbtn" id="btnAdd" aria-label="添加">＋</button>
+            <button class="cbtn wide perm" id="btnPerm">工作区内修改</button>
+            <span class="spacer"></span>
+            <button class="cbtn usage" id="btnUsage" aria-label="用量">
+              <span class="usage-ring">
+                <svg viewBox="0 0 20 20">
+                  <circle class="ur-bg" cx="10" cy="10" r="8" fill="none" stroke="#E7EAF3" stroke-width="2.4" />
+                  <circle class="ur-fg" id="urFg" cx="10" cy="10" r="8" fill="none" stroke="#2F6BFF"
+                          stroke-width="2.4" stroke-linecap="round" stroke-dasharray="50.3" stroke-dashoffset="50.3" />
+                </svg>
+                <span class="usage-pct" id="usagePct">–</span>
+              </span>
+            </button>
+            <button class="cbtn" id="btnMore" aria-label="更多">⋯</button>
+            <button class="cbtn" id="btnModel" aria-label="模型档位">高</button>
+            <button class="cbtn grey" id="btnVoice" aria-label="语音输入（暂未实现）">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+                <path d="M8 2.6a1.9 1.9 0 0 1 1.9 1.9v3.4a1.9 1.9 0 0 1-3.8 0V4.5A1.9 1.9 0 0 1 8 2.6z" />
+                <path d="M4.2 7.6a3.8 3.8 0 0 0 7.6 0M8 11.4v2" />
+              </svg>
+            </button>
+            <button class="send" id="btnSend" aria-label="发送">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 12.5V4M4.6 7.2 8 3.8l3.4 3.4" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      <!-- 左缘「资料」抽屉入口（F8，批次 C 接入） -->
+      <button class="drawer-tab" id="btnInfo">资料</button>
+    </div>
+
+    <!--
+      加载顺序有依赖：bridge-client 定义 WhaleBridge，app.js 用它。
+      顺序错了会在启动时抛 ReferenceError，现象是「窗口在、什么都没接上」。
+    -->
+    <script src="bridge-client.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

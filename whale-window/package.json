@@ -1,0 +1,8 @@
+{
+  "name": "whale-window",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Whale Desktop 小窗：把 DSH 会话搬到桌面一扇窄窗里",
+  "main": "main.cjs",
+  "comment": "运行时依赖必须为 0（开发规范强制 17）。Electron 由仓库根 runtime/electron.exe 提供，不进 dependencies。"
+}

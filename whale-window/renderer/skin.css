@@ -1,0 +1,439 @@
+/*
+ * 小窗样式
+ *
+ * 职责：小窗本体的视觉呈现——窗口外扩、真圆角、三层阴影、顶栏、会话标题行、
+ *       消息流、输入区。
+ * 所属层：小窗（whale-window/renderer）
+ *
+ * 所有数值**都取自《前端设计规范》v2.0**，不自行估算。
+ *
+ * 三条实测得出的口径（小窗 PRD 5.4，改错任一条都会出现肉眼可见的缺陷）：
+ *   1. `--shadow-pad` 必须与主进程的 SHADOW_PAD 完全一致。
+ *      留小 → 阴影被硬切一条直边；留大 → 窗外多一圈无用途空边。
+ *   2. 圆角靠「窗口透明 + CSS 裁角」共同实现，`.win` 自己声明 border-radius。
+ *   3. 阴影只画在窗口矩形内部，所以窗口必须比内容大一圈。
+ */
+
+:root {
+  --ink: #1f2430;
+  --ink2: #5a6070;
+  --ink3: #8a90a0;
+  --ink-disabled: #b4bacb;
+  --line: #e3e6f0;
+  --line-soft: #f0f2f8;
+  --card: #ffffff;
+  --brand: #2f6bff;
+  --brand2: #7c3aed;
+  --soft: linear-gradient(135deg, #e9ebfc, #dde2fa);
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --bad: #ef4444;
+  --mono: "SF Mono", Consolas, "Cascadia Mono", monospace;
+
+  /* 必须等于主进程 SHADOW_PAD（16）。契约测试会核对这一点。 */
+  --shadow-pad: 16px;
+
+  /* 内容尺寸：460×678（= 窗口 492×710 减去四周 16） */
+  --content-w: 460px;
+  --content-h: 678px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: calc(var(--content-w) + var(--shadow-pad) * 2);
+  height: calc(var(--content-h) + var(--shadow-pad) * 2);
+  background: transparent;
+  overflow: hidden;
+  font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  cursor: default;
+}
+
+/* body 的 padding 把「窗口矩形」收成「可见小窗矩形」 */
+body.whale {
+  padding: var(--shadow-pad);
+}
+
+/* ── 窗口本体 ─────────────────────────────────────── */
+.win {
+  position: relative;
+  width: var(--content-w);
+  height: var(--content-h);
+  border-radius: 18px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 12.5px;
+  /* 小窗用稍重的三层阴影（比悬浮条大一圈）。第三层 0 0 0 1px 是描边不是阴影 */
+  box-shadow: 0 8px 24px rgba(30, 45, 90, 0.13), 0 24px 56px rgba(30, 45, 90, 0.09),
+    0 0 0 1px rgba(120, 130, 175, 0.14);
+}
+
+/* ── 顶栏 42px（整条是拖拽区）─────────────────────── */
+.topbar {
+  height: 42px;
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+  border-bottom: 1px solid var(--line-soft);
+  -webkit-app-region: drag;
+}
+
+/* 按钮必须脱离拖拽区，否则点不动 */
+.topbar .ico {
+  -webkit-app-region: no-drag;
+}
+
+.ico {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--ink2);
+  cursor: pointer;
+  padding: 0;
+}
+
+.ico svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* 全局把 rect 清成空心——所以图钉横帽必须用 path 画（陷阱 5） */
+.ico svg rect {
+  fill: none;
+}
+
+.ico:hover {
+  background: #f2f4fa;
+}
+
+.ico.on {
+  color: var(--brand);
+}
+
+.brand-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand), var(--brand2));
+  flex: 0 0 7px;
+}
+
+.tb-title {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 会话标题行 ──────────────────────────────────── */
+.session-head {
+  padding: 9px 14px 7px;
+  border-bottom: 1px solid #f3f5fa;
+}
+
+.sh-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sh-title {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+.sh-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #eef1fb;
+  color: #5b68a8;
+  flex: 0 0 auto;
+}
+
+.sh-sub {
+  font-size: 11px;
+  color: var(--ink3);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 消息流 ──────────────────────────────────────── */
+.stream {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  background: #fcfcfe;
+}
+
+.empty {
+  margin: auto;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+.msg {
+  max-width: 88%;
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 8px 11px;
+  border-radius: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.me {
+  align-self: flex-end;
+  background: var(--soft);
+  border-bottom-right-radius: 4px;
+}
+
+.msg.ai {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #edeff6;
+  border-bottom-left-radius: 4px;
+}
+
+.msg .role {
+  font-size: 10.5px;
+  color: var(--ink3);
+  margin-bottom: 3px;
+}
+
+.tool-line {
+  align-self: stretch;
+  font-size: 11.5px;
+  color: var(--ink2);
+  background: #f4f6fc;
+  border: 1px solid #e9ecf7;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+}
+
+/* ── 输入区 ──────────────────────────────────────── */
+.composer {
+  flex: 0 0 auto;
+  padding: 8px 12px 11px;
+  border-top: 1px solid var(--line-soft);
+  background: #fff;
+}
+
+.status {
+  font-size: 11.5px;
+  background: #2b3040;
+  color: #e8eaf3;
+  border-radius: 8px;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.status[hidden] {
+  display: none;
+}
+
+.status .spin {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.input-box {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 8px 10px 7px;
+  background: #fff;
+}
+
+.input-box:focus-within {
+  border-color: #c9d4f5;
+}
+
+textarea {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: transparent;
+  max-height: 120px;
+  user-select: text;
+}
+
+textarea::placeholder {
+  color: var(--ink-disabled);
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.cbtn {
+  height: 26px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--ink2);
+  padding: 0 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cbtn:hover {
+  background: #f7f8fd;
+}
+
+.cbtn.wide {
+  min-width: 76px;
+}
+
+.cbtn.usage {
+  padding: 0 4px;
+  border: 0;
+}
+
+.cbtn.grey {
+  color: var(--ink-disabled);
+  border-color: #edeff6;
+  cursor: not-allowed;
+}
+
+/* 灰色项不许有 hover 反馈：不假装能用 */
+.cbtn.grey:hover {
+  background: #fff;
+}
+
+.usage-ring {
+  width: 19px;
+  height: 19px;
+  position: relative;
+  display: block;
+}
+
+.usage-ring svg {
+  width: 19px;
+  height: 19px;
+  transform: rotate(-90deg);
+}
+
+.usage-pct {
+  font-size: 9px;
+  font-family: var(--mono);
+  color: var(--ink3);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.send {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 0;
+  background: linear-gradient(135deg, var(--brand), var(--brand2));
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 160ms;
+}
+
+.send svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 回合运行中：红方块（B7 判据按 aria-label 读 DOM） */
+.send.stop {
+  background: var(--bad);
+}
+
+.send.stop svg {
+  display: none;
+}
+
+.send.stop::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: #fff;
+}
+
+/* ── 左缘资料抽屉入口 ────────────────────────────── */
+.drawer-tab {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: #fbfcfe;
+  color: var(--ink3);
+  font-size: 10px;
+  padding: 6px 4px;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status .spin {
+    animation: none;
+  }
+}

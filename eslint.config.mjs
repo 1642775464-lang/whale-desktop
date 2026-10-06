@@ -182,6 +182,7 @@ export default [
       "tests/**/*.mjs",
       "whale-bridge/lib/handlers-*.mjs",
       "whale-hud/lib/ipc.cjs",
+      "whale-window/lib/ipc.cjs",
     ],
     rules: { "require-await": "off" },
   },

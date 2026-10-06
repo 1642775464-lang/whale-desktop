@@ -91,7 +91,18 @@ export function createWindowManager(deps) {
     const env = buildEnv(options);
     let child;
     try {
-      child = spawnFn(electronPath, ["--no-sandbox", WINDOW_ENTRY], {
+      // 入口传**绝对路径**，不传相对路径。
+      //
+      // 曾经写的是相对路径 `whale-window/main.cjs`，而 cwd 已经是
+      // `<仓库根>/whale-window`——两者一拼成 `<…>/whale-window/whale-window/main.cjs`，
+      // 一个不可能存在的路径。表现为：小窗永远起不来，Electron 既不报错也不退，
+      // 就那么挂着。
+      //
+      // 旧单测没抓到是因为它**分两句**断言「入口对不对」和「cwd 对不对」，
+      // 两句各自都过，却没人验「两者组合后能不能找到文件」。
+      // 现在入口给绝对路径，就不再依赖这两处之间的相对关系；
+      // tests/unit/windows.test.mjs 另有一条断言直接检查「组合后存在」。
+      child = spawnFn(electronPath, ["--no-sandbox", entryPath], {
         cwd: path.join(repoRoot, "whale-window"),
         env,
         detached: false,

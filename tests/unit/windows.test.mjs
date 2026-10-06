@@ -66,8 +66,35 @@ test("open：参数完全符合 PRD F6 与验收要求", () => {
 
   assert.equal(call.cmd, path.join(ROOT, ELECTRON_RELATIVE));
   assert.equal(call.args[0], "--no-sandbox", "必须带 --no-sandbox（PRD 小窗 5.1）");
-  assert.equal(call.args[1], WINDOW_ENTRY);
   assert.equal(call.opts.cwd, path.join(ROOT, "whale-window"));
+  // 入口用绝对路径：不给「相对入口 + 另一个相对 cwd」留出错的机会
+  assert.equal(call.args[1], path.join(ROOT, WINDOW_ENTRY));
+  assert.ok(path.isAbsolute(call.args[1]), "入口必须是绝对路径");
+});
+
+test("open：入口与 cwd 组合后必须真的指向一个文件（这条能抓住路径拼接错误）", () => {
+  // 这一条是补上来的。旧断言分两句看「入口对不对」与「cwd 对不对」，
+  // 两句各自都过，却没人验**两者组合后能不能找到文件**——
+  // 真实缺陷正是这样漏过去的：入口是仓库根相对的 `whale-window/main.cjs`，
+  // cwd 却已经是 `<仓库根>/whale-window`，一拼成
+  // `<仓库根>/whale-window/whale-window/main.cjs`，永远不存在。
+  const spawnFn = recordingSpawn();
+  const mgr = createWindowManager({ repoRoot: ROOT, spawnFn, existsFn: allExist });
+  mgr.open({ port: 19387 });
+
+  const call = spawnFn.calls[0];
+  const entry = call.args[1];
+  const resolved = path.isAbsolute(entry) ? entry : path.resolve(call.opts.cwd, entry);
+
+  assert.equal(
+    resolved,
+    path.join(ROOT, WINDOW_ENTRY),
+    "组合后的路径必须正好是仓库里的那个入口文件",
+  );
+  assert.ok(
+    !resolved.includes(`${path.sep}whale-window${path.sep}whale-window${path.sep}`),
+    "路径被拼接了两遍 —— 这正是当初小窗起不来的原因",
+  );
 });
 
 test("open：环境里必须没有 ELECTRON_RUN_AS_NODE", () => {
