@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="blueprint" data-mode="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Answer me with HTML 0.2.2">
+<title>切片 4 完成：悬浮条能真起、真连桥、真显示</title>
+<style>
+html[data-theme="blueprint"], html[data-theme="blueprint"][data-mode="light"] {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --radius: 0px;
+  --shadow: none;
+  --bw: 1.5px;
+  --head-font: var(--font-sans);
+  --bg: #f6f6f3;
+  --paper: #ffffff;
+  --ink: #16181d;
+  --ink-2: #4b5260;
+  --ink-3: #8b929e;
+  --line: #1d2026;
+  --line-2: #d6dae1;
+  --fill: #f3f5f8;
+  --accent: #1d5fbf;
+  --accent-bg: #e4ecf8;
+  --ok: #1d5fbf;
+  --ok-bg: #e4ecf8;
+  --err: #c62828;
+  --err-bg: #fbeaea;
+  --warn: #a8620a;
+  --warn-bg: #fdf3e2;
+  --head-bg: #16181d;
+  --head-fg: #ffffff;
+}
+html[data-theme="blueprint"][data-mode="dark"] {
+  --bg: #081322;
+  --paper: #0d1c31;
+  --ink: #e6edf7;
+  --ink-2: #a9b8cc;
+  --ink-3: #6b7f99;
+  --line: #c9d6e8;
+  --line-2: #23385a;
+  --fill: #12253f;
+  --accent: #6ea8ff;
+  --accent-bg: #16305a;
+  --ok: #6ea8ff;
+  --ok-bg: #16305a;
+  --err: #ff7070;
+  --err-bg: #3b1620;
+  --warn: #f0b14a;
+  --warn-bg: #3a2a10;
+  --head-bg: #e6edf7;
+  --head-fg: #081322;
+}
+@media (prefers-color-scheme: dark) {
+html[data-theme="blueprint"][data-mode="auto"] {
+  --bg: #081322;
+  --paper: #0d1c31;
+  --ink: #e6edf7;
+  --ink-2: #a9b8cc;
+  --ink-3: #6b7f99;
+  --line: #c9d6e8;
+  --line-2: #23385a;
+  --fill: #12253f;
+  --accent: #6ea8ff;
+  --accent-bg: #16305a;
+  --ok: #6ea8ff;
+  --ok-bg: #16305a;
+  --err: #ff7070;
+  --err-bg: #3b1620;
+  --warn: #f0b14a;
+  --warn-bg: #3a2a10;
+  --head-bg: #e6edf7;
+  --head-fg: #081322;
+}
+}
+
+html[data-theme="shadcn"], html[data-theme="shadcn"][data-mode="light"] {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --radius: 8px;
+  --shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+  --bw: 1px;
+  --head-font: var(--font-sans);
+  --bg: #fafafa;
+  --paper: #ffffff;
+  --ink: #09090b;
+  --ink-2: #71717a;
+  --ink-3: #a1a1aa;
+  --line: #e4e4e7;
+  --line-2: #f0f0f2;
+  --fill: #f4f4f5;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --ok: #16a34a;
+  --ok-bg: #f0fdf4;
+  --err: #dc2626;
+  --err-bg: #fef2f2;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --head-bg: #18181b;
+  --head-fg: #fafafa;
+}
+html[data-theme="shadcn"][data-mode="dark"] {
+  --bg: #09090b;
+  --paper: #121215;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  --line: #27272a;
+  --line-2: #1c1c1f;
+  --fill: #18181b;
+  --accent: #60a5fa;
+  --accent-bg: #172554;
+  --ok: #4ade80;
+  --ok-bg: #052e16;
+  --err: #f87171;
+  --err-bg: #450a0a;
+  --warn: #fbbf24;
+  --warn-bg: #451a03;
+  --head-bg: #fafafa;
+  --head-fg: #18181b;
+}
+@media (prefers-color-scheme: dark) {
+html[data-theme="shadcn"][data-mode="auto"] {
+  --bg: #09090b;
+  --paper: #121215;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  --line: #27272a;
+  --line-2: #1c1c1f;
+  --fill: #18181b;
+  --accent: #60a5fa;
+  --accent-bg: #172554;
+  --ok: #4ade80;
+  --ok-bg: #052e16;
+  --err: #f87171;
+  --err-bg: #450a0a;
+  --warn: #fbbf24;
+  --warn-bg: #451a03;
+  --head-bg: #fafafa;
+  --head-fg: #18181b;
+}
+}
+
+/* Answer me with HTML base — 只引用主题变量，禁止写死颜色（主题 token 见 themes/index.js） */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-sans); font-size: 14px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+code, pre, kbd { font-family: var(--font-mono); }
+
+/* ── 工具栏 ─────────────────────────────── */
+.am-toolbar {
+  position: fixed; top: 12px; right: 12px; z-index: 10; display: flex; gap: 6px;
+}
+.am-btn {
+  font: 12px/1 var(--font-sans); color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line-2); border-radius: var(--radius); padding: 7px 10px; cursor: pointer;
+}
+.am-btn:hover { border-color: var(--ink-3); }
+.am-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 页头 ───────────────────────────────── */
+.am-head { margin: 0 0 20px; padding-right: 260px; }
+.am-head h1 { margin: 0; font-size: 24px; line-height: 1.25; letter-spacing: -0.01em; }
+.am-sub { margin: 4px 0 0; color: var(--ink-2); }
+.am-head-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+.am-head-meta b { font-family: var(--font-mono); font-weight: 400; color: var(--ink-3); margin-right: 6px; }
+.am-intro { margin-top: 12px; max-width: 80ch; }
+
+/* ── sheet 图纸板 ────────────────────────── */
+.am-sheet { max-width: 1680px; margin: 0 auto; padding: 32px 28px 40px; }
+.am-frame { position: relative; }
+.am-grid {
+  display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 20px; align-items: start;
+}
+.am-ruler { display: none; }
+html[data-theme="blueprint"] .am-frame { border: 1px solid var(--line); padding: 30px; }
+html[data-theme="blueprint"] .am-frame::before {
+  content: ""; position: absolute; inset: 18px; border: 1px solid var(--line); pointer-events: none;
+}
+html[data-theme="blueprint"] .am-ruler {
+  display: flex; position: absolute; font: 10px/1 var(--font-mono); color: var(--ink-3);
+}
+.am-ruler span { flex: 1; display: flex; align-items: center; justify-content: center; }
+.am-ruler--top, .am-ruler--bottom { left: 18px; right: 18px; height: 18px; }
+.am-ruler--top { top: 0; }
+.am-ruler--bottom { bottom: 0; }
+.am-ruler--left, .am-ruler--right { top: 18px; bottom: 18px; width: 18px; flex-direction: column; }
+.am-ruler--left { left: 0; }
+.am-ruler--right { right: 0; }
+.am-ruler--top span + span, .am-ruler--bottom span + span { border-left: 1px solid var(--line); }
+.am-ruler--left span + span, .am-ruler--right span + span { border-top: 1px solid var(--line); }
+
+/* ── 面板 ───────────────────────────────── */
+.am-panel {
+  background: var(--paper); border: var(--bw) solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); min-width: 0; overflow: hidden;
+}
+.am-panel-head {
+  display: flex; align-items: stretch; gap: 0; border-bottom: var(--bw) solid var(--line); min-height: 34px;
+}
+.am-panel-id {
+  display: flex; align-items: center; justify-content: center; min-width: 34px; padding: 0 8px;
+  background: var(--head-bg); color: var(--head-fg); font-weight: 600; font-size: 14px;
+}
+html[data-theme="shadcn"] .am-panel-id { border-radius: 6px; min-width: 24px; height: 24px; margin: 9px 0 9px 14px; font-size: 12px; }
+html[data-theme="shadcn"] .am-panel-head { border-bottom-width: 1px; }
+.am-panel-head h2 { margin: 0; padding: 7px 12px; font-size: 15px; font-weight: 600; flex: 1; display: flex; align-items: center; }
+.am-panel-meta { align-self: center; padding: 0 12px; font: 11px/1.3 var(--font-mono); color: var(--ink-2); text-align: right; }
+.am-panel-body { padding: 14px 16px 16px; }
+.am-panel-body > * + * { margin-top: 12px; }
+
+/* ── Markdown 正文 ───────────────────────── */
+.am-md > :first-child { margin-top: 0; }
+.am-md > :last-child { margin-bottom: 0; }
+.am-md p { margin: 0 0 8px; }
+.am-md ul, .am-md ol { margin: 0 0 8px; padding-left: 20px; }
+.am-md li + li { margin-top: 3px; }
+.am-md h3, .am-md h4 { margin: 14px 0 6px; font-size: 13px; }
+.am-md a { color: var(--accent); }
+.am-md blockquote { margin: 0 0 8px; padding: 2px 12px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
+.am-md :not(pre) > code { font-size: 0.9em; background: var(--fill); padding: 1px 5px; border-radius: 4px; }
+.am-md hr { border: 0; border-top: 1px solid var(--line-2); margin: 12px 0; }
+.am-md table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.am-md th {
+  text-align: left; font: 11px/1.3 var(--font-mono); color: var(--ink-2); font-weight: 400;
+  padding: 6px 10px; border-bottom: 1px solid var(--line-2);
+}
+.am-md td { padding: 7px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.am-md tbody tr:nth-child(even) td { background: var(--fill); }
+.am-table-wrap { overflow-x: auto; }
+.am-code {
+  margin: 0; padding: 12px 14px; background: var(--fill); border: 1px solid var(--line-2);
+  border-radius: var(--radius); overflow-x: auto; font-size: 12.5px; line-height: 1.5;
+}
+
+/* ── 状态徽章 ok / no / warn ──────────────── */
+.am-status { white-space: nowrap; font-weight: 500; }
+.am-status--ok { color: var(--ok); }
+.am-status--no { color: var(--err); }
+.am-status--warn { color: var(--warn); }
+.am-status-icon { display: inline-block; width: 1.1em; font-weight: 700; }
+
+/* ── callout ─────────────────────────────── */
+.am-callout {
+  border: 1px solid var(--line-2); border-left: 3px solid var(--accent); background: var(--accent-bg);
+  padding: 10px 14px; border-radius: var(--radius);
+}
+.am-callout--ok { border-left-color: var(--ok); background: var(--ok-bg); }
+.am-callout--warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.am-callout--err { border-left-color: var(--err); background: var(--err-bg); }
+.am-callout-title { font-weight: 600; margin-bottom: 4px; }
+
+/* ── kv 标题栏格 ─────────────────────────── */
+.am-kv {
+  display: grid; grid-template-columns: repeat(var(--kv-cols, 2), minmax(0, 1fr)); margin: 0;
+  border-top: var(--bw) solid var(--line); border-left: var(--bw) solid var(--line);
+}
+.am-kv-cell { border-right: var(--bw) solid var(--line); border-bottom: var(--bw) solid var(--line); padding: 6px 10px 8px; min-width: 0; }
+.am-kv-cell--wide { grid-column: 1 / -1; }
+.am-kv dt { font: 11px/1.4 var(--font-mono); color: var(--ink-2); }
+.am-kv dd { margin: 2px 0 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.am-kv-cell--wide dd { font-size: 17px; font-weight: 600; }
+html[data-theme="shadcn"] .am-kv { border-color: var(--line); border-radius: var(--radius); overflow: hidden; }
+
+/* ── timeline ────────────────────────────── */
+.am-timeline { list-style: none; margin: 0; padding: 0; }
+.am-timeline--h { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); padding-top: 4px; }
+.am-timeline--h li { position: relative; text-align: center; padding: 0 6px; }
+.am-timeline--h li::before {
+  content: ""; position: absolute; top: 31px; left: 0; right: 0; border-top: var(--bw) solid var(--line);
+}
+.am-timeline--h li:first-child::before { left: 50%; }
+.am-timeline--h li:last-child::before { right: 50%; }
+.am-tl-when { display: block; font-size: 15px; font-weight: 500; height: 24px; }
+.am-tl-dot {
+  position: relative; display: block; width: 11px; height: 11px; margin: 2px auto 8px;
+  border: var(--bw) solid var(--line); border-radius: 50%; background: var(--paper);
+}
+.am-tl-item--hi .am-tl-dot { background: var(--accent); border-color: var(--accent); }
+.am-tl-title { display: block; font-size: 12.5px; font-weight: 500; }
+.am-tl-text { display: block; font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+.am-timeline--v li { position: relative; padding: 0 0 14px 22px; }
+.am-timeline--v li::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: -6px; border-left: var(--bw) solid var(--line-2); }
+.am-timeline--v li:last-child::before { display: none; }
+.am-timeline--v .am-tl-dot { position: absolute; left: 0; top: 4px; margin: 0; }
+.am-timeline--v .am-tl-when { display: inline; height: auto; font: 12px var(--font-mono); color: var(--ink-2); margin-right: 8px; }
+.am-timeline--v .am-tl-title { display: inline; font-size: 14px; }
+.am-timeline--v .am-tl-text { margin-top: 2px; }
+
+/* ── annot 句子标注 ──────────────────────── */
+.am-annot + .am-annot { border-top: 1px solid var(--line-2); padding-top: 12px; }
+.am-annot-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.am-annot-meta { font: 11px var(--font-mono); font-weight: 400; color: var(--ink-2); }
+.am-annot-scroll { overflow-x: auto; }
+.am-annot-line {
+  position: relative; display: inline-block; white-space: pre; font: 14px/1.6 var(--font-mono);
+  padding-bottom: calc(var(--rows, 0) * 17px + 14px);
+}
+.am-annot-line--wrap { display: block; white-space: normal; padding-bottom: 10px; }
+.am-annot-line--wrap .am-seg { white-space: nowrap; }
+.am-seg { position: relative; }
+.am-seg::after {
+  content: ""; position: absolute; left: 1px; right: 1px; top: calc(100% + 1px); height: 5px;
+  border: 1px solid var(--accent); border-top: 0;
+}
+.am-seg-n {
+  position: absolute; left: 0; top: calc(100% + 8px + var(--row, 0) * 17px);
+  font: 11px/16px var(--font-sans); color: var(--accent); white-space: nowrap;
+}
+.am-seg--err { color: var(--err); }
+.am-seg--err::after { border-color: var(--err); }
+.am-seg--err .am-seg-n { color: var(--err); }
+.am-annot-caption { font-size: 12px; color: var(--ink-2); }
+
+/* ── limits 限值条 ───────────────────────── */
+.am-lim + .am-lim { margin-top: 14px; }
+.am-lim-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 4px; }
+.am-lim-val { font: 12px var(--font-mono); color: var(--accent); white-space: nowrap; }
+.am-lim-track { position: relative; height: 12px; border: 1px solid var(--line-2); background: var(--fill); border-radius: calc(var(--radius) / 2); }
+.am-lim-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-bg); border-right: 1px solid var(--accent); }
+.am-lim-mark { position: absolute; top: -4px; bottom: -4px; border-left: 2px solid var(--accent); }
+.am-lim.is-over .am-lim-fill { background: var(--err-bg); border-right-color: var(--err); }
+.am-lim.is-over .am-lim-val { color: var(--err); }
+.am-lim-ticks { position: relative; height: 16px; font: 10px/16px var(--font-mono); color: var(--ink-3); }
+.am-lim-ticks span { position: absolute; transform: translateX(-50%); }
+.am-lim-ticks span:first-child { transform: none; }
+.am-lim-note { font-size: 11px; color: var(--ink-2); margin-left: 6px; }
+
+/* ── tree 结构树 ─────────────────────────── */
+.am-tree { font-size: 13px; }
+.am-tree-root { display: flex; justify-content: center; position: relative; padding-bottom: 18px; }
+.am-tree-root::after { content: ""; position: absolute; bottom: 0; left: 50%; height: 18px; border-left: var(--bw) solid var(--line); }
+.am-tree-root--solo { padding-bottom: 12px; }
+.am-tree-root--solo::after { display: none; }
+.am-tree-box {
+  border: var(--bw) solid var(--line); background: var(--paper); padding: 6px 14px; text-align: center;
+  border-radius: var(--radius); font-weight: 600;
+}
+.am-tree-box small { display: block; font-weight: 400; color: var(--ink-2); font-size: 12px; }
+.am-tree-box--root { background: var(--accent-bg); font-size: 15px; padding: 8px 28px; }
+.am-tree-cols { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); }
+.am-tree-col { position: relative; padding: 18px 8px 0; min-width: 0; }
+.am-tree-col::before { content: ""; position: absolute; top: 0; left: 0; right: 0; border-top: var(--bw) solid var(--line); }
+.am-tree-col:first-child::before { left: 50%; }
+.am-tree-col:last-child::before { right: 50%; }
+.am-tree-col::after { content: ""; position: absolute; top: 0; left: 50%; height: 18px; border-left: var(--bw) solid var(--line); }
+.am-tree-list, .am-tree-list ul { list-style: none; margin: 0; padding: 0; }
+.am-tree-col > .am-tree-list { margin: 8px 0 0 14px; }
+.am-tree-list ul { margin-left: 16px; }
+.am-tree-list li { position: relative; padding: 3px 0 3px 18px; }
+.am-tree-list li::before { content: ""; position: absolute; left: 0; top: 0.95em; width: 12px; border-top: 1px solid var(--ink-3); }
+.am-tree-list li::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: 1px solid var(--ink-3); }
+.am-tree-list li:last-child::after { bottom: auto; height: 0.95em; }
+.am-tree-tag { font: 11px var(--font-mono); color: var(--ink-3); margin-right: 4px; }
+.am-tree code { font: 12px var(--font-mono); }
+.am-tree-sub { display: block; font-size: 11.5px; color: var(--ink-2); }
+.am-tree-hi > .am-tree-label { color: var(--accent); font-weight: 600; }
+
+/* ── 图（flow / sequence）───────────────── */
+.am-diagram { margin: 0; overflow-x: auto; text-align: center; }
+.am-diagram svg { max-width: 100%; height: auto; font-family: var(--font-sans); }
+.am-diagram text { fill: var(--ink); font-size: 13px; }
+.am-node-shape { fill: var(--paper); stroke: var(--line); stroke-width: var(--bw); }
+.am-node--hi .am-node-shape { fill: var(--accent-bg); stroke: var(--accent); }
+.am-node--hi text { fill: var(--accent); font-weight: 600; }
+.am-edge { fill: none; stroke: var(--ink-2); stroke-width: 1.3; }
+.am-edge--dashed { stroke-dasharray: 5 4; }
+.am-arrow { fill: var(--ink-2); }
+.am-edge-label rect { fill: var(--paper); }
+.am-diagram .am-edge-label text { fill: var(--accent); font-size: 11.5px; }
+.am-cluster { fill: var(--fill); stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 4 3; }
+.am-diagram .am-cluster-label { fill: var(--ink-2); font: 11px var(--font-mono); }
+.am-lifeline { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 4 4; }
+.am-actor { fill: var(--paper); stroke: var(--line); stroke-width: var(--bw); }
+.am-note { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1; }
+.am-diagram .am-step { fill: var(--ink-3); font: 10px var(--font-mono); }
+
+/* ── doc 线性讲解 ────────────────────────── */
+.am-doc { max-width: 1120px; margin: 0 auto; padding: 40px 28px 64px; }
+.am-doc-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
+.am-doc-layout--notoc { grid-template-columns: minmax(0, 1fr); max-width: 860px; }
+.am-toc { position: sticky; top: 24px; font-size: 13px; }
+.am-toc a { display: block; color: var(--ink-2); text-decoration: none; padding: 4px 0 4px 10px; border-left: 2px solid var(--line-2); }
+.am-toc a:hover { color: var(--ink); border-left-color: var(--accent); }
+.am-doc-body > .am-panel + .am-panel { margin-top: 20px; }
+
+/* ── 响应式与打印 ─────────────────────────── */
+@media (max-width: 1100px) {
+  .am-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .am-grid > .am-panel { grid-column: auto !important; }
+  .am-grid > .am-panel.am-span-wide { grid-column: 1 / -1 !important; }
+}
+@media (max-width: 760px) {
+  .am-sheet, .am-doc { padding: 56px 12px 24px; }
+  .am-head { padding-right: 0; }
+  .am-grid { grid-template-columns: minmax(0, 1fr); }
+  .am-grid > .am-panel.am-span-wide { grid-column: auto !important; }
+  html[data-theme="blueprint"] .am-frame { padding: 0; border: 0; }
+  html[data-theme="blueprint"] .am-frame::before, html[data-theme="blueprint"] .am-ruler { display: none; }
+  .am-doc-layout { grid-template-columns: minmax(0, 1fr); }
+  .am-toc { position: static; }
+  .am-timeline--h { grid-template-columns: minmax(0, 1fr); }
+  .am-tree-cols { grid-template-columns: minmax(0, 1fr); }
+}
+.am-colophon { text-align: center; padding: 0 0 28px; font: 11px var(--font-mono); color: var(--ink-3); }
+
+@media print {
+  .am-toolbar { display: none; }
+  body { background: var(--paper); }
+  .am-panel { break-inside: avoid; box-shadow: none; }
+}
+.am-panel--bare { border: 0; background: transparent; box-shadow: none; }
+.am-panel--bare > .am-panel-body { padding: 0; }
+.am-panel--bare .am-kv { background: var(--paper); }
+
+</style>
+</head>
+<body>
+<div class="am-toolbar">
+<button class="am-btn" type="button" data-am="theme" data-labels="{&quot;blueprint&quot;:&quot;主题：图纸&quot;,&quot;shadcn&quot;:&quot;主题：卡片&quot;}">主题：图纸</button>
+<button class="am-btn" type="button" data-am="mode" data-labels="{&quot;auto&quot;:&quot;明暗：跟随系统&quot;,&quot;light&quot;:&quot;明暗：亮&quot;,&quot;dark&quot;:&quot;明暗：暗&quot;}">明暗：跟随系统</button>
+<button class="am-btn" type="button" data-am="copy" data-done="已复制 ✓">复制源稿</button>
+</div>
+<main class="am-sheet">
+<header class="am-head"><h1>切片 4 完成：悬浮条能真起、真连桥、真显示</h1></header>
+<div class="am-frame">
+<div class="am-ruler am-ruler--top" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div><div class="am-ruler am-ruler--bottom" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div><div class="am-ruler am-ruler--left" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class="am-ruler am-ruler--right" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div>
+<div class="am-grid" style="--cols: 3">
+<section class="am-panel" id="panel-A">
+<header class="am-panel-head"><span class="am-panel-id">A</span><h2>一句话验收</h2></header>
+<div class="am-panel-body"><div class="am-md"><p><code>whale-hud/</code> 从空目录变成一条<strong>能真起窗口、真连桥、真显示五元素</strong>的悬浮条。这一片的验收不是读代码，是<strong>真起一个 Electron 窗口去量</strong>。</p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>窗口几何</dt><dd>588×72 顶边居中，居中误差实测 0px</dd></div><div class="am-kv-cell"><dt>五元素</dt><dd>鲸鱼 / 状态点 / 会话标题 / token 速度 / 上下文占用</dd></div><div class="am-kv-cell"><dt>数据源</dt><dd>GET /whale/hud（全量）+ /whale/hud/events（SSE 增量）</dd></div><div class="am-kv-cell"><dt>降级</dt><dd>桥不可用 → 红点 + 全部 – + 「桥未连接 · 重试中」</dd></div></dl></div>
+</section>
+<section class="am-panel" id="panel-B">
+<header class="am-panel-head"><span class="am-panel-id">B</span><h2>真窗口实测，不是推断</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>用 <code>tools/hud-probe.cjs</code> 起真窗口、连真桥，逐条量。</p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>A1 顶边居中</dt><dd>bounds {x:986, y:0} 588×72，centerDelta 0 / topDelta 0</dd></div><div class="am-kv-cell"><dt>A4 五元素</dt><dd>全部命中且可见，标题真的画出了会话名</dd></div><div class="am-kv-cell"><dt>A5 悬停详情</dt><dd>浮层可见、显示 93,271、窗口 340px → 移出回 72</dd></div><div class="am-kv-cell"><dt>A8 收展</dt><dd>展开 bar/588 → 收起 BODY/88 → 展开回 588</dd></div><div class="am-kv-cell"><dt>A10 拖动</dt><dd>位移 (40,25) 精确、窗口尺寸不变、锚点更新为 1062</dd></div><div class="am-kv-cell"><dt>A11 无报错</dt><dd>consoleErrors / preloadErrors / renderGone 全 0</dd></div></dl></div>
+</section>
+<section class="am-panel" id="panel-C">
+<header class="am-panel-head"><span class="am-panel-id">C</span><h2>两个「看着好好的，其实没工作」的 bug</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>这一片抓到两个<strong>自己写出来的</strong>缺陷，都属于最难发现的那类——元素都在、宽度正常、没有任何报错。</p>
+</div>
+<div class="am-callout am-callout--info" role="note"><div class="am-callout-body am-md"><p>两个 bug 都是加了一条更严格的断言才暴露的</p>
+</div></div>
+<div class="am-md"><p><strong>第一个：滚筒首帧从不绘制。</strong> A4 原本只查「元素在不在、宽度大不大」，那样是<strong>通过</strong>的。我加了一条「标题必须真的画出会话名，不能停在占位符」，立刻红了：标题永远停在 <code>–</code>。原因是多会话时 <code>update()</code> 只负责排期，从不画当前项——界面看着齐全，实际一个字都没显示。</p>
+<p><strong>第二个：桥断了但界面不降级。</strong> 验收降级路径时发现点是灰的、标题是 <code>–</code>，而不是红点加空态文案。原因是 <code>markOffline()</code> 写成「已经是 offline 就 return」，而 <code>state.offline</code> 的<strong>初值就是 true</strong>——于是第一次连不上时永远不会通知界面。</p>
+<blockquote>
+<p>这两个都印证了同一件事：<strong>断言太宽松等于没有断言</strong>。第一个如果我只查元素存在，它会一直绿着上线。</p>
+</blockquote>
+</div></div>
+</section>
+<section class="am-panel" id="panel-D">
+<header class="am-panel-head"><span class="am-panel-id">D</span><h2>一处架构偏离，需要你知道</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>《轻量架构草案》说几何要「物理像素走 HWND + <code>GetWindowRect</code>」。<strong>零运行时依赖下做不到</strong>——读物理矩形需要 FFI，而强制 17 规定运行时依赖为 0。</p>
+<p>改法是全程用 Electron 的 DIP。理由：A1 判据里的 <code>workArea</code> 与 <code>setBounds</code> 收的都是 DIP，<strong>两侧同量纲，居中计算自洽</strong>。实测居中误差 0px。这处偏离已记入 S4-D1 与 STATUS。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-E">
+<header class="am-panel-head"><span class="am-panel-id">E</span><h2>一处决策补全，需要你确认</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>《前端设计规范》3.8 写了收展的几何与 3px 阈值，但<strong>没说展开由什么触发</strong>——这是个真空档。PRD F2① 只规定「单击鲸鱼 = 唤起小窗」。</p>
+<p>我取的是<strong>双击球展开</strong>，把单击留给 PRD 已定的语义。这是我补的默认值，不是条文里的规定。若你想换成单击展开（或右键菜单里加一项「展开」），改 <code>hud.js</code> 的 <code>bindDrag</code> 里那一个分支即可。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-F">
+<header class="am-panel-head"><span class="am-panel-id">F</span><h2>记忆里那条关键发现</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>开工前我先量了一件事：Electron 的 <code>file://</code> 页面访问回环 HTTP 带什么 <code>Origin</code>。</p>
+</div>
+<dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>实测结果</dt><dd>fetch 与 EventSource 都完全不发 Origin 头（<absent>）</dd></div><div class="am-kv-cell"><dt>推论</dt><dd>桥的 isAllowedOrigin(undefined) 本来就放行</dd></div><div class="am-kv-cell"><dt>结论</dt><dd>切片 4 不需要改 whale-bridge/ 任何一个字</dd></div></dl>
+<div class="am-md"><p>如果当时靠猜（「file:// 应该发 <code>Origin: null</code>，桥会 403」），我会去改桥的 CORS 白名单——<strong>改一个根本不需要改的地方，还顺手放宽了安全口径</strong>。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-G">
+<header class="am-panel-head"><span class="am-panel-id">G</span><h2>测试与工程</h2></header>
+<div class="am-panel-body"><dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>测试总数</dt><dd>349 个全绿（切片 3 为 265）</dd></div><div class="am-kv-cell"><dt>本片新增</dt><dd>84 个 —— 几何 15 / 状态机 14 / 滚筒 19 / 桥客户端 10 / 渲染层契约 23 + 分层扩充</dd></div><div class="am-kv-cell"><dt>七道闸门</dt><dd>全过，通过 7 道 / 跳过 0 道 / 失败 0 道</dd></div><div class="am-kv-cell"><dt>新增工具</dt><dd>图标机械内联、桥独立开发服务器、验收探针</dd></div></dl>
+<div class="am-md"><p><strong>为什么要专门写一个桥的独立开发服务器</strong>：桥是 Cordis 插件，靠宿主 <code>apply(ctx)</code> 启动，<strong>没有独立入口</strong>。不写它，前端就没有真桥可连，验收只能手搓假数据——那验的是假数据，不是桥真的这么回。</p>
+<p><strong>为什么验收探针不用 CDP</strong>：零依赖下手写 WebSocket 客户端是纯风险。协议层一旦写错，表现就是「连不上」。而「连不上」与「界面有问题」在报告里长得一模一样，很容易把探测器故障当成产品故障。Electron 主进程本身就能 <code>executeJavaScript</code>、读 <code>getBounds()</code>、收 <code>console-message</code>，三样都够，且没有可错的协议层。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-H">
+<header class="am-panel-head"><span class="am-panel-id">H</span><h2>诚实边界</h2></header>
+<div class="am-panel-body"><dl class="am-kv" style="--kv-cols: 2"><div class="am-kv-cell"><dt>A2 不抢焦点 / A3 不占任务栏 / A9 图标屏幕坐标</dt><dd>需 Win32 调用，本片人工确认</dd></div><div class="am-kv-cell"><dt>C7/C8/C12</dt><dd>依赖 whale-window/，切片 5 回补</dd></div></dl>
+<div class="am-md"><p>前三条不是没做，是<strong>零依赖做不了自动化</strong>。它们是人工看的，不是机器验的——这一点必须写清楚，不能混进「全部实测通过」里。</p>
+</div></div>
+</section>
+<section class="am-panel" id="panel-I">
+<header class="am-panel-head"><span class="am-panel-id">I</span><h2>下一步</h2></header>
+<div class="am-panel-body"><div class="am-md"><p>切片 5：小窗 <code>whale-window/</code> —— 主进程（窗口 / 状态记忆 / 崩溃自愈）+ 渲染层（消息流 / 任务坞 / 命令面板）。完成后回补 C7/C8/C12。</p>
+</div></div>
+</section>
+</div>
+</div>
+</main>
+<footer class="am-colophon">Generated by Answer me with HTML 0.2.2 · 2026-10-06 07:29</footer>
+<textarea id="am-source" hidden readonly aria-hidden="true"># 切片 4 完成：悬浮条能真起、真连桥、真显示
+
+## 一句话验收
+
+`whale-hud/` 从空目录变成一条**能真起窗口、真连桥、真显示五元素**的悬浮条。这一片的验收不是读代码，是**真起一个 Electron 窗口去量**。
+
+```kv
+窗口几何: 588×72 顶边居中，居中误差实测 0px
+五元素: 鲸鱼 / 状态点 / 会话标题 / token 速度 / 上下文占用
+数据源: GET /whale/hud（全量）+ /whale/hud/events（SSE 增量）
+降级: 桥不可用 → 红点 + 全部 – + 「桥未连接 · 重试中」
+```
+
+## 真窗口实测，不是推断
+
+用 `tools/hud-probe.cjs` 起真窗口、连真桥，逐条量。
+
+```kv
+A1 顶边居中: bounds {x:986, y:0} 588×72，centerDelta 0 / topDelta 0
+A4 五元素: 全部命中且可见，标题真的画出了会话名
+A5 悬停详情: 浮层可见、显示 93,271、窗口 340px → 移出回 72
+A8 收展: 展开 bar/588 → 收起 BODY/88 → 展开回 588
+A10 拖动: 位移 (40,25) 精确、窗口尺寸不变、锚点更新为 1062
+A11 无报错: consoleErrors / preloadErrors / renderGone 全 0
+```
+
+## 两个「看着好好的，其实没工作」的 bug
+
+这一片抓到两个**自己写出来的**缺陷，都属于最难发现的那类——元素都在、宽度正常、没有任何报错。
+
+```callout
+两个 bug 都是加了一条更严格的断言才暴露的
+```
+
+**第一个：滚筒首帧从不绘制。** A4 原本只查「元素在不在、宽度大不大」，那样是**通过**的。我加了一条「标题必须真的画出会话名，不能停在占位符」，立刻红了：标题永远停在 `–`。原因是多会话时 `update()` 只负责排期，从不画当前项——界面看着齐全，实际一个字都没显示。
+
+**第二个：桥断了但界面不降级。** 验收降级路径时发现点是灰的、标题是 `–`，而不是红点加空态文案。原因是 `markOffline()` 写成「已经是 offline 就 return」，而 `state.offline` 的**初值就是 true**——于是第一次连不上时永远不会通知界面。
+
+&gt; 这两个都印证了同一件事：**断言太宽松等于没有断言**。第一个如果我只查元素存在，它会一直绿着上线。
+
+## 一处架构偏离，需要你知道
+
+《轻量架构草案》说几何要「物理像素走 HWND + `GetWindowRect`」。**零运行时依赖下做不到**——读物理矩形需要 FFI，而强制 17 规定运行时依赖为 0。
+
+改法是全程用 Electron 的 DIP。理由：A1 判据里的 `workArea` 与 `setBounds` 收的都是 DIP，**两侧同量纲，居中计算自洽**。实测居中误差 0px。这处偏离已记入 S4-D1 与 STATUS。
+
+## 一处决策补全，需要你确认
+
+《前端设计规范》3.8 写了收展的几何与 3px 阈值，但**没说展开由什么触发**——这是个真空档。PRD F2① 只规定「单击鲸鱼 = 唤起小窗」。
+
+我取的是**双击球展开**，把单击留给 PRD 已定的语义。这是我补的默认值，不是条文里的规定。若你想换成单击展开（或右键菜单里加一项「展开」），改 `hud.js` 的 `bindDrag` 里那一个分支即可。
+
+## 记忆里那条关键发现
+
+开工前我先量了一件事：Electron 的 `file://` 页面访问回环 HTTP 带什么 `Origin`。
+
+```kv
+实测结果: fetch 与 EventSource 都完全不发 Origin 头（&lt;absent&gt;）
+推论: 桥的 isAllowedOrigin(undefined) 本来就放行
+结论: 切片 4 不需要改 whale-bridge/ 任何一个字
+```
+
+如果当时靠猜（「file:// 应该发 `Origin: null`，桥会 403」），我会去改桥的 CORS 白名单——**改一个根本不需要改的地方，还顺手放宽了安全口径**。
+
+## 测试与工程
+
+```kv
+测试总数: 349 个全绿（切片 3 为 265）
+本片新增: 84 个 —— 几何 15 / 状态机 14 / 滚筒 19 / 桥客户端 10 / 渲染层契约 23 + 分层扩充
+七道闸门: 全过，通过 7 道 / 跳过 0 道 / 失败 0 道
+新增工具: 图标机械内联、桥独立开发服务器、验收探针
+```
+
+**为什么要专门写一个桥的独立开发服务器**：桥是 Cordis 插件，靠宿主 `apply(ctx)` 启动，**没有独立入口**。不写它，前端就没有真桥可连，验收只能手搓假数据——那验的是假数据，不是桥真的这么回。
+
+**为什么验收探针不用 CDP**：零依赖下手写 WebSocket 客户端是纯风险。协议层一旦写错，表现就是「连不上」。而「连不上」与「界面有问题」在报告里长得一模一样，很容易把探测器故障当成产品故障。Electron 主进程本身就能 `executeJavaScript`、读 `getBounds()`、收 `console-message`，三样都够，且没有可错的协议层。
+
+## 诚实边界
+
+```kv
+A2 不抢焦点 / A3 不占任务栏 / A9 图标屏幕坐标: 需 Win32 调用，本片人工确认
+C7/C8/C12: 依赖 whale-window/，切片 5 回补
+```
+
+前三条不是没做，是**零依赖做不了自动化**。它们是人工看的，不是机器验的——这一点必须写清楚，不能混进「全部实测通过」里。
+
+## 下一步
+
+切片 5：小窗 `whale-window/` —— 主进程（窗口 / 状态记忆 / 崩溃自愈）+ 渲染层（消息流 / 任务坞 / 命令面板）。完成后回补 C7/C8/C12。
+</textarea>
+<script>
+(() => {
+  const root = document.documentElement;
+  const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
+  const label = (btn, value) => {
+    const map = JSON.parse(btn.dataset.labels || '{}');
+    btn.textContent = map[value] || value;
+  };
+  const bind = (name, attr, values) => {
+    const btn = document.querySelector(`[data-am="${name}"]`);
+    if (!btn) return;
+    label(btn, root.getAttribute(attr));
+    btn.addEventListener('click', () => {
+      const next = cycle(values, root.getAttribute(attr));
+      root.setAttribute(attr, next);
+      label(btn, next);
+    });
+  };
+  bind('theme', 'data-theme', ['blueprint', 'shadcn']);
+  bind('mode', 'data-mode', ['auto', 'light', 'dark']);
+
+  const copyBtn = document.querySelector('[data-am="copy"]');
+  copyBtn?.addEventListener('click', async () => {
+    const text = document.getElementById('am-source').value;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = Object.assign(document.createElement('textarea'), { value: text });
+      document.body.append(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    const original = copyBtn.textContent;
+    copyBtn.textContent = copyBtn.dataset.done;
+    setTimeout(() => { copyBtn.textContent = original; }, 1400);
+  });
+})();
+</script>
+</body>
+</html>
