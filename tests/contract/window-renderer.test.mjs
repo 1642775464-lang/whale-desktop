@@ -114,12 +114,12 @@ test("消息按桥给的 kind 分流，不得读 role（读错字段不报错，
 
 test("面板字段形状与桥的投影一致（字段名对不上是静默故障）", () => {
   // 直接拿桥的投影函数产出的形状做对照，而不是照文档抄
-  const { messagesOf, todosOf } = require(join(ROOT, "whale-bridge", "lib", "panel-data.mjs"));
+  const { messagesOf, todosOf, runningToolOf } = require(join(ROOT, "whale-bridge", "lib", "panel-data.mjs"));
   const fold = {
     tail: [
       { kind: "user", text: "你好", seq: 1 },
       { kind: "assistant", text: "在的", seq: 2 },
-      { kind: "tool", name: "bash", state: "done", seq: 3 },
+      { kind: "tool", name: "bash", state: "running", seq: 3 },
       { kind: "todo", todos: [{ content: "做A", status: "pending" }] },
     ],
   };
@@ -132,6 +132,27 @@ test("面板字段形状与桥的投影一致（字段名对不上是静默故�
   for (const m of messages) {
     assert.ok(appJs.includes(`"${m.kind}"`), `渲染层不认识 kind="${m.kind}"`);
   }
+  // 状态条要靠 runningToolOf 的产出说工具名
+  assert.equal(runningToolOf(fold), "bash");
+  assert.match(clientJs, /toolName/, "客户端必须读 toolName，否则状态条只会说「正在运行」");
+});
+
+test("任务坞的三种状态与桥的 todo 口径一致", () => {
+  // 桥给的是宿主的 status，色点映射必须覆盖 completed / in_progress / 其余
+  assert.match(appJs, /"completed"/, "已完成的色点");
+  assert.match(appJs, /"in_progress"/, "进行中的色点");
+  assert.match(css, /\.pd\.done/, "绿点样式");
+  assert.match(css, /\.pd\.doing/, "橙点样式");
+  assert.match(css, /\.pd\.todo/, "灰空心样式");
+});
+
+test("回合运行态取两个来源的或（只看 agentRunning 会永远不亮）", () => {
+  // 桥拿不到 agent 时 agentRunning 恒为 false，而折叠器能报出 running
+  assert.match(
+    clientJs,
+    /json\.running === true \|\| json\.agentRunning === true/,
+    "必须两者取或，否则状态条与中断键在真实场景里永远不亮",
+  );
 });
 
 test("CSP 必须放行 'self'，否则 app.js / skin.css 被静默拦截（陷阱 4）", () => {

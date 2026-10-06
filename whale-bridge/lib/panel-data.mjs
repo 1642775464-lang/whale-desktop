@@ -42,8 +42,43 @@ export function panelPayload({ foldSet, sessionId, agent = undefined, gates = nu
     permission: gates?.permission ?? null,
     model: gates?.model ?? null,
     agentRunning: agent?.status === "running",
+    // 折叠器观察到的回合状态。
+    //
+    // 为什么不能只用 agentRunning：那个字段要**活的 agent** 才有值。
+    // 桥拿不到 agent 时（宿主未暴露、或会话只在折叠器里）它恒为 false，
+    // 而折叠器明明已经从 turn/start、turn/end 推出了 running——
+    // 小窗的状态条与中断键正是靠这个判据点亮的，缺了它永远不亮。
+    // 两者都给，让客户端能区分「确定没在跑」与「看不到 agent」。
+    running: fold.running === true,
+    // 当前正在跑的工具名（状态条文案「正在运行 <工具名>」要用）。
+    // 取最近一条仍处于 running 的工具调用；没有就给 null，客户端只说
+    // 「正在运行」而不编造一个工具名（规范 6.3：不使用模糊措辞）。
+    toolName: runningToolOf(fold),
     phase: fold.phase,
   };
+}
+
+/**
+ * 取当前仍在运行的工具名。
+ *
+ * 从 tail 末尾往前找第一条 `state === "running"` 的工具调用——
+ * 宿主的 `tool/result` 到达时会把对应那条改成 done/error，
+ * 所以「还挂着 running」就等于「这个工具正在跑」。
+ *
+ * 找不到返回 null：宁可让界面只说「正在运行」，也不编造一个工具名。
+ *
+ * @param {object} fold
+ * @returns {string | null}
+ */
+export function runningToolOf(fold) {
+  for (let i = fold.tail.length - 1; i >= 0; i -= 1) {
+    const item = fold.tail[i];
+    if (item === null || typeof item !== "object") continue;
+    if (item.kind === "tool" && item.state === "running") {
+      return typeof item.name === "string" && item.name !== "" ? item.name : null;
+    }
+  }
+  return null;
 }
 
 /**

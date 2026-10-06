@@ -124,6 +124,8 @@ export default [
         require: "readonly",
         exports: "writable",
         globalThis: "readonly",
+        // Electron 主进程跑在 Node 22+，fetch 是全局的（探针用它读取证端口）
+        fetch: "readonly",
       },
     },
     rules: COMMON_RULES,

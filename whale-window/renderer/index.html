@@ -77,8 +77,24 @@
         <div class="empty" id="streamEmpty">还没有消息</div>
       </main>
 
-      <!-- 输入区（批次 B 接入） -->
+      <!-- 输入区 -->
       <footer class="composer" id="composer">
+        <!-- 状态条：只在回合运行中出现（F5）。深色底，文案「正在运行 <工具名>」 -->
+        <div class="status" id="status" hidden>
+          <span class="spin"></span><span id="statusText">正在运行</span>
+        </div>
+
+        <!-- 任务坞：会话有任务清单时才出现，默认收起，点标题展开（F5）。
+             无任务清单时整体不显示，也不占位（规范 6.3）。 -->
+        <section class="dock" id="dock" hidden>
+          <div class="dock-head" id="dockHead">
+            <span>任务</span>
+            <span class="prog" id="dockProg">0 / 0</span>
+            <span class="caret" id="dockCaret">▾</span>
+          </div>
+          <div class="dock-list" id="dockList" hidden></div>
+        </section>
+
         <div class="input-box">
           <textarea id="input" placeholder="问点什么…  Enter 发送 / Shift+Enter 换行"></textarea>
           <div class="input-row">

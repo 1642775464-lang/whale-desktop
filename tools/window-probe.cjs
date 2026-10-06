@@ -210,18 +210,62 @@ app.whenReady().then(async () => {
     };
   })()`);
 
-  // ── 发送通路：回合空闲时点发送，桥应收到 user/message ──
-  await run(`(() => {
-    const input = document.getElementById("input");
-    input.value = "来自小窗的测试消息";
-    return true;
+  // ── F5 状态条 + 任务坞 ──
+  report.f5 = await run(`(() => {
+    const status = document.getElementById("status");
+    const dock = document.getElementById("dock");
+    return {
+      statusHidden: status.hidden,
+      statusText: document.getElementById("statusText").textContent,
+      dockHidden: dock.hidden,
+      dockProg: document.getElementById("dockProg").textContent,
+      dockRows: document.querySelectorAll("#dockList .task").length,
+      dots: [...document.querySelectorAll("#dockList .pd")].map((d) => d.className),
+    };
   })()`);
-  await run("document.getElementById('btnSend').click()");
-  await new Promise((r) => setTimeout(r, 1200));
-  report.afterSend = await run(`({
-    inputCleared: document.getElementById("input").value === "",
-    sendAria: document.getElementById("btnSend").getAttribute("aria-label")
-  })`);
+
+  // 任务坞默认收起，点标题展开
+  await run("document.getElementById('dockHead').click()");
+  await new Promise((r) => setTimeout(r, 200));
+  report.f5.afterExpand = await run("!document.getElementById('dockList').hidden");
+
+  // ── 发送 / 中断：两种回合状态要分别验 ──
+  //
+  // 运行中 → 发送键应是「中断」，点击应发 abort（不是 send）
+  // 空闲   → 发送键应是「发送」，点击应清空输入框并发消息
+  //
+  // 用 --idle 切换桥的种子状态。只验一种会漏掉另一半。
+  const running = report.sendButton.ariaLabel === "中断";
+
+  if (running) {
+    // 记下点击前的 abort 次数，用桥侧统计间接确认「点了确实去中断」
+    await run("document.getElementById('btnSend').click()");
+    await new Promise((r) => setTimeout(r, 900));
+    report.abortPath = await run(`({
+      ariaAfter: document.getElementById('btnSend').getAttribute('aria-label'),
+      inputUntouched: document.getElementById('input').value === ''
+    })`);
+  } else {
+    await run(`(() => {
+      document.getElementById('input').value = "来自小窗的测试消息";
+      return true;
+    })()`);
+    await run("document.getElementById('btnSend').click()");
+    await new Promise((r) => setTimeout(r, 1200));
+    report.afterSend = await run(`({
+      inputCleared: document.getElementById('input').value === "",
+      sendAria: document.getElementById('btnSend').getAttribute('aria-label')
+    })`);
+  }
+
+  // 发送 / 中断的真正落点：读假桥的取证端口，确认 agent 收到了什么。
+  // 只看界面变化不够——「点了有反应」与「真的交给了宿主」是两件事。
+  try {
+    const callsRes = await fetch(`http://127.0.0.1:${args.port + 1}/probe/calls`);
+    report.agentCalls = await callsRes.json();
+  } catch (err) {
+    report.agentCalls = { error: err.message };
+  }
 
   // ── 判定 ──
   const okNotBlank = true;
@@ -236,24 +280,57 @@ app.whenReady().then(async () => {
     report.permissionSequence[1] === "完全权限" &&
     report.permissionSequence[2] === "仅可查看" &&
     report.permissionSequence[3] === "工作区内修改";
-  const okSend = report.sendButton.ariaLabel === "发送";
+  // 发送键的 aria 必须与回合状态一致：
+  //   运行中 = "中断"，空闲 = "发送"（B7 判据按此读 DOM）
+  const okSend = report.sendButton.ariaLabel === (running ? "中断" : "发送");
   // 消息流必须能分出「你」与「DSH」：只有助手消息时看不出分流对不对，
   // 而按错字段读的表现正是「全部渲染成助手且不报错」
   const okStream =
     report.stream.count > 0 &&
     report.stream.hasUser === true &&
     report.stream.hasAi === true;
-  const okSendPath = report.afterSend.inputCleared === true;
+
+  // 发送键与它触发的动作必须一致，而且**真的落到宿主 agent 上**：
+  //   运行中点它 → agent.cancel 被调用（且带 keepInbox）
+  //   空闲点它   → agent.followup 被调用，输入框清空
+  const calls = Array.isArray(report.agentCalls) ? report.agentCalls : [];
+  const abortLanded = calls.some((c) => c.method === "cancel" && c.options && c.options.keepInbox === true);
+  const sendLanded = calls.some(
+    (c) => c.method === "followup" && c.msg && Array.isArray(c.msg.content) &&
+      c.msg.content.some((b) => b.text === "来自小窗的测试消息"),
+  );
+
+  const okSendPath = running
+    ? report.abortPath.inputUntouched === true && abortLanded
+    : report.afterSend.inputCleared === true && sendLanded;
+
+  // 状态条：只在回合在跑时出现（F5）。
+  // 空闲时必须**隐藏**——一直挂着「正在运行」比没有状态条更糟。
+  const okStatus = running
+    ? report.f5.statusHidden === false &&
+      report.f5.statusText.includes("正在运行") &&
+      report.f5.statusText.includes("bash")
+    : report.f5.statusHidden === true;
+  // 任务坞：有清单就出现，计数正确，三种色点齐全，默认收起、点击可展开
+  const okDock =
+    report.f5.dockHidden === false &&
+    report.f5.dockProg === "1 / 3" &&
+    report.f5.dockRows === 3 &&
+    report.f5.dots.includes("pd done") &&
+    report.f5.dots.includes("pd doing") &&
+    report.f5.dots.includes("pd todo") &&
+    report.f5.afterExpand === true;
   const okA11 =
     report.a11.consoleErrors.length === 0 &&
     report.a11.preloadErrors.length === 0 &&
     report.a11.renderGone.length === 0;
 
   report.checks = {
-    okNotBlank, okB1, okB4, okTopbar, okHead, okPerm, okSend, okStream, okSendPath, okA11,
+    okNotBlank, okB1, okB4, okTopbar, okHead, okPerm, okSend, okStream, okSendPath, okStatus, okDock, okA11,
   };
   report.verdict =
-    okNotBlank && okB1 && okB4 && okTopbar && okHead && okPerm && okSend && okStream && okSendPath && okA11
+    okNotBlank && okB1 && okB4 && okTopbar && okHead && okPerm && okSend && okStream &&
+    okSendPath && okStatus && okDock && okA11
       ? "pass"
       : "fail";
 

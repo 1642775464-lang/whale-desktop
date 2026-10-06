@@ -42,6 +42,12 @@
     shSub: $("shSub"),
     stream: $("stream"),
     streamEmpty: $("streamEmpty"),
+    status: $("status"),
+    statusText: $("statusText"),
+    dock: $("dock"),
+    dockHead: $("dockHead"),
+    dockProg: $("dockProg"),
+    dockList: $("dockList"),
     input: $("input"),
     btnPerm: $("btnPerm"),
     btnSend: $("btnSend"),
@@ -57,6 +63,9 @@
 
   /** 当前权限档位（本地态，发命令后由桥侧生效）。 */
   let permission = "workspace-write";
+
+  /** 任务清单上一次渲染的签名（只在变化时重建，保住用户展开状态）。 */
+  let lastDockSignature = null;
 
   // ── 渲染 ──────────────────────────────────────────
 
@@ -140,6 +149,61 @@
     dom.btnSend.setAttribute("aria-label", running ? "中断" : "发送");
   }
 
+  /**
+   * 状态条：回合运行中出现，文案「正在运行 <工具名>」。
+   *
+   * 工具名取不到时只说「正在运行」，不编造一个工具名
+   * （规范 6.3：不使用模糊措辞，也不假装知道）。
+   */
+  function renderStatus(state) {
+    if (state.running !== true) {
+      dom.status.hidden = true;
+      return;
+    }
+    dom.status.hidden = false;
+    dom.statusText.textContent =
+      typeof state.toolName === "string" && state.toolName !== ""
+        ? `正在运行 ${state.toolName}`
+        : "正在运行";
+  }
+
+  /**
+   * 任务坞：有任务清单才出现，默认收起。
+   *
+   * 计数只算已完成 / 总数（标题行是「任务  2 / 5」）。
+   */
+  function renderDock(state) {
+    const todos = Array.isArray(state.todos) ? state.todos : [];
+    if (todos.length === 0) {
+      dom.dock.hidden = true;
+      return;
+    }
+    dom.dock.hidden = false;
+
+    const done = todos.filter((t) => t.status === "completed").length;
+    dom.dockProg.textContent = `${done} / ${todos.length}`;
+
+    // 只在清单变了时重建，避免每 5 秒轮询把展开状态顶掉
+    const sig = todos.map((t) => `${t.status}:${t.content}`).join("|");
+    if (sig === lastDockSignature) return;
+    lastDockSignature = sig;
+
+    dom.dockList.innerHTML = "";
+    todos.forEach((t) => {
+      const row = global.document.createElement("div");
+      row.className = "task";
+      const dot = global.document.createElement("span");
+      // 绿 = 已完成、橙 = 进行中、灰空心 = 待办
+      const status = t.status === "completed" ? "done" : t.status === "in_progress" ? "doing" : "todo";
+      dot.className = `pd ${status}`;
+      const text = global.document.createElement("span");
+      text.textContent = t.content ?? "";
+      row.appendChild(dot);
+      row.appendChild(text);
+      dom.dockList.appendChild(row);
+    });
+  }
+
   /** 用量圆环：周长 2πr = 2π×8 ≈ 50.27。 */
   function renderUsage(state) {
     const used = state.contextUsed;
@@ -165,6 +229,8 @@
     const state = client.getState();
     renderHeader(state);
     renderStream(state);
+    renderStatus(state);
+    renderDock(state);
     renderSend(state);
     renderUsage(state);
     renderPermission();
@@ -240,21 +306,43 @@
 
     dom.btnPerm.addEventListener("click", cyclePermission);
 
+    // 任务坞：默认收起，点标题展开（F5）
+    dom.dockHead.addEventListener("click", function () {
+      dom.dock.classList.toggle("open");
+      dom.dockList.hidden = !dom.dock.classList.contains("open");
+    });
+
     dom.btnInfo.addEventListener("click", function () {
       global.console.warn("资料抽屉尚未接通（批次 C）");
     });
 
-    // 发送/中断（批次 B 验收；这里先把通路接上）
+    // 发送/中断（F4）
     dom.btnSend.addEventListener("click", function () {
       const state = client.getState();
       if (state.running) {
-        client.abort();
+        // 中断：桥侧只在明确探测到活跃回合时才真的取消（带护栏）
+        client.abort().then(function (out) {
+          if (!out.ok) global.console.warn(`中断失败：${out.code}`);
+        });
         return;
       }
       const text = dom.input.value.trim();
       if (text === "") return;
+
+      // 乐观渲染：消息立刻上屏，同时真的进会话。
+      // 排队不是失败——桥会在回合运行中把它排到下一回合。
       dom.input.value = "";
-      client.send(text);
+      client.send(text).then(function (out) {
+        if (out.ok) {
+          if (out.raw && out.raw.queued === true) {
+            global.console.log("消息已排队，等当前回合结束");
+          }
+          return;
+        }
+        // 发送失败要如实告诉用户，并把输入还原（否则内容丢了）
+        global.console.warn(`发送失败：${out.code}`);
+        dom.input.value = text;
+      });
     });
 
     // Enter 发送，Shift+Enter 换行（F4）

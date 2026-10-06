@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { messagesOf, panelPayload, todosOf } from "../../whale-bridge/lib/panel-data.mjs";
+import { messagesOf, panelPayload, runningToolOf, todosOf } from "../../whale-bridge/lib/panel-data.mjs";
 
 /** 造一个最小折叠态。 */
 function foldOf(tail) {
@@ -63,6 +63,63 @@ test("panelPayload：agentRunning 跟随 agent 状态", () => {
   });
   assert.equal(running.agentRunning, true);
   assert.equal(idle.agentRunning, false);
+});
+
+test("panelPayload：running 来自折叠器，不依赖有没有 agent", () => {
+  // 桥拿不到 agent 时 agentRunning 恒为 false，而折叠器已经从
+  // turn/start、turn/end 推出了 running —— 小窗的状态条与中断键靠它点亮。
+  // 只看 agentRunning 会让这两处在真实场景里永远不亮。
+  const busy = foldOf([]);
+  busy.running = true;
+  busy.phase = "running";
+
+  const withoutAgent = panelPayload({ foldSet: setOf(busy), sessionId: "s1" });
+  assert.equal(withoutAgent.running, true, "没有 agent 也要能报出「回合在跑」");
+  assert.equal(withoutAgent.agentRunning, false, "agentRunning 仍如实反映「看不到 agent」");
+
+  const idle = foldOf([]);
+  idle.running = false;
+  assert.equal(panelPayload({ foldSet: setOf(idle), sessionId: "s1" }).running, false);
+});
+
+test("panelPayload：running 缺省时不编造（视为 false）", () => {
+  // fold 上没有 running 字段（老形状）时给 false，不是 undefined
+  const fold = foldOf([]);
+  const out = panelPayload({ foldSet: setOf(fold), sessionId: "s1" });
+  assert.equal(out.running, false);
+});
+
+test("runningToolOf：取最近一条仍在 running 的工具", () => {
+  const fold = foldOf([
+    { kind: "tool", name: "read", state: "done", seq: 1 },
+    { kind: "tool", name: "bash", state: "running", seq: 2 },
+  ]);
+  assert.equal(runningToolOf(fold), "bash");
+});
+
+test("runningToolOf：工具已结束就给 null（状态条不该继续报它）", () => {
+  const fold = foldOf([{ kind: "tool", name: "bash", state: "done", seq: 1 }]);
+  assert.equal(runningToolOf(fold), null);
+});
+
+test("runningToolOf：多个工具同时挂着时取最近那个", () => {
+  const fold = foldOf([
+    { kind: "tool", name: "old", state: "running", seq: 1 },
+    { kind: "tool", name: "new", state: "running", seq: 2 },
+  ]);
+  assert.equal(runningToolOf(fold), "new");
+});
+
+test("runningToolOf：没有工具时给 null，不编造名字", () => {
+  assert.equal(runningToolOf(foldOf([])), null);
+  assert.equal(runningToolOf(foldOf([{ kind: "user", text: "你好", seq: 1 }])), null);
+});
+
+test("panelPayload：toolName 一并暴露（状态条文案要用）", () => {
+  const fold = foldOf([{ kind: "tool", name: "bash", state: "running", seq: 1 }]);
+  fold.running = true;
+  const out = panelPayload({ foldSet: setOf(fold), sessionId: "s1" });
+  assert.equal(out.toolName, "bash");
 });
 
 test("messagesOf：用户与助手消息各成一条", () => {

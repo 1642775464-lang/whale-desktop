@@ -161,9 +161,13 @@
           // 改名会造成「内部形状」与「桥形状」两套，多一处会不同步的地方
           state.messages = Array.isArray(json.messages) ? json.messages : [];
           state.todos = Array.isArray(json.todos) ? json.todos : [];
-          // 桥给的是 agentRunning；同时兼容 running（老字段）
-          state.running = json.agentRunning === true || json.running === true;
-          state.toolName = json.toolName ?? null;
+          // 回合运行态：**两个来源取或**。
+          //   running      —— 折叠器从 turn/start、turn/end 推出的，总是有值
+          //   agentRunning —— 活 agent 的状态，桥拿不到 agent 时恒为 false
+          // 只看 agentRunning 的话，状态条与中断键在「桥能看到事件但看不到 agent」
+          // 时永远不亮（真实踩过：桥的面板报 agentRunning=false 而 phase=running）。
+          state.running = json.running === true || json.agentRunning === true;
+          state.toolName = typeof json.toolName === "string" ? json.toolName : null;
           state.steps = json.steps ?? 0;
           state.turns = json.turns ?? 0;
           if (json.contextUsed !== undefined) state.contextUsed = json.contextUsed;
