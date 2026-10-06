@@ -1,0 +1,427 @@
+/*
+ * 悬浮条样式
+ *
+ * 职责：条、五元素、悬停详情浮层、收起态的视觉呈现。
+ * 所属层：悬浮条（whale-hud/renderer）
+ *
+ * 所有数值**都取自《前端设计规范》v2.0**（那是单一事实源），不自行估算。
+ * 确需改动时先改规范再改这里——tests/contract/hud-renderer.test.mjs
+ * 会把几个关键值与规范对账，改动漂移会红。
+ *
+ * 三条必须绕开的坑（规范第七节，全部是实测踩出来的）：
+ *   1. 摘掉动画类会连 `forwards` 填充一起消失 → 终态必须由 `.collapsed`
+ *      自己声明 `transform: scaleX(0)`，不能靠动画的停留态。
+ *   2. `overflow: hidden` 对**所有**后代生效（含 position: fixed）→ 收起态必须 visible。
+ *   3. 祖先一旦自带 `transform` 就成为后代的包含块 → 条的 `scaleX(0)` 会把图标
+ *      压成 0 宽，`position:fixed` / `z-index` / `overflow:visible` 全都救不了。
+ *      唯一解是**把图标物理挪到 `document.body`**（见 hud.js 的 whaleHome）。
+ */
+
+:root {
+  --ink: #1f2430;
+  --ink2: #5a6070;
+  --ink3: #8a90a0;
+  --line: #e3e6f0;
+  --card: #ffffff;
+  --brand: #2f6bff;
+  --soft: linear-gradient(135deg, #e9ebfc, #dde2fa);
+  --ok: #22c55e;
+  --bad: #ef4444;
+  --dot-idle: #c8cddb;
+  --line-faint: #f1f3f9;
+  --hairline: rgba(120, 130, 175, 0.2);
+  --mono: "SF Mono", Consolas, "Cascadia Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 我们自己用 IPC 实现拖动（A10 要按 3px 阈值区分单击与拖动），
+     所以不交给 Electron 的原生拖拽区 */
+  -webkit-app-region: no-drag;
+  user-select: none;
+  cursor: default;
+}
+
+/* 舞台撑满窗口（588×72），条绝对定位在 (14, 6) */
+.stage {
+  position: relative;
+  width: 588px;
+  height: 72px;
+}
+
+/* ── 条本体：560×52 正胶囊 ───────────────────────────── */
+.bar {
+  position: absolute;
+  left: 14px;
+  top: 6px;
+  width: 560px;
+  height: 52px;
+  border-radius: 26px;
+  padding: 0 12px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, #ffffff, #fdfdff);
+  border: 1px solid var(--hairline);
+  /* 三层阴影缺一不可；Windows 不给无边框透明窗画原生阴影，只能画在窗口内 */
+  box-shadow: 0 1px 2px rgba(20, 30, 60, 0.05), 0 8px 22px rgba(40, 55, 110, 0.1),
+    0 18px 40px rgba(40, 55, 110, 0.06);
+  transform-origin: left center;
+  transition: transform 275ms ease;
+}
+
+/* ── ① 鲸鱼头像 ─────────────────────────────────────── */
+.whale {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  background: var(--soft);
+  border: 1px solid rgba(120, 130, 200, 0.3);
+  box-shadow: 0 0 0 1px rgba(120, 130, 200, 0.1), 0 2px 8px rgba(90, 100, 180, 0.18);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.whale svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+/* 图标原文件是黑填充，这里用 CSS 覆盖成深色鲸鱼（浅紫底必须配深色，反色硬约束） */
+.whale svg path {
+  fill: var(--ink);
+}
+
+/* 外圈绿环 = 小窗在跑 */
+.whale.on::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid rgba(34, 197, 94, 0.85);
+}
+
+/* 操作失败：红闪一下，不静默 */
+.whale.fail {
+  animation: whale-fail 400ms ease;
+}
+
+@keyframes whale-fail {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(120, 130, 200, 0.1), 0 2px 8px rgba(90, 100, 180, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.85);
+  }
+}
+
+/* ── ②③ 状态点 + 会话标题（滚筒）──────────────────── */
+.seg.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 8px;
+}
+
+.dot.run {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+  animation: dot-breathe 1600ms ease-in-out infinite;
+}
+
+.dot.idle {
+  background: var(--dot-idle);
+}
+
+.dot.bad {
+  background: var(--bad);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+}
+
+@keyframes dot-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.08);
+  }
+}
+
+.reel {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  perspective: 600px;
+}
+
+/*
+ * 两个面叠放：back 在下层（DOM 在前），front 在上层。
+ * back 只作「下一句台词的暂存位」，永远不显示——文字只在 front 处于侧立
+ * （rotateX ±90°，视觉上不可见）时写入，这样就不会闪出假标题（A7）。
+ */
+.face {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 36px;
+  line-height: 36px;
+  font-size: 13.5px;
+  color: var(--ink2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backface-visibility: hidden;
+}
+
+.face.back {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.face.front {
+  transform: rotateX(0deg);
+  opacity: 1;
+}
+
+/* 上半程：旧标题翻下去（ease-in） */
+.face.front.out {
+  transform: rotateX(-90deg);
+  opacity: 0;
+  transition: transform 250ms ease-in, opacity 250ms ease-in;
+}
+
+/* 下半程起点：无过渡地摆到侧立位，写好新文字后再转回来（ease-out） */
+.face.front.primed {
+  transform: rotateX(90deg);
+  opacity: 0;
+  transition: none;
+}
+
+.face.front.in {
+  transform: rotateX(0deg);
+  opacity: 1;
+  transition: transform 250ms ease-out, opacity 250ms ease-out;
+}
+
+.reel.locked .face.front {
+  padding-right: 18px;
+}
+
+/* 标题锁标记（🔒） */
+.face.front.locked::after {
+  content: "🔒";
+  position: absolute;
+  right: 0;
+  font-size: 11px;
+}
+
+/* ── ④⑤ 等宽数字段 ─────────────────────────────────── */
+.seg.mono {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.seg.mono .unit {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink3);
+}
+
+/* 回合结束：速度变灰并冻结（你仍能看到刚才跑多快） */
+.seg.mono.grey {
+  color: var(--ink3);
+}
+
+.seg.ctx {
+  cursor: pointer;
+}
+
+/* ── 收起箭头（朝左）────────────────────────────────── */
+.collapse-btn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.collapse-btn:hover {
+  background: #f2f4fa;
+  color: var(--ink2);
+}
+
+.collapse-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.collapse-btn polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── 收起态（球）────────────────────────────────────── */
+/*
+ * 窗口此时是 88×88。`.collapsed` 自己声明 scaleX(0)，
+ * 不依赖动画的 forwards 停留态——摘掉动画类时填充会一起消失，
+ * 条会弹回 560px 被 88px 窗口裁出蓝紫残影（陷阱 1）。
+ */
+body.collapsed {
+  overflow: visible;
+}
+
+body.collapsed .bar {
+  transform: scaleX(0);
+  transition: transform 275ms ease;
+}
+
+body.collapsed .stage {
+  width: 88px;
+  height: 88px;
+}
+
+/*
+ * 图标被物理挪到 body 下时按球的坐标定位（x=24, y=12）。
+ * 这是陷阱 3 的唯一解：条的 transform 会成为后代的包含块，
+ * 把图标压成 0 宽——只有挪出条才躲得掉。
+ */
+body > .whale {
+  position: absolute;
+  left: 24px;
+  top: 12px;
+  z-index: 3;
+  cursor: grab;
+}
+
+body > .whale:active {
+  cursor: grabbing;
+}
+
+/* ── 悬停详情浮层 ───────────────────────────────────── */
+.popover {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 88px;
+  width: 270px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(40, 55, 110, 0.14);
+  padding: 12px 14px;
+}
+
+.popover[hidden] {
+  display: none;
+}
+
+.popover .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.popover .row:last-child {
+  border-bottom: 0;
+}
+
+.popover .k {
+  color: var(--ink2);
+}
+
+.popover .v {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ── 完成提醒：位移类震动，不是脉冲（脉冲已被用户否决）── */
+.bar.shake {
+  animation: hud-shake 2000ms ease-in-out;
+}
+
+@keyframes hud-shake {
+  0%,
+  100% {
+    margin-left: 0;
+  }
+  8% {
+    margin-left: -3px;
+  }
+  16% {
+    margin-left: 3px;
+  }
+  24% {
+    margin-left: -2px;
+  }
+  32% {
+    margin-left: 2px;
+  }
+  40% {
+    margin-left: -1px;
+  }
+  48% {
+    margin-left: 1px;
+  }
+}
+
+/* 系统设置里要求减少动效时，全部关掉——状态仍由颜色与数字表达 */
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .face.front,
+  .dot.run,
+  .whale.fail,
+  .bar.shake {
+    animation: none !important;
+    transition: none !important;
+  }
+}

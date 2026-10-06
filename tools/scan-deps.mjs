@@ -103,6 +103,9 @@ for (const pkg of PACKAGES) {
         if (spec.startsWith("node:")) continue;
         if (HOST_PROVIDED.test(spec)) continue;
         const bare = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
+        // Electron 由 runtime/ 的二进制提供，不是 npm 依赖（与上面 dependencies 检查同一口径）。
+        // 主进程与 preload 引它是正当的：它是运行时，不是第三方库。
+        if (RUNTIME_BINARIES.has(bare)) continue;
         const builtin = new Set([
           "fs", "path", "http", "https", "url", "zlib", "os", "events", "stream",
           "child_process", "util", "crypto", "assert", "buffer", "net", "tty",

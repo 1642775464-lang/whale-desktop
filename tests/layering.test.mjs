@@ -68,6 +68,39 @@ function bridgeClientFiles() {
   return existsSync(file) ? [file] : [];
 }
 
+/**
+ * 呈现层里「跑在 Electron 主进程」的文件。
+ *
+ * 这些文件 `require("electron")` 是**正当的**：Electron 是运行时而非第三方库，
+ * 《开发规范》§3.1 也明确写了「悬浮条 / 小窗：Node 内置 + Electron」。
+ * 铁律 A-4 管的是**渲染层零框架零构建**，不该把主进程一起网进去。
+ *
+ * 判定方式：renderer/ 下的文件是渲染层；其余 .cjs 是主进程侧。
+ */
+function isMainProcessFile(file) {
+  const norm = file.replace(/\\/g, "/");
+  return !norm.includes("/renderer/");
+}
+
+/** Electron 自身：主进程与 preload 允许引用，渲染层不允许。 */
+const ELECTRON_PACKAGE = "electron";
+
+/**
+ * 收集某个文件的裸包引用（既非相对路径、也非 node: 内置、也非绝对路径）。
+ *
+ * @param {string} file
+ * @returns {string[]}
+ */
+function bareImports(file) {
+  const text = read(file)
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+    .join("\n");
+  return [...text.matchAll(/(?:from\s+|require\(\s*)["']([^"']+)["']/g)]
+    .map((m) => m[1])
+    .filter((spec) => !spec.startsWith(".") && !spec.startsWith("node:") && !spec.startsWith("/"));
+}
+
 test("A-1 呈现层不得 require/import 宿主包 @deepseek-ai/", () => {
   const offenders = [];
   for (const file of [...presentationFiles(), ...bridgeClientFiles()]) {
@@ -143,19 +176,47 @@ test("A-4 渲染层不 import 第三方包（零框架零构建）", () => {
   const offenders = [];
   for (const file of presentationFiles()) {
     if (file.endsWith(".html")) continue;
-    const text = read(file);
-    const stripped = text
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
-      .join("\n");
-    // 允许 node: 内置与相对路径；其它裸包名判违规
-    const imports = [...stripped.matchAll(/(?:from\s+|require\(\s*)["']([^"']+)["']/g)].map((m) => m[1]);
-    for (const spec of imports) {
-      if (spec.startsWith(".") || spec.startsWith("node:") || spec.startsWith("/")) continue;
+    // 只查渲染层：主进程侧引 electron 是正当的，由下一条单独管
+    if (isMainProcessFile(file)) continue;
+    for (const spec of bareImports(file)) {
       offenders.push(`${relative(ROOT, file)} → ${spec}`);
     }
   }
   assert.deepEqual(offenders, [], `渲染层引了第三方包，违反铁律 A-4：\n${offenders.join("\n")}`);
+});
+
+test("A-4 主进程侧只允许引 electron 与 node: 内置", () => {
+  const offenders = [];
+  for (const file of presentationFiles()) {
+    if (file.endsWith(".html") || !isMainProcessFile(file)) continue;
+    for (const spec of bareImports(file)) {
+      if (spec === ELECTRON_PACKAGE) continue;
+      offenders.push(`${relative(ROOT, file)} → ${spec}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `主进程侧引了 electron 之外的第三方包，违反铁律 A-4：\n${offenders.join("\n")}`,
+  );
+});
+
+test("A-4 负向验证：裸包引用确实会被规则抓到", () => {
+  // 规则若写成空壳（永远通过），上面两条断言就毫无意义
+  const bad = ['require("lodash")', 'import x from "axios";', 'require("electron")'];
+  const good = ['require("./lib/geometry.cjs")', 'import fs from "node:fs";', "const x = 1;"];
+  const isBare = (spec) => !spec.startsWith(".") && !spec.startsWith("node:") && !spec.startsWith("/");
+  const specs = (s) => [...s.matchAll(/(?:from\s+|require\(\s*)["']([^"']+)["']/g)].map((m) => m[1]);
+
+  for (const s of bad) assert.equal(specs(s).some(isBare), true, `应判为裸包：${s}`);
+  for (const s of good) assert.equal(specs(s).some(isBare), false, `不应判为裸包：${s}`);
+});
+
+test("A-4 负向验证：渲染层与主进程侧的判定确实不同", () => {
+  // 若 isMainProcessFile 永远返回 true/false，主进程那条豁免就会失效或过度放宽
+  assert.equal(isMainProcessFile(join(ROOT, "whale-hud", "main.cjs")), true);
+  assert.equal(isMainProcessFile(join(ROOT, "whale-hud", "preload.cjs")), true);
+  assert.equal(isMainProcessFile(join(ROOT, "whale-hud", "renderer", "hud.js")), false);
 });
 
 test("桥的运行时依赖数为 0（只允许 node: 内置与相对路径）", () => {

@@ -104,12 +104,6 @@ export default [
     rules: COMMON_RULES,
   },
   {
-    // 测试与处理器外壳：为签名一致常把函数声明成 async，但分支里未必真 await。
-    // 强要 await 只会逼出「为过规则而乱加 await」，那比违反规则更糟。
-    files: ["tests/**/*.mjs", "whale-bridge/lib/handlers-*.mjs"],
-    rules: { "require-await": "off" },
-  },
-  {
     files: ["**/*.cjs"],
     languageOptions: {
       ecmaVersion: 2024,
@@ -146,6 +140,9 @@ export default [
         console: "readonly",
         EventSource: "readonly",
         fetch: "readonly",
+        URLSearchParams: "readonly",
+        Intl: "readonly",
+        isFinite: "readonly",
         requestAnimationFrame: "readonly",
         cancelAnimationFrame: "readonly",
         setTimeout: "readonly",
@@ -174,5 +171,18 @@ export default [
       },
     },
     rules: COMMON_RULES,
+  },
+  {
+    // 测试与主进程外壳：为签名一致常把函数声明成 async，但分支里未必真 await。
+    // 强要 await 只会逼出「为过规则而乱加 await」，那比违反规则更糟。
+    //
+    // 必须放在**最后**：扁平配置里后面的条目覆盖前面的，
+    // 放在 `**/*.cjs` 之前会被它的 COMMON_RULES 盖回去（踩过一次）。
+    files: [
+      "tests/**/*.mjs",
+      "whale-bridge/lib/handlers-*.mjs",
+      "whale-hud/lib/ipc.cjs",
+    ],
+    rules: { "require-await": "off" },
   },
 ];
