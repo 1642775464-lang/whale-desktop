@@ -26,6 +26,7 @@
 "use strict";
 
 const path = require("node:path");
+const fs = require("node:fs");
 
 const geometry = require("./geometry.cjs");
 
@@ -53,6 +54,13 @@ function createWindow(deps) {
   const rendererFile = deps.rendererFile ?? path.join(WINDOW_DIR, "renderer", "index.html");
   const preloadFile = deps.preloadFile ?? path.join(WINDOW_DIR, "preload.cjs");
   const bounds = deps.bounds;
+
+  // 入口必须存在。漏了或路径写错时，loadFile 只会抛一个
+  // UnhandledPromiseRejectionWarning，**窗口照样建出来但是空的**——
+  // 外面看到「窗口在、一片白」，极难归因（悬浮条那边踩过两次）。
+  if (!fs.existsSync(rendererFile)) {
+    throw new Error(`渲染层入口不存在：${rendererFile}`);
+  }
 
   const win = new BrowserWindow({
     show: false,

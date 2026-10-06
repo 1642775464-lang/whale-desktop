@@ -18,6 +18,8 @@
 
 "use strict";
 
+const fs = require("node:fs");
+
 const geometry = require("./geometry.cjs");
 
 /**
@@ -44,6 +46,20 @@ const LOAD_TIMEOUT_MS = 8000;
  */
 function createHudWindow(deps) {
   const { BrowserWindow, screen, rendererFile, preloadFile, log } = deps;
+
+  // 入口必须显式给，且必须存在。
+  //
+  // 为什么要在这里拦：漏给 rendererFile 时 loadFile 收到 undefined，
+  // Electron 只抛一个 UnhandledPromiseRejectionWarning（「Must pass filePath
+  // as a string」），**窗口照样建出来但是空的**——外面看到的是
+  // 「窗口在、一片白」，而不是一个明确的启动失败，极难归因。
+  // 真实踩过两次：一次是 lint 误删参数，一次是旧诊断脚本没跟着更新。
+  if (typeof rendererFile !== "string" || rendererFile === "") {
+    throw new TypeError("createHudWindow 缺少 rendererFile（渲染层入口路径）");
+  }
+  if (!fs.existsSync(rendererFile)) {
+    throw new Error(`渲染层入口不存在：${rendererFile}`);
+  }
 
   const win = new BrowserWindow({
     show: false,

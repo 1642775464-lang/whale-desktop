@@ -33,9 +33,7 @@ function finish() {
 }
 
 app.whenReady().then(async () => {
-  const { createHudWindow } = require(path.join(REPO_ROOT, "whale-hud", "lib", "window.cjs"));
-  const { createHudState } = require(path.join(REPO_ROOT, "whale-hud", "lib", "state.cjs"));
-  const { registerIpc } = require(path.join(REPO_ROOT, "whale-hud", "lib", "ipc.cjs"));
+  const { bootHud } = require(path.join(REPO_ROOT, "whale-hud", "lib", "boot.cjs"));
   const { createLogger } = require(path.join(REPO_ROOT, "whale-hud", "lib", "log.cjs"));
 
   const log = createLogger({
@@ -53,37 +51,44 @@ app.whenReady().then(async () => {
   }));
   report.primaryWorkArea = screen.getPrimaryDisplay().workArea;
 
-  const state = createHudState({ onChange: (form) => hudWindow.applyForm(form) });
-  const hudWindow = createHudWindow({
+  // 走产品的 bootHud，不再自己拼装配。
+  //
+  // 原先这里自己调 createHudWindow + createHudState + registerIpc，
+  // 参数一旦与产品不同步就会漂移——真实踩过：产品后来要求 rendererFile，
+  // 这个工具没跟着改，于是 loadFile 收到 undefined，窗口空着。
+  // 与探针同一条纪律：**只观察，不代劳**。
+  const errors = [];
+  const booted = bootHud({
     BrowserWindow,
     screen,
-    preloadFile: path.join(REPO_ROOT, "whale-hud", "preload.cjs"),
+    ipcMain,
+    app,
+    Menu,
     log,
+    port: Number(process.env.WHALE_BRIDGE_PORT ?? 19387),
+    onWindowReady: (w) => {
+      w.win.webContents.on("console-message", (...a) => {
+        const first = a[0];
+        const asEvent = first !== null && typeof first === "object" && "message" in first;
+        const level = asEvent ? first.level : a[1];
+        const message = asEvent ? first.message : a[2];
+        errors.push({ level, message });
+      });
+      w.win.webContents.on("preload-error", (_e, f, err) => {
+        errors.push({ level: "preload", message: `${f}: ${err && err.message}` });
+      });
+      w.win.webContents.on("render-process-gone", (_e, d) => {
+        errors.push({ level: "gone", message: JSON.stringify(d) });
+      });
+    },
   });
 
-  const errors = [];
-  hudWindow.win.webContents.on("console-message", (...a) => {
-    const first = a[0];
-    const asEvent = first !== null && typeof first === "object" && "message" in first;
-    const level = asEvent ? first.level : a[1];
-    const message = asEvent ? first.message : a[2];
-    errors.push({ level, message });
-  });
-  hudWindow.win.webContents.on("preload-error", (_e, f, err) => {
-    errors.push({ level: "preload", message: `${f}: ${err && err.message}` });
-  });
-  hudWindow.win.webContents.on("render-process-gone", (_e, d) => {
-    errors.push({ level: "gone", message: JSON.stringify(d) });
-  });
+  const hudWindow = booted.hudWindow;
 
-  registerIpc({ ipcMain, state, hudWindow, app, Menu, log, port: 19500 });
-
-  hudWindow.win.loadFile(path.join(REPO_ROOT, "whale-hud", "renderer", "index.html"), {
-    query: { port: "19500" },
-  });
-
-  hudWindow.applyForm(state.form());
-  hudWindow.show();
+  // bootHud 已经把「建状态机 → 建窗口 → 装 IPC → 摆位置 → 显示 → 加载页面」
+  // 全做完了。这里**不再重复任何一步**——重复会掩盖产品缺陷
+  // （探针纪律：只观察，不代劳）。
+  void ipcMain; void Menu;
 
   await hudWindow.loaded;
   await new Promise((r) => setTimeout(r, 2000));

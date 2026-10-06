@@ -38,6 +38,39 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 export const name = "whale-bridge";
 
 /**
+ * 本插件依赖的宿主服务。
+ *
+ * **这一条是必需的，漏了会「事件能收到、服务全没有」。**
+ *
+ * Cordis 只把 inject 里列出的服务装进插件 ctx。不声明的话：
+ *   - `ctx.on("session/event")` 照样能收到事件（事件不走服务容器）
+ *   - 而 `ctx.sessions` / `ctx.agents` 全是 undefined
+ * 表现极具迷惑性：桥能看见会话在跑、能推会话事件，但一发消息就回
+ * `session-not-found`（因为拿不到 agent）。
+ *
+ * 实测对照：宿主自己的插件无例外都声明了，例如
+ *   dsh-compaction-image-offload → ["agents", "sessions"]
+ *   dsh-command-compact          → ["commands", "compaction"]
+ *   dsh-file-reference-local     → ["agents"]
+ *
+ * 原先本插件没有这条，装进真实宿主后 `/whale/probe` 报
+ * `sessions:false agents:false commands:false`，写操作全部不可用。
+ *
+ * ⚠️ **只声明确定存在的服务名**。
+ * Cordis 的语义是「inject 里声明的服务就绪之前不 apply」——
+ * 写上一个**不存在**的服务名，插件会**永远不被启动**，而且不报错。
+ * 所以这里只列宿主自有插件真实用过的名字（实测取自它们的 inject）：
+ *   dsh-compaction-image-offload → ["agents", "sessions"]
+ *   dsh-command-compact          → ["commands", "compaction"]
+ *   dsh-agent-preset-registry    → ["loader", "sessionProjections"]
+ *
+ * 曾经把 `projections` / `attachments` / `models` 也写进来（想「可选也声明」），
+ * 结果插件再也不启动。可选服务改用 `ctx.get(name)` 按需取——
+ * 那个 API 不经过 inject 守卫，取不到就降级。
+ */
+export const inject = ["sessions", "agents", "commands", "sessionProjections"];
+
+/**
  * 校验端口值，非法一律当作没给。
  *
  * @param {unknown} value

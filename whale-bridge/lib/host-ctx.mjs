@@ -10,16 +10,34 @@
 
 /**
  * 探测一个宿主服务是否可用。
+ *
+ * **必须区分两种「取不到」**：
+ *   1. 服务确实不存在 → 返回 undefined，桥走降级（正常情况）
+ *   2. 服务存在但插件没在 `inject` 里声明 → Cordis 会抛
+ *      `cannot get property "X" without inject`
+ *
+ * 第 2 种**不能吞**。原先这里一律 catch 成 undefined，把「你没声明依赖」
+ * 伪装成「宿主没提供这个服务」——装进真实宿主后表现是
+ * `/whale/probe` 报 sessions/agents/commands 全 false，
+ * 而事件照样收得到，极具迷惑性（真实踩过，排查花了很久）。
+ * 所以第 2 种要把原因显式记下来，供 probe 报告。
+ *
  * @param {object} ctx
  * @param {string} name
+ * @param {{ missingInject?: string[] }} [diag] 诊断收集器
  * @returns {object | undefined}
  */
-function serviceOf(ctx, name) {
+function serviceOf(ctx, name, diag = undefined) {
   if (ctx === null || ctx === undefined) return undefined;
   try {
     const svc = ctx[name];
     return svc === null || svc === undefined ? undefined : svc;
-  } catch {
+  } catch (err) {
+    const message = String(err?.message ?? err);
+    // 没声明 inject 的情况要留下证据，不要静默降级
+    if (message.includes("without inject") && Array.isArray(diag?.missingInject)) {
+      diag.missingInject.push(name);
+    }
     return undefined;
   }
 }
@@ -44,12 +62,48 @@ function serviceOf(ctx, name) {
  *   probe: () => object,
  * }}
  */
+/**
+ * 读取一个**可选**服务（不经过 inject 守卫）。
+ *
+ * 宿主自己的代码就是这么读的，例如 `dsh-headless/lib/index.js`：
+ *   const agents = ctx.get("agents");
+ *   const sessions = ctx.get("sessions");
+ *
+ * `ctx.get()` 不要求 inject 声明，取不到就返回 undefined。
+ * 而 `ctx[name]` 会走 Cordis 的 Proxy 守卫，未声明就抛
+ * `cannot get property "X" without inject`。
+ *
+ * 可选服务必须走这条路：把它们放进 inject 会让 Cordis **等待**它们就绪，
+ * 而一个不存在的服务名会导致插件**永远不被启动**（真实踩过：加了
+ * `projections`/`models` 之后，桥连端口都不监听了）。
+ *
+ * @param {object} ctx
+ * @param {string} name
+ * @returns {object | undefined}
+ */
+function optionalServiceOf(ctx, name) {
+  if (ctx === null || ctx === undefined) return undefined;
+  try {
+    if (typeof ctx.get === "function") return ctx.get(name) ?? undefined;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createHostAccess(ctx) {
-  const sessions = serviceOf(ctx, "sessions");
-  const agents = serviceOf(ctx, "agents");
-  const commands = serviceOf(ctx, "commands");
-  const projections = serviceOf(ctx, "sessionProjections") ?? serviceOf(ctx, "projections");
-  const attachments = serviceOf(ctx, "attachments");
+  /** 诊断：哪些服务是因为「插件没声明 inject」而取不到的。 */
+  const diag = { missingInject: [] };
+
+  // 必需服务：已在 host.js 的 inject 里声明，Cordis 会等它们就绪后再 apply。
+  const sessions = serviceOf(ctx, "sessions", diag);
+  const agents = serviceOf(ctx, "agents", diag);
+  const commands = serviceOf(ctx, "commands", diag);
+  const projections = serviceOf(ctx, "sessionProjections", diag);
+
+  // 可选服务：一律走 ctx.get()，绝不放进 inject——
+  // 不存在的服务名会让插件永远不启动。
+  const attachments = optionalServiceOf(ctx, "attachments");
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */
   function safe(fn, fallback) {
@@ -123,8 +177,8 @@ export function createHostAccess(ctx) {
    * @returns {Array<{provider: string, model: string}>}
    */
   function listModels() {
-    // 途径 1：宿主模型目录服务
-    const modelsService = serviceOf(ctx, "models");
+    // 途径 1：宿主模型目录服务（可选，走 ctx.get 不经过 inject 守卫）
+    const modelsService = optionalServiceOf(ctx, "models");
     if (modelsService !== undefined && typeof modelsService.list === "function") {
       const direct = safe(() => modelsService.list(), undefined);
       const normalized = normalizeModels(direct);
@@ -216,6 +270,9 @@ export function createHostAccess(ctx) {
       projections: projections !== undefined,
       attachments: attachments !== undefined,
       sessionCount: listSessions().length,
+      // 把「为什么取不到」一并报出来：这是区分「宿主没这个服务」
+      // 与「插件没声明依赖」的唯一线索（两者表现完全一样）
+      missingInject: diag.missingInject,
     };
   }
 
