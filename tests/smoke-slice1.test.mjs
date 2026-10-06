@@ -32,6 +32,15 @@ const TEST_PORT = 19388;
 const APPLY_PORT = 19390;
 
 /**
+ * 「宿主服务全缺」用例的专用端口。
+ *
+ * 曾经写成 `TEST_PORT + 1`——算出来是 19389，正好撞上 smoke-slice2 的端口。
+ * 两个文件并发跑就 EADDRINUSE，表现为「闸门 3 时红时绿、单跑永远绿」。
+ * 端口一律显式声明，不要用算术推导（算术躲过静态扫描）。
+ */
+const BARE_PORT = 19392;
+
+/**
  * 构造假宿主 ctx。
  * 只提供最小可用形状：sessions + agents 两个服务，一个会话。
  * @returns {object}
@@ -224,9 +233,9 @@ test("桥骨架端到端冒烟", async (t) => {
   await t.test("宿主服务全缺时仍返回 200（不整体崩溃）", async () => {
     const bare = createHostAccess({});
     const srv = createBridgeServer({ host: bare, log: () => {} });
-    await listen(srv, { port: TEST_PORT + 1, host: "127.0.0.1" });
+    await listen(srv, { port: BARE_PORT, host: "127.0.0.1" });
     try {
-      const res = await fetch(`http://127.0.0.1:${TEST_PORT + 1}/whale/probe`);
+      const res = await fetch(`http://127.0.0.1:${BARE_PORT}/whale/probe`);
       assert.equal(res.status, 200);
       const json = await res.json();
       assert.equal(json.host.sessions, false);

@@ -139,6 +139,45 @@ test("开发服务器端口避开测试段", () => {
   }
 });
 
+test("端口不得用算术推导（算出来的值躲过静态扫描）", () => {
+  // 真实教训：smoke-slice1 里写 `listen(srv, { port: TEST_PORT + 1 })`，
+  // 算出来是 19389 —— 正好等于 smoke-slice2 的端口。两个文件并发跑就
+  // EADDRINUSE，表现为「闸门 3 时红时绿、单跑永远绿」。
+  // 上面的扫描只看字面量，算术表达式对它完全隐形，所以必须单独拦一条。
+  const offenders = [];
+  const files = globSync("tests/**/*.test.mjs", { cwd: ROOT, exclude: (n) => n === "node_modules" });
+  for (const rel of files) {
+    const norm = rel.replace(/\\/g, "/");
+    readFileSync(join(ROOT, rel), "utf8").split("\n").forEach((line, index) => {
+      const t = line.trim();
+      if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) return;
+      // 形如 `port: SOME_PORT + 1` / `${SOME_PORT + 1}` / `SOME_PORT - 2`
+      if (/[A-Z_]*PORT[A-Z_]*\s*[+\-*]\s*\d/.test(t)) {
+        offenders.push(`${norm}:${index + 1}  ${t}`);
+      }
+    });
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `这些端口是算出来的，请改成显式常量（算术躲过端口冲突扫描）：\n${offenders.join("\n")}`,
+  );
+});
+
+test("负向验证：算术端口确实会被规则抓到", () => {
+  // 规则若是空壳（永远通过），上面那条断言毫无意义。
+  //
+  // 夹具里的「坏例子」在**本文件源码**里也不能以字面形式出现——
+  // 上面那条扫描会连本文件一起扫，字面写出来会抓到自己的夹具
+  // （第一次写就被抓到了）。所以坏例子在运行时拼出来。
+  const name = "TEST_PORT";
+  const bad = `await listen(srv, { port: ${name} + 1, host: "127.0.0.1" });`;
+  const good = `await listen(srv, { port: ${name}, host: "127.0.0.1" });`;
+  const hits = (line) => /[A-Z_]*PORT[A-Z_]*\s*[+\-*]\s*\d/.test(line);
+  assert.equal(hits(bad), true, "算术端口应被抓到");
+  assert.equal(hits(good), false, "显式常量端口不该被误报");
+});
+
 test("桥的默认端口仍是 PRD 规定的 19387", () => {
   const bridge = SOURCES.filter((s) => s.file === "whale-bridge/lib/server.mjs");
   assert.equal(bridge.length, 1, `应恰好扫到桥的一处端口声明，实际 ${bridge.length} 处`);
