@@ -15,15 +15,24 @@ import { createHostAccess } from "./lib/host-ctx.mjs";
 import { registerSliceOneRoutes, BRIDGE_NAME, BRIDGE_VERSION } from "./lib/handlers-slice1.mjs";
 import { registerSliceTwoRoutes } from "./lib/handlers-slice2.mjs";
 import { registerSliceThreeReadRoutes } from "./lib/handlers-slice3-read.mjs";
+import { registerSliceThreeWriteRoutes } from "./lib/handlers-slice3-write.mjs";
 import { close, createBridgeServer, listen, PORT, HOST } from "./lib/server.mjs";
 import { validateRouteTable } from "./lib/routes.mjs";
 import { createEventPipeline } from "./lib/events.mjs";
 import { createFoldSet } from "./lib/fold.mjs";
 import { CHANNEL_EVENTS, CHANNEL_HUD, createSseHub } from "./lib/sse.mjs";
 import { snapshotOf } from "./lib/fold-view.mjs";
+import { createApprovalBridge } from "./lib/approval-bridge.mjs";
+import { createHostActions } from "./lib/host-actions.mjs";
+import { createWindowManager } from "./lib/windows.mjs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 /** 心跳间隔（PRD F7）：每 2 秒重算一次速度并推 tick。 */
 export const HEARTBEAT_MS = 2000;
+
+/** 仓库根：host.js 位于 <仓库根>/whale-bridge/host.js。 */
+export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** 插件显示名。 */
 export const name = "whale-bridge";
@@ -100,13 +109,26 @@ export async function apply(ctx, options = {}) {
     startedAt,
   };
 
-  registerSliceThreeReadRoutes({ bridge });
-
   const host = createHostAccess(ctx);
+  const windows = createWindowManager({ repoRoot: REPO_ROOT, log });
+  const approval = createApprovalBridge({ log });
+  const hostActions = createHostActions({ host });
+
+  bridge.windows = windows;
+  bridge.approval = approval;
+  bridge.hostActions = hostActions;
+
+  // 只读与写操作路由都在桥的全部依赖就位之后再注册，
+  // 避免出现「路由已注册但依赖还没装上」的中间态
+  registerSliceThreeReadRoutes({ bridge });
+  registerSliceThreeWriteRoutes();
+
   const server = createBridgeServer({ host, bridge, log });
 
   // 订阅宿主事件：必须在服务起来之前挂上，避免漏掉启动窗口期的事件
   const disposers = pipeline.attach(ctx);
+  // 审批瀑布监听器与事件订阅同批管理，卸载时一起撤
+  disposers.push(...approval.attach(ctx));
 
   let heartbeat = undefined;
 
@@ -143,6 +165,7 @@ export async function apply(ctx, options = {}) {
   state.foldSet = foldSet;
   state.pipeline = pipeline;
   state.sse = sse;
+  state.windows = windows;
   state.heartbeat = heartbeat;
   state.disposers = disposers;
 }
@@ -188,11 +211,23 @@ export function heartbeatTick(sse, foldSet, now = Date.now()) {
  * 否则宿主可能卡在卸载中。
  */
 export async function dispose() {
-  const { server, ctx, disposers, sse, heartbeat } = state;
+  const { server, ctx, disposers, sse, heartbeat, windows } = state;
 
   // 停心跳：它持有折叠集引用，不停会让对象无法释放
   if (heartbeat !== undefined) {
     clearInterval(heartbeat);
+  }
+
+  // 顺序照 PRD F3：**先关自己拉起的小窗**，再关 HTTP 服务，最后退订。
+  // 先关小窗的理由：小窗靠桥活着，桥先没了小窗会进入断连态再被留下，
+  // 用户看到的就是一个连不上任何东西的孤儿窗口。
+  if (windows !== undefined) {
+    try {
+      const closed = windows.closeAll();
+      if (closed.closed > 0) logTo(ctx, `[${BRIDGE_NAME}] 已关闭 ${closed.closed} 个小窗`);
+    } catch (err) {
+      logTo(ctx, `[${BRIDGE_NAME}] 关闭小窗出错（已忽略）：${err.message}`);
+    }
   }
 
   // 断开全部 SSE 客户端。必须早于 close(server)：
@@ -228,6 +263,7 @@ export async function dispose() {
   state.foldSet = undefined;
   state.pipeline = undefined;
   state.sse = undefined;
+  state.windows = undefined;
   state.heartbeat = undefined;
   state.disposers = undefined;
 }
@@ -246,6 +282,8 @@ const state = {
   pipeline: undefined,
   /** @type {object | undefined} */
   sse: undefined,
+  /** @type {object | undefined} */
+  windows: undefined,
   /** @type {ReturnType<typeof setInterval> | undefined} */
   heartbeat: undefined,
   /** @type {Array<() => void> | undefined} */

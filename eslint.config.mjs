@@ -104,6 +104,12 @@ export default [
     rules: COMMON_RULES,
   },
   {
+    // 测试与处理器外壳：为签名一致常把函数声明成 async，但分支里未必真 await。
+    // 强要 await 只会逼出「为过规则而乱加 await」，那比违反规则更糟。
+    files: ["tests/**/*.mjs", "whale-bridge/lib/handlers-*.mjs"],
+    rules: { "require-await": "off" },
+  },
+  {
     files: ["**/*.cjs"],
     languageOptions: {
       ecmaVersion: 2024,

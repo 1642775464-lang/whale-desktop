@@ -1,8 +1,8 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v1.3
+- 文档版本：v1.4
 - 日期：2026-10-06
-- 状态：**步骤 1–9 全部完成；MVP 切片 1–2 已完成并提交，下一片为切片 3**
+- 状态：**步骤 1–9 全部完成；MVP 切片 1–3 已完成并提交，下一片为切片 4**
 - 项目根：`D:\DEEPSEEK\悬浮窗`
 - 冲突裁决顺序：**PRD > ARCHITECTURE > STATUS**（本文件与上游冲突时以上游为准）
 
@@ -10,9 +10,9 @@
 
 ## 一、一句话现状
 
-**桥骨架与数据源已跑通：22 条路由声明就位（5 条已实现），宿主事件可经折叠器读出，115 个测试与六道闸门全绿。**
+**桥已具备被前端直接消费的完整能力：22 条路由全部落地（不再是 501），两个 SSE 端点可推可续传，265 个测试与七道闸门全绿。**
 
-九个规划步骤全部交付；git 仓库有 4 个提交（`65b5bdb` → `91fa15c` → `0bbbed7` → `b78857f`），分支 `main` + `develop`；六道闸门与预提交钩子已验证可用（`b78857f` 提交时钩子自动跑闸门并全过）。`whale-hud` / `whale-window` / `whale-button` 三个目录仍为空。
+九个规划步骤全部交付；git 仓库有 5 个提交（`65b5bdb` → `91fa15c` → `0bbbed7` → `b78857f` → `d4b74ad`），分支 `main` + `develop`；七道闸门与预提交钩子已验证可用。`whale-hud` / `whale-window` / `whale-button` 三个目录仍为空。
 
 ---
 
@@ -28,10 +28,10 @@
 | 6 | 轻量架构草案 | ✅ 完成 | `docs/轻量架构草案.md` + `Whale-ARCHITECTURE.md` |
 | 7 | 规整项目文档 | ✅ 完成 | 根目录三件套 `Whale-PRD/ARCHITECTURE/STATUS.md` |
 | 8 | 开发规范 | ✅ 完成 | `docs/开发规范.md`（35 条强制项）+ `references/` 五份 |
-| 9 | Git + 质量闸门 | ✅ 完成 | git 仓库 + `.githooks/` + `tools/` 五脚本 |
+| 9 | Git + 质量闸门 | ✅ 完成 | git 仓库 + `.githooks/` + `tools/` 六脚本 |
 | 切片 1 | 桥骨架 | ✅ 完成（`91fa15c`） | 4 条只读路由 + 35 测试 |
 | 切片 2 | 数据源 | ✅ 完成（`b78857f`） | 事件订阅 + 双折叠器 + 3 个纯函数内核 + 115 测试 |
-| 切片 3 | 实时通道 | ⬜ **下一步** | SSE + 补齐 22 条路由 + `/whale/hud` |
+| 切片 3 | 实时通道 | ✅ 完成（`d4b74ad` 批次 A + 本批） | SSE 双端点 + 续传 + 22 条路由全量落地 + 265 测试 |
 
 ---
 
@@ -59,11 +59,11 @@
 | `docs/` | 11 份规划文档 + `pages/` 汇报页 |
 | `docs/pages/` | 9 张汇报页 HTML + 9 份 `.am.md` 稿件 |
 | `references/` | 5 份唯一可信源（21.7 KB） |
-| `tools/` | 5 个闸门脚本 + `gate-log.ndjson`（本地留痕，已忽略） |
+| `tools/` | 6 个闸门脚本 + `check-reply.mjs` + `gate-log.ndjson`（本地留痕，已忽略） |
 | `.githooks/` | `pre-commit`（sh 入口）+ `pre-commit.mjs` |
-| `tests/` | **尚未建立**（实施阶段随纯函数模块一起建） |
+| `tests/` | 265 个测试：`tests/unit/` 单测、`tests/contract/` 契约、`tests/*.test.mjs` 冒烟；夹具在 `tests/helpers/` |
 | `runtime/` | **空**（等待 Electron 解包；已 gitignore） |
-| `whale-bridge/` | **空** |
+| `whale-bridge/` | 切片 1–3 已完成：`host.js` + `lib/` 十二个模块 |
 | `whale-button/` | **空** |
 | `whale-hud/` | 仅 `renderer/favicon-whale.svg`（3634 字节，自宿主 web 前端复制） |
 | `whale-window/` | **空** |
@@ -112,19 +112,33 @@
 | 8 | 静默兜底会吞掉真实失败 | 闸门 2 曾把 lint 的 9 个真实错误当成「eslint 未安装」跳过；改为显式 `requiresTool()` 检查 |
 | 9 | 测试并发争用同一端口、且互相覆盖单例 | `apply(ctx, { port })` 显式传端口（不用环境变量——测试文件共享进程会互相覆盖）；`apply`/`dispose` 生命周期用例串行分组 |
 | 10 | `new URL(..., import.meta.url).pathname` 会把中文路径 URL 编码 | 一律改用 `fileURLToPath(import.meta.url)`，否则路径含中文时文件找不到 |
+| 11 | `fetch` 无法设置 `Host` 头（受控头） | 测「伪造 Host 被拒」必须用 `node:http` 的 `request()` 直发，用 fetch 测的其实是默认 Host |
+| 12 | JS 正则 `\b` 在中文后失效 | `\w` 只含 `[A-Za-z0-9_]`，中文字符不算词字符；中英混排的正则要把 `\b` 只用在 ASCII 分支上 |
+| 13 | 正则里 `\s*` 会吃掉换行 | 匹配「行首」模式时用 `[ \t]*`，否则整块文本被当成一行，导致拦截规则漏判 |
 
 ---
 
 ## 六、下一步
 
-**切片 3：实时通道** —— `lib/sse.mjs`（SSE 端点 + `Last-Event-ID` 续传）+ 剩余路由，把 22 条凑齐；含 `/whale/hud`（投影层）、`/whale/open`、`/whale/close`、`/whale/send`、`/whale/command`、`/whale/abort`、`/whale/resume`、`/whale/model`、`/whale/activate`、`/whale/approval`、`/whale/action`、`/whale/models`、`/whale/windows`、`/whale/follow`、`/whale/events`、`/whale/hud/events`。
+**切片 4：悬浮条** —— `whale-hud/`：Electron 主进程（`main.cjs` + 几何 / 状态机拆模块）+ 渲染层（`renderer/hud.js` 接 `/whale/hud` 与 `/whale/hud/events`），按《页面框架》渲染五元素。`runtime/electron.exe` 已就位（Electron 44.0.0），无需再准备运行时。
+
+---
+
+## 六·补、切片 3 的遗留待办
+
+| 项 | 状态 | 何时了结 |
+|---|---|---|
+| C7/C8/C12（真拉起小窗、复用、孤儿口径） | **本片验不了**——缺 `whale-window/` | 切片 5 完成后回补 |
+| `/whale/models` 的真实模型目录探测 | 按 S3-D3 降级交付（空数组 + `reason`） | 装插件进真实宿主时按实测口径补 |
+
+> 这两条不是遗漏，是**范围声明里写明的诚实边界**。回补时须在汇报页明确标注「此前为降级，现已实测」。
 
 六片顺序（已定）：
 1. **切片 1** ✅ 桥骨架（`91fa15c`）—— 4 条只读路由。
 2. **切片 2** ✅ 数据源（`b78857f`）—— 事件订阅 + 双折叠器 + 三个纯函数内核。
-3. **切片 3** ⬜ 实时通道 —— SSE + 补齐 22 条路由 + `/whale/hud`。
+3. **切片 3** ✅ 实时通道（批次 A `d4b74ad` + 批次 B）—— SSE 双端点 + 续传 + 22 条路由全量落地。
 4. **切片 4** ⬜ 悬浮条 —— `whale-hud/`。
-5. **切片 5** ⬜ 小窗 —— `whale-window/`。
+5. **切片 5** ⬜ 小窗 —— `whale-window/`（回补 C7/C8/C12）。
 6. **切片 6** ⬜ 页面按钮 —— `whale-button/`。
 
 每个切片完成 = 自测 + `node tools/gate.mjs` 通过 → 提交 → 请用户验收（开发规范 6.1）。
@@ -141,3 +155,4 @@
 | v1.1 | 2026-10-05 | 步骤 7 完成：三件套改为「入口 + 指路」形态；补 R0 目录联接；清理 `whale-pages/` 与临时件 |
 | v1.2 | 2026-10-06 | 步骤 8、9 完成：35 条强制项规范 + references 五份；git 仓库初始化（首提交 `65b5bdb`，42 文件）；六道闸门与预提交钩子验证可用；新增 3 项环境坑（6/7/8） |
 | v1.3 | 2026-10-06 | 切片 1、2 完成并提交（`91fa15c`、`b78857f`）；115 测试全绿、六闸门全过；`runtime/electron.exe` 就位；新增 2 项环境坑（9/10） |
+| v1.4 | 2026-10-06 | 切片 3 完成：SSE 双端点 + `Last-Event-ID` 续传 + 22 条路由全量落地；265 测试全绿；新增**闸门 7 正文守门器**（`tools/check-reply.mjs`，把「回复正文不得含内部摘要」变成机械检查）；规范强制项增至 37 条；新增 3 项环境坑（11/12/13）。遗留：C7/C8/C12 待切片 5 回补 |

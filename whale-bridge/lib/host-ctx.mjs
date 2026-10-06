@@ -112,11 +112,94 @@ export function createHostAccess(ctx) {
   /**
    * 列出可用模型。
    *
-   * 本片（切片 1）不接宿主模型目录服务，统一返回空数组，
-   * 由 `/whale/models`（切片 3）再实现。此处保留接口形状。
+   * 探测顺序（先可靠后推测）：
+   *   1. 宿主若暴露 `models` 服务，直接问它
+   *   2. 否则从已加载会话里收集实际出现过的 provider/model 组合
+   *   3. 都没有 → 返回空数组，由 `/whale/models` 说明原因
+   *
+   * **不硬编码模型名**：桥不认识 magpie 之外还有哪些 provider，
+   * 编出来的列表会让用户照着切到一个不存在的模型上。
+   *
+   * @returns {Array<{provider: string, model: string}>}
    */
   function listModels() {
-    return [];
+    // 途径 1：宿主模型目录服务
+    const modelsService = serviceOf(ctx, "models");
+    if (modelsService !== undefined && typeof modelsService.list === "function") {
+      const direct = safe(() => modelsService.list(), undefined);
+      const normalized = normalizeModels(direct);
+      if (normalized.length > 0) return normalized;
+    }
+
+    // 途径 2：从会话的 request/context 事件里收集（桥看得见的真实组合）
+    return collectModelsFromSessions();
+  }
+
+  /**
+   * 归一化宿主模型目录的返回形状。
+   * 宿主不同版本可能返回字符串数组或对象数组，这里统一成 `{provider, model}`。
+   * @param {unknown} raw
+   * @returns {Array<{provider: string, model: string}>}
+   */
+  function normalizeModels(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const item of raw) {
+      if (typeof item === "string" && item !== "") {
+        out.push({ provider: null, model: item });
+        continue;
+      }
+      const provider = item?.provider;
+      const model = item?.model ?? item?.id ?? item?.name;
+      if (typeof model === "string" && model !== "") {
+        out.push({
+          provider: typeof provider === "string" ? provider : null,
+          model,
+        });
+      }
+    }
+    return dedupeModels(out);
+  }
+
+  /**
+   * 从宿主会话里收集出现过的模型。
+   *
+   * 宿主会话对象的形状随版本变化，这里只做「有就用、没有就跳过」的宽松探测，
+   * 不做任何猜测性补全。
+   * @returns {Array<{provider: string, model: string}>}
+   */
+  function collectModelsFromSessions() {
+    if (sessions === undefined) return [];
+    return safe(() => {
+      const raw = sessions.list();
+      if (!Array.isArray(raw)) return [];
+      const out = [];
+      for (const item of raw) {
+        const header = item?.header ?? item;
+        const provider = header?.model?.provider ?? header?.provider;
+        const model = header?.model?.model ?? header?.model;
+        if (typeof model === "string" && model !== "") {
+          out.push({
+            provider: typeof provider === "string" ? provider : null,
+            model,
+          });
+        }
+      }
+      return dedupeModels(out);
+    }, []);
+  }
+
+  /** 按 provider+model 去重，保持首次出现顺序。 */
+  function dedupeModels(list) {
+    const seen = new Set();
+    const out = [];
+    for (const item of list) {
+      const key = `${item.provider ?? ""}|${item.model}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+    return out;
   }
 
   /**

@@ -1,7 +1,7 @@
 /**
- * 六道闸门统一入口
+ * 七道闸门统一入口
  *
- * 职责：按顺序执行《开发规范》§4 定义的六道质量闸门，汇总结果，
+ * 职责：按顺序执行《开发规范》§4 定义的七道质量闸门，汇总结果，
  *       并把执行记录追加到 tools/gate-log.ndjson。
  * 所属层：工程工具（tools/）
  *
@@ -12,9 +12,10 @@
  *   4 密钥扫描   tools/scan-secrets.mjs
  *   5 依赖扫描   tools/scan-deps.mjs
  *   6 规范扫描   tools/scan-rules.mjs
+ *   7 正文守门器自检 tools/check-reply.mjs --selftest
  *
  * 模式：
- *   node tools/gate.mjs            执行全部六道
+ *   node tools/gate.mjs            执行全部七道
  *   node tools/gate.mjs --quick    只执行 1/4/5/6（不需要 eslint、不需要测试）
  *   node tools/gate.mjs --commit   提交前模式，等同全部（预提交钩子用）
  *
@@ -27,7 +28,7 @@ import { appendFileSync, existsSync } from "node:fs";
 const args = new Set(process.argv.slice(2));
 const quick = args.has("--quick");
 
-/** 六道闸门定义。 */
+/** 七道闸门定义。 */
 const GATES = [
   {
     id: 1,
@@ -72,6 +73,15 @@ const GATES = [
     cmd: () => [process.execPath, ["tools/scan-rules.mjs"]],
     skipInQuick: false,
   },
+  {
+    id: 7,
+    name: "正文守门器自检",
+    // 这条闸门检查的不是项目代码，而是「防止内部摘要混进用户回复」的
+    // 拦截规则本身是否有效（正样例必须被拦、反样例必须放行）。
+    // 它进闸门的理由：空壳规则比没有规则更危险——会让人以为纪律被执行了。
+    cmd: () => [process.execPath, ["tools/check-reply.mjs", "--selftest"]],
+    skipInQuick: false,
+  },
 ];
 
 function runGate(gate) {
@@ -108,7 +118,7 @@ function runGate(gate) {
 const results = [];
 const startedAt = new Date();
 
-console.log("=== 六道质量闸门 ===\n");
+console.log("=== 七道质量闸门 ===\n");
 
 for (const gate of GATES) {
   process.stdout.write(`闸门 ${gate.id} ${gate.name} ... `);

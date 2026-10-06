@@ -249,8 +249,8 @@ test("apply/dispose 生命周期（串行）", async (t) => {
     const res = await fetch(`http://127.0.0.1:${APPLY_PORT}/whale`);
     assert.equal(res.status, 200);
     const json = await res.json();
-    // 切片 1 四条 + 切片 2 的 /whale/fold + 切片 3 只读七条
-    assert.equal(json.implementedCount, 12);
+    // 切片 3 完成后：22 条路由全部实现，不再有占位
+    assert.equal(json.implementedCount, 22);
     assert.equal(json.routeCount, 22);
   });
 
