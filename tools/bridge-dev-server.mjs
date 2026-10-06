@@ -95,6 +95,9 @@ function assistantEvent(seq, inputTokens, cacheReadTokens, outputTokens) {
  * 会话先「跑起来」（turn/start）再发带用量的事件，
  * 这样 `speed.phase` 才是 running —— 悬浮条的绿点与滚筒都依赖这个判据。
  *
+ * 同时灌一条**用户发言**：小窗的消息流要能区分「你」与「DSH」，
+ * 只有助手消息时看不出分流对不对。
+ *
  * @param {object} ctx
  * @param {number} count
  * @param {Array<string>} titles
@@ -115,7 +118,20 @@ function seed(ctx, count, titles) {
       type: "turn/start",
       data: { turn: 1 },
     });
-    ctx.__emit("session/event", session, assistantEvent(3 + i, 983, 92288, 120 + i * 40));
+    // 用户发言（只有第 1 个会话灌，便于分辨）
+    //
+    // 注意**事件封套不同**：宿主的 user/message 把内容直接放在 `data.content`，
+    // 没有 `message` 包裹；而 assistant/message 是 `data.message.content`。
+    // 这不是笔误——references/session-events.md 实测如此，两者形状确实不同。
+    if (i === 0) {
+      ctx.__emit("session/event", session, {
+        seq: 3,
+        time: Date.now(),
+        type: "user/message",
+        data: { role: "user", content: [{ type: "text", text: "帮我看下这个项目" }] },
+      });
+    }
+    ctx.__emit("session/event", session, assistantEvent(4 + i, 983, 92288, 120 + i * 40));
   }
   console.log(`[桥] 已灌入 ${count} 个假会话：${titles.slice(0, count).join(" / ")}`);
 }

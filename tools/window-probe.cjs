@@ -191,6 +191,38 @@ app.whenReady().then(async () => {
     maxReloads: require(path.join(REPO_ROOT, "whale-window", "lib", "recovery.cjs")).RENDERER_RELOAD_MAX,
   };
 
+  // ── 消息流分流：用户 / 助手 / 工具必须分得开 ──
+  // 「读错字段也能跑」的典型：按 role 读而桥给 kind，结果全渲染成助手且不报错。
+  report.stream = await run(`(() => {
+    const nodes = [...document.querySelectorAll(".stream .msg, .stream .tool-line")];
+    const rows = nodes.map((n) => ({
+      cls: n.className,
+      role: n.querySelector(".role") ? n.querySelector(".role").textContent : null,
+      text: n.textContent.slice(0, 40),
+    }));
+    return {
+      count: rows.length,
+      rows: rows.slice(0, 6),
+      hasUser: rows.some((r) => r.cls.includes("me")),
+      hasAi: rows.some((r) => r.cls.includes("ai")),
+      hasTool: rows.some((r) => r.cls.includes("tool-line")),
+      hasEmpty: document.querySelector(".stream .empty") !== null,
+    };
+  })()`);
+
+  // ── 发送通路：回合空闲时点发送，桥应收到 user/message ──
+  await run(`(() => {
+    const input = document.getElementById("input");
+    input.value = "来自小窗的测试消息";
+    return true;
+  })()`);
+  await run("document.getElementById('btnSend').click()");
+  await new Promise((r) => setTimeout(r, 1200));
+  report.afterSend = await run(`({
+    inputCleared: document.getElementById("input").value === "",
+    sendAria: document.getElementById("btnSend").getAttribute("aria-label")
+  })`);
+
   // ── 判定 ──
   const okNotBlank = true;
   const okB1 =
@@ -205,14 +237,25 @@ app.whenReady().then(async () => {
     report.permissionSequence[2] === "仅可查看" &&
     report.permissionSequence[3] === "工作区内修改";
   const okSend = report.sendButton.ariaLabel === "发送";
+  // 消息流必须能分出「你」与「DSH」：只有助手消息时看不出分流对不对，
+  // 而按错字段读的表现正是「全部渲染成助手且不报错」
+  const okStream =
+    report.stream.count > 0 &&
+    report.stream.hasUser === true &&
+    report.stream.hasAi === true;
+  const okSendPath = report.afterSend.inputCleared === true;
   const okA11 =
     report.a11.consoleErrors.length === 0 &&
     report.a11.preloadErrors.length === 0 &&
     report.a11.renderGone.length === 0;
 
-  report.checks = { okNotBlank, okB1, okB4, okTopbar, okHead, okPerm, okSend, okA11 };
+  report.checks = {
+    okNotBlank, okB1, okB4, okTopbar, okHead, okPerm, okSend, okStream, okSendPath, okA11,
+  };
   report.verdict =
-    okNotBlank && okB1 && okB4 && okTopbar && okHead && okPerm && okSend && okA11 ? "pass" : "fail";
+    okNotBlank && okB1 && okB4 && okTopbar && okHead && okPerm && okSend && okStream && okSendPath && okA11
+      ? "pass"
+      : "fail";
 
   // 顺手存一张窗口自身截图，便于人工看
   try {

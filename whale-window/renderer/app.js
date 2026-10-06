@@ -82,12 +82,17 @@
   /**
    * 消息流。
    *
-   * 只在「消息条数或最后一条变了」时重建——每 5 秒轮询都重建会让用户
-   * 正在滚动的阅读位置被重置。
+   * 按桥给的 `kind` 分流：`user` / `assistant` / `tool`。
+   * **不要按 `role` 读**——桥给的是 `kind`，读错字段的表现是每条消息都渲染成
+   * 助手、用户发言完全看不出来，而且不报错。
+   *
+   * 只在「消息条数或最后一条变了」时重建：每 5 秒轮询都重建会把用户
+   * 正在滚动的位置重置回底部。
    */
   let lastSignature = null;
   function renderStream(state) {
-    const sig = `${state.messages.length  }|${  state.messages[state.messages.length - 1]?.text ?? ""}`;
+    const last = state.messages[state.messages.length - 1];
+    const sig = `${state.messages.length}|${last?.text ?? ""}|${last?.name ?? ""}`;
     if (sig === lastSignature) return;
     lastSignature = sig;
 
@@ -102,12 +107,23 @@
     }
 
     state.messages.forEach(function (m) {
+      const kind = m.kind ?? "assistant";
+
+      // 工具调用单独一种行样式（等宽、浅底）
+      if (kind === "tool") {
+        const line = global.document.createElement("div");
+        line.className = "tool-line";
+        line.textContent = `tool · ${m.name ?? "未知工具"}`;
+        dom.stream.appendChild(line);
+        return;
+      }
+
       const wrap = global.document.createElement("div");
-      wrap.className = `msg ${  m.role === "me" ? "me" : "ai"}`;
+      wrap.className = `msg ${kind === "user" ? "me" : "ai"}`;
       const role = global.document.createElement("div");
       role.className = "role";
       // 角色文案：用户「你」，助手「DSH」
-      role.textContent = m.role === "me" ? "你" : "DSH";
+      role.textContent = kind === "user" ? "你" : "DSH";
       const body = global.document.createElement("div");
       body.textContent = m.text ?? "";
       wrap.appendChild(role);

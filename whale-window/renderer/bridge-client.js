@@ -157,6 +157,8 @@
           return res.json();
         })
         .then(function (json) {
+          // 面板给的是 {kind, text, seq}（桥投影过）；原样收下，不改名——
+          // 改名会造成「内部形状」与「桥形状」两套，多一处会不同步的地方
           state.messages = Array.isArray(json.messages) ? json.messages : [];
           state.todos = Array.isArray(json.todos) ? json.todos : [];
           // 桥给的是 agentRunning；同时兼容 running（老字段）
@@ -218,14 +220,19 @@
     /**
      * 把一条宿主事件并进快照。
      *
-     * 消息流只留最近 40 条（R-7：超出滚动丢弃，不泄漏内存）。
+     * **事件字段与面板字段不同**，必须归一到同一个内部形状：
+     *   - 增量流给的是宿主原样事件：`{type, data:{message:{content:[...]}}}`
+     *   - 面板给的是桥投影过的：`{kind:"user"|"assistant"|"tool", text, seq}`
+     * 统一成 `{kind, text}` 之后，渲染层只认一种形状。
+     * 曾经渲染层按 `role` 读，而桥给的是 `kind` —— 结果每条消息都渲染成「DSH」，
+     * 用户的发言完全看不出来。
      */
     function applyEvent(event) {
       const type = event.type;
       if (type === "user/message") {
-        pushMessage({ role: "me", text: textOf(event) });
+        pushMessage({ kind: "user", text: textOf(event), seq: event.seq ?? null });
       } else if (type === "assistant/message") {
-        pushMessage({ role: "ai", text: textOf(event) });
+        pushMessage({ kind: "assistant", text: textOf(event), seq: event.seq ?? null });
       } else if (type === "turn/start") {
         state.running = true;
         state.turns += 1;
@@ -235,7 +242,9 @@
       } else if (type === "step/start") {
         state.steps += 1;
       } else if (type === "tool/call") {
-        state.toolName = event.data && event.data.name ? event.data.name : null;
+        const name = event.data && event.data.name ? event.data.name : null;
+        state.toolName = name;
+        pushMessage({ kind: "tool", name, text: "", seq: event.seq ?? null });
       } else if (type === "request/context") {
         if (event.data && typeof event.data.contextWindow === "number") {
           state.contextWindow = event.data.contextWindow;
@@ -243,9 +252,20 @@
       }
     }
 
-    /** 取事件里的文本。 */
+    /**
+     * 取事件里的文本。
+     *
+     * **两种封套都要兜住**（references/session-events.md 实测）：
+     *   - `assistant/message` / `tool/result`：内容在 `data.message.content`
+     *   - `user/message`：内容直接在 `data.content`，**没有 message 包裹**
+     * 只认一种的话，另一种类型的消息会静默变成空文本被丢掉——
+     * 表现是「用户发的消息在小窗里根本不出现」。
+     */
     function textOf(event) {
-      const content = event.data && event.data.message ? event.data.message.content : null;
+      const data = event.data;
+      if (data === null || typeof data === "undefined") return "";
+      const container = data.message ?? data;
+      const content = container.content;
       if (Array.isArray(content)) {
         return content
           .filter(function (c) { return c && c.type === "text"; })

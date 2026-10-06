@@ -101,6 +101,39 @@ test("角色文案：用户「你」，助手「DSH」", () => {
   assert.ok(appJs.includes('"DSH"'), "助手角色文案应为「DSH」");
 });
 
+test("消息按桥给的 kind 分流，不得读 role（读错字段不报错，只是全部渲染成助手）", () => {
+  // 桥的面板投影给的是 {kind:"user"|"assistant"|"tool", text, seq}。
+  // 曾经渲染层按 m.role 读，于是每条消息都渲染成「DSH」、
+  // 用户的发言完全看不出来——而且**不报任何错**。
+  assert.ok(!/m\.role/.test(appJs), "不得读 m.role；桥给的是 kind");
+  assert.match(appJs, /m\.kind/, "必须按 kind 分流");
+  for (const kind of ["user", "assistant", "tool"]) {
+    assert.ok(appJs.includes(`"${kind}"`), `必须处理 kind="${kind}"`);
+  }
+});
+
+test("面板字段形状与桥的投影一致（字段名对不上是静默故障）", () => {
+  // 直接拿桥的投影函数产出的形状做对照，而不是照文档抄
+  const { messagesOf, todosOf } = require(join(ROOT, "whale-bridge", "lib", "panel-data.mjs"));
+  const fold = {
+    tail: [
+      { kind: "user", text: "你好", seq: 1 },
+      { kind: "assistant", text: "在的", seq: 2 },
+      { kind: "tool", name: "bash", state: "done", seq: 3 },
+      { kind: "todo", todos: [{ content: "做A", status: "pending" }] },
+    ],
+  };
+  const messages = messagesOf(fold);
+  assert.deepEqual(messages[0], { kind: "user", text: "你好", seq: 1 });
+  assert.equal(messages[2].kind, "tool");
+  assert.equal(messages[2].name, "bash");
+  assert.deepEqual(todosOf(fold), [{ content: "做A", status: "pending" }]);
+  // 渲染层必须认识这三个 kind
+  for (const m of messages) {
+    assert.ok(appJs.includes(`"${m.kind}"`), `渲染层不认识 kind="${m.kind}"`);
+  }
+});
+
 test("CSP 必须放行 'self'，否则 app.js / skin.css 被静默拦截（陷阱 4）", () => {
   const csp = /content="([^"]*default-src[^"]*)"/.exec(rawHtml)?.[1];
   assert.ok(csp !== undefined, "index.html 必须有 CSP");
