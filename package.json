@@ -1,0 +1,23 @@
+{
+  "name": "whale-suite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH 悬浮窗 + 小窗 + 宿主桥 + 页面按钮",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "gate": "node tools/gate.mjs",
+    "gate:quick": "node tools/gate.mjs --quick",
+    "lint": "eslint .",
+    "test": "node --test tests/",
+    "syntax": "node tools/check-syntax.mjs",
+    "scan:secrets": "node tools/scan-secrets.mjs",
+    "scan:deps": "node tools/scan-deps.mjs",
+    "scan:rules": "node tools/scan-rules.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

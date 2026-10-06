@@ -1,0 +1,47 @@
+# === 凭证（绝对禁止入库，开发规范 强制 28）===
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials.json
+
+# === 项目输入物（含既有源码，按「不读现存源码」约定整个排除）===
+_inbox/
+
+# === 一次性探查脚本与诊断产物 ===
+_probe/
+_diag/
+
+# === 运行时二进制（Electron，约 200MB，不进仓库）===
+runtime/
+
+# === 依赖与构建产物 ===
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# === 宿主 profile 备份与临时件 ===
+*.bak
+*.probe-bak
+_backup*/
+
+# === 编辑器与系统文件 ===
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+desktop.ini
+*.swp
+
+# === 闸门执行记录（本地留痕，不进仓库）===
+tools/gate-log.ndjson
+
+# === 日志与临时输出 ===
+*.log
+*.tmp
+_notes/

@@ -1,0 +1,4 @@
+#!/bin/sh
+# 预提交钩子：执行六道闸门，不过则阻止提交
+# 安装方式（不依赖 husky）：git config core.hooksPath .githooks
+exec node "$(dirname "$0")/pre-commit.mjs"
