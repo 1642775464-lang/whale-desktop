@@ -35,17 +35,33 @@ export const HOST = "127.0.0.1";
  * @property {URLSearchParams} query
  * @property {Record<string, unknown>} body
  * @property {object} host    宿主访问封装（host-ctx.mjs 产出）
+ * @property {object} bridge  桥自身的运行时依赖（折叠集 / SSE 广播表 / 小窗表等）
+ * @property {object} req     原始请求对象（仅 SSE 等需要自管响应的处理器使用）
+ * @property {object} res     原始响应对象（同上）
  */
+
+/**
+ * 自管响应标记。
+ *
+ * 两个 SSE 端点不能走「处理器返回对象 → 框架 sendJson」这条常规通路：
+ * 它们要长期持有响应流、自己写头和心跳。处理器只要把返回值设成这个符号，
+ * 框架就不再动响应（既不 sendJson 也不 sendError），由处理器全权负责收尾。
+ *
+ * 为什么用符号而不是 `{handled: true}`：符号不可被 JSON 序列化伪造，
+ * 也不会与任何正常返回体产生形状冲突。
+ */
+export const HANDLED = Symbol("whale.bridge.handled");
 
 /**
  * 创建 HTTP 服务实例（不自动监听）。
  *
  * @param {object} options
  * @param {object} options.host           宿主访问封装
+ * @param {object} [options.bridge]       桥自身的运行时依赖（折叠集 / SSE / 小窗表）
  * @param {(msg: string) => void} [options.log]
  * @returns {import("node:http").Server}
  */
-export function createBridgeServer({ host, log = () => {} }) {
+export function createBridgeServer({ host, bridge = {}, log = () => {} }) {
   const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
     const cors = corsHeaders(typeof origin === "string" ? origin : undefined);
@@ -95,10 +111,12 @@ export function createBridgeServer({ host, log = () => {} }) {
     }
 
     /** @type {HandlerCtx} */
-    const ctx = { method, path: pathname, query, body, host };
+    const ctx = { method, path: pathname, query, body, host, bridge, req, res };
 
     try {
       const result = await handler(ctx);
+      // 处理器已自管响应（SSE）：框架不得再写任何东西，否则会破坏流
+      if (result === HANDLED) return;
       sendJson(res, 200, result, cors);
     } catch (err) {
       const code = err.code ?? "internal";
@@ -106,6 +124,12 @@ export function createBridgeServer({ host, log = () => {} }) {
       // 内部错误落日志，对外只给有限信息
       if (status >= 500) {
         log(`[桥] 处理器异常 ${method} ${pathname}: ${err.stack ?? err.message}`);
+      }
+      // 已经被处理器写过的响应不能二次写头——那会抛 ERR_HTTP_HEADERS_SENT
+      if (res.headersSent) {
+        log(`[桥] 处理器在响应已开始后抛错 ${method} ${pathname}，无法回写错误体`);
+        res.end();
+        return;
       }
       sendError(res, status, code, err.message ?? "内部错误", cors);
     }

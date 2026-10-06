@@ -14,10 +14,16 @@
 import { createHostAccess } from "./lib/host-ctx.mjs";
 import { registerSliceOneRoutes, BRIDGE_NAME, BRIDGE_VERSION } from "./lib/handlers-slice1.mjs";
 import { registerSliceTwoRoutes } from "./lib/handlers-slice2.mjs";
+import { registerSliceThreeReadRoutes } from "./lib/handlers-slice3-read.mjs";
 import { close, createBridgeServer, listen, PORT, HOST } from "./lib/server.mjs";
 import { validateRouteTable } from "./lib/routes.mjs";
 import { createEventPipeline } from "./lib/events.mjs";
 import { createFoldSet } from "./lib/fold.mjs";
+import { CHANNEL_EVENTS, CHANNEL_HUD, createSseHub } from "./lib/sse.mjs";
+import { snapshotOf } from "./lib/fold-view.mjs";
+
+/** 心跳间隔（PRD F7）：每 2 秒重算一次速度并推 tick。 */
+export const HEARTBEAT_MS = 2000;
 
 /** 插件显示名。 */
 export const name = "whale-bridge";
@@ -66,8 +72,18 @@ export async function apply(ctx, options = {}) {
   registerSliceOneRoutes();
 
   // 折叠器与事件管线：先建集合，再建管线（管线依赖集合）
+  const startedAt = Date.now();
   const foldSet = createFoldSet();
-  const pipeline = createEventPipeline({ foldSet, log, startedAt: Date.now() });
+  const sse = createSseHub();
+  const pipeline = createEventPipeline({ foldSet, log, startedAt });
+
+  // 管线每接一条事件就立刻广播，**不等心跳**（PRD F7 实时性）。
+  // 心跳只负责重算速度——速度是「时间的函数」，没有新事件时也得动。
+  pipeline.subscribe((event, meta) => {
+    const payload = { sessionId: meta.sessionId, accepted: meta.accepted, event };
+    sse.broadcast(CHANNEL_EVENTS, "session", payload);
+    sse.broadcast(CHANNEL_HUD, "session", payload);
+  });
 
   registerSliceTwoRoutes({
     foldSet: () => foldSet,
@@ -75,11 +91,24 @@ export async function apply(ctx, options = {}) {
     meta: { version: BRIDGE_VERSION, port },
   });
 
+  const bridge = {
+    foldSet,
+    sse,
+    pipeline,
+    version: BRIDGE_VERSION,
+    port,
+    startedAt,
+  };
+
+  registerSliceThreeReadRoutes({ bridge });
+
   const host = createHostAccess(ctx);
-  const server = createBridgeServer({ host, log });
+  const server = createBridgeServer({ host, bridge, log });
 
   // 订阅宿主事件：必须在服务起来之前挂上，避免漏掉启动窗口期的事件
   const disposers = pipeline.attach(ctx);
+
+  let heartbeat = undefined;
 
   try {
     await listen(server, { port, host: HOST });
@@ -97,6 +126,12 @@ export async function apply(ctx, options = {}) {
     throw err;
   }
 
+  heartbeat = setInterval(() => {
+    heartbeatTick(sse, foldSet);
+  }, HEARTBEAT_MS);
+  // 心跳不应拖住宿主进程退出
+  if (typeof heartbeat.unref === "function") heartbeat.unref();
+
   log(`[${BRIDGE_NAME}] 已监听 http://${HOST}:${port}/whale（v${BRIDGE_VERSION}）`);
   log(`[${BRIDGE_NAME}] 宿主服务：${describeAvailable(host.available)}`);
   log(`[${BRIDGE_NAME}] 事件订阅：${disposers.length} 路已挂载`);
@@ -107,7 +142,43 @@ export async function apply(ctx, options = {}) {
   state.ctx = ctx;
   state.foldSet = foldSet;
   state.pipeline = pipeline;
+  state.sse = sse;
+  state.heartbeat = heartbeat;
   state.disposers = disposers;
+}
+
+/**
+ * 心跳一次：重算各会话速度并推轻量 tick。
+ *
+ * 为什么不一并推全量快照：悬浮条每秒都在动，推全量会让带宽随会话数线性增长。
+ * tick 只带「会随时间变化的三个数」（速度 / 占用 / 窗口），其余字段客户端本就有。
+ *
+ * 无客户端连接时**仍然重算但不推**——重算本身很便宜，推才是开销。
+ *
+ * @param {object} sse 广播表
+ * @param {object} foldSet 折叠集
+ * @param {number} [now] 注入当前时刻（测试用）
+ * @returns {{at: number, sessions: number}}
+ */
+export function heartbeatTick(sse, foldSet, now = Date.now()) {
+  const sessions = [];
+  for (const sessionId of foldSet.sessions.keys()) {
+    const snap = snapshotOf(foldSet, sessionId, now);
+    if (snap === null) continue;
+    sessions.push({
+      sessionId,
+      tokPerSec: snap.speed.tokPerSec,
+      contextUsed: snap.contextUsed,
+      contextWindow: snap.contextWindow,
+      phase: snap.speed.phase,
+    });
+  }
+
+  const payload = { kind: "tick", at: now, sessions };
+  if (sse.countOf(CHANNEL_HUD) > 0) sse.broadcast(CHANNEL_HUD, "tick", payload);
+  if (sse.countOf(CHANNEL_EVENTS) > 0) sse.broadcast(CHANNEL_EVENTS, "tick", payload);
+
+  return { at: now, sessions: sessions.length };
 }
 
 /**
@@ -117,9 +188,24 @@ export async function apply(ctx, options = {}) {
  * 否则宿主可能卡在卸载中。
  */
 export async function dispose() {
-  const { server, ctx, disposers } = state;
+  const { server, ctx, disposers, sse, heartbeat } = state;
 
-  // 先退订，避免关闭服务后仍有事件打进来
+  // 停心跳：它持有折叠集引用，不停会让对象无法释放
+  if (heartbeat !== undefined) {
+    clearInterval(heartbeat);
+  }
+
+  // 断开全部 SSE 客户端。必须早于 close(server)：
+  // 长连接会拖住 server.close()，先让它们收尾能让关闭更快也更确定。
+  if (sse !== undefined) {
+    try {
+      sse.closeAll();
+    } catch (err) {
+      logTo(ctx, `[${BRIDGE_NAME}] 断开 SSE 客户端出错（已忽略）：${err.message}`);
+    }
+  }
+
+  // 再退订，避免关闭服务后仍有事件打进来
   for (const off of disposers ?? []) {
     try {
       off();
@@ -141,6 +227,8 @@ export async function dispose() {
   state.ctx = undefined;
   state.foldSet = undefined;
   state.pipeline = undefined;
+  state.sse = undefined;
+  state.heartbeat = undefined;
   state.disposers = undefined;
 }
 
@@ -156,6 +244,10 @@ const state = {
   foldSet: undefined,
   /** @type {object | undefined} */
   pipeline: undefined,
+  /** @type {object | undefined} */
+  sse: undefined,
+  /** @type {ReturnType<typeof setInterval> | undefined} */
+  heartbeat: undefined,
   /** @type {Array<() => void> | undefined} */
   disposers: undefined,
 };

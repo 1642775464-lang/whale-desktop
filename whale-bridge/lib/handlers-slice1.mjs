@@ -8,6 +8,7 @@
  */
 
 import { register, describeRoutes, ROUTE_DEFS } from "./routes.mjs";
+import { panelPayload } from "./panel-data.mjs";
 
 /** 插件版本；与 whale-bridge/package.json 的 version 保持一致。 */
 export const BRIDGE_VERSION = "0.1.0";
@@ -51,12 +52,19 @@ function probe({ host }) {
 /**
  * GET /whale/panel —— 面板数据源
  *
- * 需 `?sessionId=`。本片返回小窗面板所需的结构骨架：消息流（空）、
- * 任务清单（空）、权限档位与模型档位（从宿主读取，缺失给 `–` 语义的 null）。
+ * 需 `?sessionId=`。返回小窗面板所需：消息流、任务清单、权限档位与模型档位。
+ *
+ * 消息流与任务清单来自折叠器（panel-data.mjs 投影）；切片 1 时它们是空数组，
+ * 切片 3 起接上真实数据。档位信息仍从宿主读取，缺失给 `null`。
  *
  * 归一化原则：**取不到就给 null，不编造**（降级原则：宁可显示 – 不显示错的数）。
+ *
+ * @param {object} ctx 处理器上下文
+ * @param {object} ctx.query
+ * @param {object} ctx.host
+ * @param {object} [ctx.bridge] 桥运行时依赖（含 foldSet）
  */
-function panel({ query, host }) {
+function panel({ query, host, bridge }) {
   const sessionId = query.get("sessionId");
   if (sessionId === null || sessionId === "") {
     const err = new Error("缺少 sessionId 参数");
@@ -74,18 +82,25 @@ function panel({ query, host }) {
   }
 
   const agent = host.getAgent(sessionId);
+  const foldSet = bridge?.foldSet;
+  const payload = foldSet === undefined ? null : panelPayload({ foldSet, sessionId, agent });
 
-  return {
-    ok: true,
-    sessionId,
-    // 消息流与任务清单由切片 2 的折叠器填充
-    messages: [],
-    todos: [],
-    // 档位信息：取不到给 null，不编造
-    permission: null,
-    model: null,
-    agentRunning: agent?.status === "running",
-  };
+  // 会话在宿主里存在、但桥还没收到它的事件时，给出骨架而不是报错：
+  // 「桥还没数据」与「会话不存在」是两回事，不该混淆。
+  if (payload === null) {
+    return {
+      ok: true,
+      sessionId,
+      messages: [],
+      todos: [],
+      permission: null,
+      model: null,
+      agentRunning: agent?.status === "running",
+      note: "该会话尚未产生桥可见的事件",
+    };
+  }
+
+  return { ok: true, ...payload };
 }
 
 /**
