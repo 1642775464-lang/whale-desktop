@@ -11,9 +11,15 @@
  *
  * 这个服务器**不进产品代码**，只是把宿主那一侧的契约实现成一条最小可跑路径。
  *
+ * ⚠️ 端口纪律：**默认端口故意避开测试占用段**。
+ * 测试占用的端口是 19387（桥默认）/19388/19389（smoke-slice2）/19390/19391（smoke-slice3），
+ * 开发服务器默认用 19500。若图省事让它跑在 19391 上，那条端口一旦没及时释放，
+ * `smoke-slice3` 的 `apply({port:19391})` 就会 EADDRINUSE 偶发失败——
+ * 表现为「闸门 3 时红时绿」，极难定位（踩过一次）。
+ *
  * 用法：
- *   node tools/bridge-dev-server.mjs                    # 起在 19387
- *   node tools/bridge-dev-server.mjs --port 19391       # 换端口
+ *   node tools/bridge-dev-server.mjs                    # 起在 19500
+ *   node tools/bridge-dev-server.mjs --port 19501       # 换端口
  *   node tools/bridge-dev-server.mjs --seed 2           # 造 2 个正在跑的会话
  */
 
@@ -114,9 +120,17 @@ function seed(ctx, count, titles) {
   console.log(`[桥] 已灌入 ${count} 个假会话：${titles.slice(0, count).join(" / ")}`);
 }
 
+/**
+ * 开发服务器默认端口。
+ *
+ * 刻意避开测试占用段（19387–19391）：本文件与测试同时跑过，
+ * 撞端口会让闸门 3 偶发红，归属极难判断。
+ */
+const DEV_PORT = 19500;
+
 /** 解析命令行参数。 */
 function parseArgs(argv) {
-  const out = { port: 19387, seed: 0 };
+  const out = { port: DEV_PORT, seed: 0 };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--port") out.port = Number(argv[i + 1]);
     if (argv[i] === "--seed") out.seed = Number(argv[i + 1]);
