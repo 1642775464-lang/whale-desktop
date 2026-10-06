@@ -1,8 +1,8 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v1.2
+- 文档版本：v1.3
 - 日期：2026-10-06
-- 状态：**步骤 1–9 全部完成，可以进入 MVP 端到端切片实施**
+- 状态：**步骤 1–9 全部完成；MVP 切片 1–2 已完成并提交，下一片为切片 3**
 - 项目根：`D:\DEEPSEEK\悬浮窗`
 - 冲突裁决顺序：**PRD > ARCHITECTURE > STATUS**（本文件与上游冲突时以上游为准）
 
@@ -10,9 +10,9 @@
 
 ## 一、一句话现状
 
-**图纸、地基、规矩都已就位，仓库与质量闸门已投入使用，可以开始写第一行实施代码。**
+**桥骨架与数据源已跑通：22 条路由声明就位（5 条已实现），宿主事件可经折叠器读出，115 个测试与六道闸门全绿。**
 
-九个规划步骤全部交付；git 仓库已初始化（首次提交 `65b5bdb`，42 个文件）；六道闸门与预提交钩子已验证可用。四个交付目录（`whale-bridge` / `whale-hud` / `whale-window` / `whale-button`）仍基本为空。
+九个规划步骤全部交付；git 仓库有 4 个提交（`65b5bdb` → `91fa15c` → `0bbbed7` → `b78857f`），分支 `main` + `develop`；六道闸门与预提交钩子已验证可用（`b78857f` 提交时钩子自动跑闸门并全过）。`whale-hud` / `whale-window` / `whale-button` 三个目录仍为空。
 
 ---
 
@@ -29,7 +29,9 @@
 | 7 | 规整项目文档 | ✅ 完成 | 根目录三件套 `Whale-PRD/ARCHITECTURE/STATUS.md` |
 | 8 | 开发规范 | ✅ 完成 | `docs/开发规范.md`（35 条强制项）+ `references/` 五份 |
 | 9 | Git + 质量闸门 | ✅ 完成 | git 仓库 + `.githooks/` + `tools/` 五脚本 |
-| — | MVP 端到端切片实施 | ⬜ **下一步** | 四个交付目录 |
+| 切片 1 | 桥骨架 | ✅ 完成（`91fa15c`） | 4 条只读路由 + 35 测试 |
+| 切片 2 | 数据源 | ✅ 完成（`b78857f`） | 事件订阅 + 双折叠器 + 3 个纯函数内核 + 115 测试 |
+| 切片 3 | 实时通道 | ⬜ **下一步** | SSE + 补齐 22 条路由 + `/whale/hud` |
 
 ---
 
@@ -108,25 +110,26 @@
 | 6 | Node 24 无 shell 时 spawn `.cmd` 报 `EINVAL` | 闸门 2 直接以 `node node_modules/eslint/bin/eslint.js` 调用，不走 `.cmd` 包装 |
 | 7 | git 无法 exec 无扩展名的 `.githooks/pre-commit` | 该文件写成 `#!/bin/sh` 脚本，内部 `exec node .../pre-commit.mjs` |
 | 8 | 静默兜底会吞掉真实失败 | 闸门 2 曾把 lint 的 9 个真实错误当成「eslint 未安装」跳过；改为显式 `requiresTool()` 检查 |
+| 9 | 测试并发争用同一端口、且互相覆盖单例 | `apply(ctx, { port })` 显式传端口（不用环境变量——测试文件共享进程会互相覆盖）；`apply`/`dispose` 生命周期用例串行分组 |
+| 10 | `new URL(..., import.meta.url).pathname` 会把中文路径 URL 编码 | 一律改用 `fileURLToPath(import.meta.url)`，否则路径含中文时文件找不到 |
 
 ---
 
 ## 六、下一步
 
-**MVP 端到端切片实施**（九步骤已全部完成，无剩余门禁）。
+**切片 3：实时通道** —— `lib/sse.mjs`（SSE 端点 + `Last-Event-ID` 续传）+ 剩余路由，把 22 条凑齐；含 `/whale/hud`（投影层）、`/whale/open`、`/whale/close`、`/whale/send`、`/whale/command`、`/whale/abort`、`/whale/resume`、`/whale/model`、`/whale/activate`、`/whale/approval`、`/whale/action`、`/whale/models`、`/whale/windows`、`/whale/follow`、`/whale/events`、`/whale/hud/events`。
 
-按《轻量架构草案》§3 的模块拆分表与《开发规范》强制 13–16 逐模块落地。建议顺序：
-
-1. **切片 1**：桥骨架 —— `whale-bridge/host.js` + `lib/server.mjs` + `lib/routes.mjs` 的最小可用版本（先通 `/whale/probe`、`/whale/panel`、`/whale/capability` 三条只读路由），配 `tests/` 单测。
-2. **切片 2**：数据源 —— `lib/events.mjs`（事件订阅）+ `lib/fold.mjs` + `lib/usage-stats.mjs` + `lib/zstd-frame.mjs`（三个纯函数模块，可脱离宿主单测）。
-3. **切片 3**：实时通道 —— `lib/sse.mjs` + 剩余路由，凑齐 22 条。
-4. **切片 4**：悬浮条 —— `whale-hud/`。
-5. **切片 5**：小窗 —— `whale-window/`。
-6. **切片 6**：页面按钮 —— `whale-button/`。
+六片顺序（已定）：
+1. **切片 1** ✅ 桥骨架（`91fa15c`）—— 4 条只读路由。
+2. **切片 2** ✅ 数据源（`b78857f`）—— 事件订阅 + 双折叠器 + 三个纯函数内核。
+3. **切片 3** ⬜ 实时通道 —— SSE + 补齐 22 条路由 + `/whale/hud`。
+4. **切片 4** ⬜ 悬浮条 —— `whale-hud/`。
+5. **切片 5** ⬜ 小窗 —— `whale-window/`。
+6. **切片 6** ⬜ 页面按钮 —— `whale-button/`。
 
 每个切片完成 = 自测 + `node tools/gate.mjs` 通过 → 提交 → 请用户验收（开发规范 6.1）。
 
-`runtime/electron.exe` 需在切片 4 之前解包就位（Electron 44.0.0，离线缓存无此版本，需从 GitHub Releases 取 157455369 字节的 zip 或由用户提供）。
+`runtime/electron.exe` **已就位**（Electron 44.0.0，157455369 字节，解包于 `runtime/`，`runtime/version` 为 `44.0.0`），切片 4 无需再准备。
 
 ---
 
@@ -137,3 +140,4 @@
 | v1.0 | 2026-10-05 | 建立；记录步骤 1–6 完成、工作区实测状态、五项已知环境坑 |
 | v1.1 | 2026-10-05 | 步骤 7 完成：三件套改为「入口 + 指路」形态；补 R0 目录联接；清理 `whale-pages/` 与临时件 |
 | v1.2 | 2026-10-06 | 步骤 8、9 完成：35 条强制项规范 + references 五份；git 仓库初始化（首提交 `65b5bdb`，42 文件）；六道闸门与预提交钩子验证可用；新增 3 项环境坑（6/7/8） |
+| v1.3 | 2026-10-06 | 切片 1、2 完成并提交（`91fa15c`、`b78857f`）；115 测试全绿、六闸门全过；`runtime/electron.exe` 就位；新增 2 项环境坑（9/10） |
