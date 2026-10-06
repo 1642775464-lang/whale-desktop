@@ -121,6 +121,8 @@ function hud({ bridge }) {
       port: bridge.port,
       startedAt: bridge.startedAt,
       now: Date.now(),
+      // 标题兜底：折叠器没有就问宿主投影（详见 host.js 的 resolveTitle 注释）
+      resolveTitle: bridge.resolveTitle,
     }),
   };
 }

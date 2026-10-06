@@ -151,6 +151,21 @@ export async function apply(ctx, options = {}) {
   bridge.approval = approval;
   bridge.hostActions = hostActions;
 
+  /**
+   * 标题兜底：折叠器没有标题时读宿主投影。
+   *
+   * 标题不在 header 里、也不靠事件推给桥（实测：`listFields(header)` 不含 title，
+   * 标题是 `dsh-session-title` 注册的 key="title" 会话投影）。
+   * 桥原先只等 `session/title` 事件，对「会话早有标题、桥后挂上来」永远等不到，
+   * 表现就是**悬浮条与小窗都识别不到会话标题**。
+   *
+   * 映射失败一律给 null：宁可显示占位符，也不编一个假标题。
+   */
+  bridge.resolveTitle = (sessionId) => {
+    const session = host.getSession(sessionId);
+    return host.titleOf(session);
+  };
+
   // 只读与写操作路由都在桥的全部依赖就位之后再注册，
   // 避免出现「路由已注册但依赖还没装上」的中间态
   registerSliceThreeReadRoutes({ bridge });

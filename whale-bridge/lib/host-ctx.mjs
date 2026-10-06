@@ -150,6 +150,35 @@ export function createHostAccess(ctx) {
     return safe(() => agents.get(id), undefined);
   }
 
+  /**
+   * 从会话投影里读标题。
+   *
+   * **标题不在 header 里，也不靠 `session/title` 事件推给桥。**
+   * 实测（宿主已发布代码）：
+   *   - `dsh-api-session-controller` 的 `listFields(header)` 只返回
+   *     `parentSessionId / origin / cwd`，**不含 title**
+   *   - 标题由 `dsh-session-title` 注册成 **key = "title" 的会话投影**
+   *     （`titleProjectionDefinition`）
+   *   - 读法是 `sessionProjections.snapshot(session, keys)` → `{asOfSeq, values}`，
+   *     `values.title` 即标题 —— 宿主自己的控制器就是这么读的
+   *
+   * 桥原先只等 `session/title` 事件，而那个事件只在**标题被写入**时产生；
+   * 对「会话早就有了标题、桥后挂上来」的情形永远等不到，
+   * 表现就是**悬浮条与小窗都识别不到会话标题**（用户报过一次）。
+   *
+   * @param {object} session 宿主会话对象
+   * @returns {string | null} 标题；取不到给 null（不编造）
+   */
+  function titleOf(session) {
+    if (projections === undefined || session === undefined || session === null) return null;
+    return safe(() => {
+      const snap = projections.snapshot(session, ["title"]);
+      const value = snap?.values?.title;
+      // 投影可能给 null（尚无标题）；只接受非空字符串
+      return typeof value === "string" && value !== "" ? value : null;
+    }, null);
+  }
+
   /** 列出某 agent 可见的斜杠命令。 */
   function listCommands(agent) {
     if (commands === undefined || agent === undefined) return [];
@@ -296,5 +325,6 @@ export function createHostAccess(ctx) {
     listCommands,
     listModels,
     probe,
+    titleOf,
   };
 }

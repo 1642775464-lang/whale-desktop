@@ -26,15 +26,28 @@ const MESSAGE_KINDS = new Set(["user", "assistant"]);
  * @param {string} deps.sessionId 会话 id
  * @param {object} [deps.agent] 宿主 agent（用于报告运行态）
  * @param {object | null} [deps.gates] 档位信息，由调用方从宿主读取
+ * @param {(sessionId: string) => (string | null)} [deps.resolveTitle]
+ *        标题兜底：折叠器没有标题时向它要（读宿主投影）。
+ *        理由同 fold-view.snapshotOf —— 桥只等 `session/title` 事件，
+ *        对「会话早有标题、桥后挂上来」永远等不到，于是小窗识别不到标题。
  * @returns {object | null} 会话不在折叠器里时 null
  */
-export function panelPayload({ foldSet, sessionId, agent = undefined, gates = null }) {
+export function panelPayload({
+  foldSet, sessionId, agent = undefined, gates = null, resolveTitle = undefined,
+}) {
   const fold = foldSet.sessions.get(sessionId);
   if (fold === undefined) return null;
 
+  // 折叠器有就用折叠器的，没有才问投影（与 hud 快照同一口径）
+  let title = fold.title;
+  if ((title === null || title === undefined || title === "") && typeof resolveTitle === "function") {
+    title = resolveTitle(sessionId) ?? null;
+    if (typeof title === "string" && title !== "") fold.title = title;
+  }
+
   return {
     sessionId,
-    title: fold.title,
+    title,
     workspace: fold.workspace,
     messages: messagesOf(fold),
     todos: todosOf(fold),

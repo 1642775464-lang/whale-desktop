@@ -24,6 +24,52 @@ test("panelPayload：会话不在折叠器里返回 null", () => {
   assert.equal(panelPayload({ foldSet, sessionId: "nope" }), null);
 });
 
+test("panelPayload：折叠器没有标题时向投影兜底（否则小窗识别不到标题）", () => {
+  // 真实踩过：标题不在 header 里、也不靠 session/title 事件推给桥，
+  // 而是 dsh-session-title 注册的 key="title" 会话投影。
+  // 桥只等事件，对「会话早有标题、桥后挂上来」永远等不到 ——
+  // 表现就是**悬浮条与小窗都识别不到会话标题**。
+  const fold = foldOf([]);
+  fold.title = null;
+  const out = panelPayload({
+    foldSet: setOf(fold),
+    sessionId: "s1",
+    resolveTitle: () => "真实标题",
+  });
+  assert.equal(out.title, "真实标题", "折叠器没有时必须问投影");
+  // 回填：下一轮不必再问
+  assert.equal(fold.title, "真实标题", "取到后应回填折叠器");
+});
+
+test("panelPayload：折叠器已有标题时以折叠器为准（事件最新）", () => {
+  const fold = foldOf([]);
+  let asked = false;
+  const out = panelPayload({
+    foldSet: setOf(fold),
+    sessionId: "s1",
+    resolveTitle: () => { asked = true; return "投影标题"; },
+  });
+  assert.equal(out.title, "标题", "折叠器有就用折叠器的");
+  assert.equal(asked, false, "不该白问投影");
+});
+
+test("panelPayload：投影也没有标题时给 null，不编造", () => {
+  const fold = foldOf([]);
+  fold.title = "";
+  const out = panelPayload({
+    foldSet: setOf(fold),
+    sessionId: "s1",
+    resolveTitle: () => null,
+  });
+  assert.equal(out.title, null, "取不到就给 null，让界面显示占位符");
+});
+
+test("panelPayload：不传 resolveTitle 时行为与从前一致（向后兼容）", () => {
+  const fold = foldOf([]);
+  const out = panelPayload({ foldSet: setOf(fold), sessionId: "s1" });
+  assert.equal(out.title, "标题");
+});
+
 test("panelPayload：基础字段来自折叠态", () => {
   const fold = foldOf([]);
   const out = panelPayload({ foldSet: setOf(fold), sessionId: "s1" });

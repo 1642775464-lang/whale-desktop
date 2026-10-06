@@ -83,6 +83,16 @@ function createDocumentedCtx() {
     attachments: {
       admitPromptContent: (content) => { touched.add("attachments.admitPromptContent"); return content; },
     },
+    // 会话投影：标题走这里（key="title"）。
+    // 形状按宿主 dsh-session-projection 的 snapshot(session, keys) → {asOfSeq, values}。
+    sessionProjections: {
+      snapshot: (s, keys) => {
+        touched.add("sessionProjections.snapshot");
+        // 只实现了 title 这一个投影，够验通路
+        if (Array.isArray(keys) && !keys.includes("title")) return { asOfSeq: 0, values: {} };
+        return { asOfSeq: 1, values: { title: "预检会话的标题" } };
+      },
+    },
     logger: {
       info: () => {},
       warn: () => {},
@@ -140,6 +150,31 @@ try {
 
   const panel = await call("GET", "/whale/panel?sessionId=preflight-session");
   report.phases.push({ phase: "GET /whale/panel", status: panel.status, running: panel.json?.running });
+
+  // ── 标题通路：这是「悬浮条与小窗都识别不到会话标题」那个 bug 的验收 ──
+  //
+  // 关键：先灌一条**不含标题**的会话事件，让折叠器建出会话，
+  // 再验 /whale/hud 与 /whale/panel 的 title 是不是从**投影**里补出来的。
+  // 只灌事件不灌标题，正是线上那种「桥后挂上来、收不到 title 事件」的情形。
+  ctx.emit(
+    "session/event",
+    { id: "preflight-session", header: { id: "preflight-session" } },
+    { seq: 1, time: Date.now(), type: "turn/start", data: { turn: 1 } },
+  );
+  const hudTitle = await call("GET", "/whale/hud");
+  const hudSession = (hudTitle.json?.sessions ?? []).find((s) => s.sessionId === "preflight-session");
+  report.phases.push({
+    phase: "标题兜底（/whale/hud）",
+    title: hudSession?.title ?? null,
+    ok: hudSession?.title === "预检会话的标题",
+  });
+
+  const panelTitle = await call("GET", "/whale/panel?sessionId=preflight-session");
+  report.phases.push({
+    phase: "标题兜底（/whale/panel）",
+    title: panelTitle.json?.title ?? null,
+    ok: panelTitle.json?.title === "预检会话的标题",
+  });
 } catch (err) {
   report.phases.push({ phase: "requests", ok: false, error: err.message });
 }

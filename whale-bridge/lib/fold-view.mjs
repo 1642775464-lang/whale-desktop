@@ -23,16 +23,30 @@ export const TAIL_LIMIT = 40;
  * @param {object} foldSet 折叠集
  * @param {string} sessionId 会话 id
  * @param {number} now 当前时刻（epoch ms）
+ * @param {(sessionId: string) => (string | null)} [resolveTitle]
+ *        标题兜底：折叠器没有标题时向它要（读宿主投影）。
+ *        为什么需要：桥只等 `session/title` 事件，而那个事件只在**标题被写入**时产生；
+ *        对「会话早有标题、桥后挂上来」的情形永远等不到，
+ *        表现就是**悬浮条与小窗都识别不到会话标题**（实测踩过）。
  * @returns {object | null} 会话不在折叠器里时 null
  */
-export function snapshotOf(foldSet, sessionId, now) {
+export function snapshotOf(foldSet, sessionId, now, resolveTitle = undefined) {
   const fold = foldSet.sessions.get(sessionId);
   if (fold === undefined) return null;
+
+  // 折叠器有就用折叠器的；没有才问投影——
+  // 这样事件路径仍然是最新的，投影只补「桥没收到过标题事件」那一种情况
+  let title = fold.title;
+  if ((title === null || title === undefined || title === "") && typeof resolveTitle === "function") {
+    title = resolveTitle(sessionId) ?? null;
+    // 回填到折叠器：下一轮不必再问投影
+    if (typeof title === "string" && title !== "") fold.title = title;
+  }
 
   const speed = speedAt(fold.samples, now);
   return {
     sessionId: fold.sessionId,
-    title: fold.title,
+    title,
     workspace: fold.workspace,
     speed: {
       phase: fold.phase,
@@ -56,13 +70,14 @@ export function snapshotOf(foldSet, sessionId, now) {
  * 生成全量快照（`GET /whale/hud` 的载荷）。
  *
  * @param {object} foldSet 折叠集
- * @param {{ version: string, port: number, startedAt: number, now: number }} meta
+ * @param {{ version: string, port: number, startedAt: number, now: number,
+ *           resolveTitle?: (sessionId: string) => (string | null) }} meta
  * @returns {object}
  */
 export function hudSnapshot(foldSet, meta) {
   const sessions = [];
   for (const sessionId of foldSet.sessions.keys()) {
-    const snap = snapshotOf(foldSet, sessionId, meta.now);
+    const snap = snapshotOf(foldSet, sessionId, meta.now, meta.resolveTitle);
     if (snap !== null) sessions.push(snap);
   }
   return {

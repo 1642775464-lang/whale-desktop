@@ -79,6 +79,60 @@ test("未声明 inject 的服务取不到，但**必须被记进 missingInject**
   );
 });
 
+test("titleOf：从会话投影读标题（标题不在 header 里）", () => {
+  // 实测：dsh-api-session-controller 的 listFields(header) 只返回
+  // parentSessionId / origin / cwd，**不含 title**；
+  // 标题是 dsh-session-title 注册的 key="title" 会话投影，
+  // 读法 sessionProjections.snapshot(session, keys) → values.title。
+  const session = { id: "s1", header: { id: "s1" } };
+  const projections = {
+    snapshot: (s, keys) => {
+      assert.equal(s, session, "必须把会话对象传进去");
+      assert.deepEqual(keys, ["title"], "只取 title 一个投影，别把全部算一遍");
+      return { asOfSeq: 1, values: { title: "投影来的标题" } };
+    },
+  };
+  const host = createHostAccess(createGuardedCtx({ sessionProjections: projections }, ["sessionProjections"]));
+  assert.equal(host.titleOf(session), "投影来的标题");
+});
+
+test("titleOf：没有标题、投影缺失、抛错，三种情况都返回 null（不编造）", () => {
+  const session = { id: "s1" };
+
+  // ① 投影返回 null（宿主尚无标题）
+  const empty = createHostAccess(createGuardedCtx(
+    { sessionProjections: { snapshot: () => ({ values: { title: null } }) } },
+    ["sessionProjections"],
+  ));
+  assert.equal(empty.titleOf(session), null);
+
+  // ② 宿主没提供 projections 服务
+  const none = createHostAccess(createGuardedCtx({}, []));
+  assert.equal(none.titleOf(session), null);
+
+  // ③ 投影读的时候抛错 —— 不能把异常抛出去打断整条 /whale/hud
+  const boom = createHostAccess(createGuardedCtx(
+    { sessionProjections: { snapshot: () => { throw new Error("投影炸了"); } } },
+    ["sessionProjections"],
+  ));
+  assert.equal(boom.titleOf(session), null, "读投影失败必须降级，不能让整个快照挂掉");
+});
+
+test("titleOf：空字符串与缺字段同等对待", () => {
+  const session = { id: "s1" };
+  const blank = createHostAccess(createGuardedCtx(
+    { sessionProjections: { snapshot: () => ({ values: { title: "" } }) } },
+    ["sessionProjections"],
+  ));
+  assert.equal(blank.titleOf(session), null, "空标题等于没有标题");
+
+  const missing = createHostAccess(createGuardedCtx(
+    { sessionProjections: { snapshot: () => ({ values: {} }) } },
+    ["sessionProjections"],
+  ));
+  assert.equal(missing.titleOf(session), null);
+});
+
 test("宿主确实没有该服务时，missingInject 应为空", () => {
   // 与上面那条对照：同样是 undefined，原因不同
   const ctx = createGuardedCtx({}, []);

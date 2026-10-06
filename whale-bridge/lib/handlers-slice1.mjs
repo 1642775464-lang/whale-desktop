@@ -83,7 +83,15 @@ function panel({ query, host, bridge }) {
 
   const agent = host.getAgent(sessionId);
   const foldSet = bridge?.foldSet;
-  const payload = foldSet === undefined ? null : panelPayload({ foldSet, sessionId, agent });
+  const payload = foldSet === undefined
+    ? null
+    : panelPayload({
+      foldSet,
+      sessionId,
+      agent,
+      // 标题兜底：折叠器没有就读宿主投影（与 /whale/hud 同一口径）
+      resolveTitle: bridge?.resolveTitle,
+    });
 
   // 会话在宿主里存在、但桥还没收到它的事件时，给出骨架而不是报错：
   // 「桥还没数据」与「会话不存在」是两回事，不该混淆。
