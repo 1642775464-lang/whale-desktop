@@ -49,7 +49,8 @@ const GATES = [
   {
     id: 3,
     name: "单测覆盖率",
-    cmd: () => [process.execPath, ["--test", "tests/"]],
+    // Node 24 的 --test 需要 glob，不接受裸目录
+    cmd: () => [process.execPath, ["--test", "tests/**/*.test.mjs"]],
     skipInQuick: true,
     requiresTestsDir: true,
   },

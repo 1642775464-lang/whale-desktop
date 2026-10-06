@@ -1,0 +1,11 @@
+{
+  "name": "whale-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Whale Desktop 宿主桥插件：唯一通路 HTTP/SSE 服务",
+  "type": "module",
+  "main": "host.js",
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

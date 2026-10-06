@@ -11,7 +11,7 @@
     "gate": "node tools/gate.mjs",
     "gate:quick": "node tools/gate.mjs --quick",
     "lint": "eslint .",
-    "test": "node --test tests/",
+    "test": "node --test tests/**/*.test.mjs",
     "syntax": "node tools/check-syntax.mjs",
     "scan:secrets": "node tools/scan-secrets.mjs",
     "scan:deps": "node tools/scan-deps.mjs",
