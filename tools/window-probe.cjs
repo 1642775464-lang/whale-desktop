@@ -229,6 +229,72 @@ app.whenReady().then(async () => {
   await new Promise((r) => setTimeout(r, 200));
   report.f5.afterExpand = await run("!document.getElementById('dockList').hidden");
 
+  // ── 批次 C：斜杠命令面板（F7）──
+  report.palette = { initiallyHidden: await run("document.getElementById('slashPanel').hidden") };
+
+  // 敲 / 应弹出
+  await run(`(() => {
+    const input = document.getElementById("input");
+    input.value = "/";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 200));
+  report.palette.afterSlash = await run(`({
+    hidden: document.getElementById("slashPanel").hidden,
+    query: document.getElementById("slashQuery").textContent,
+    rows: document.querySelectorAll("#slashList .mi").length
+  })`);
+
+  // 继续打字应实时过滤
+  await run(`(() => {
+    const input = document.getElementById("input");
+    input.value = "/sk";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 200));
+  report.palette.afterType = await run(`({
+    rows: document.querySelectorAll("#slashList .mi").length,
+    query: document.getElementById("slashQuery").textContent
+  })`);
+
+  // Esc 应关闭
+  await run(`document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+  await new Promise((r) => setTimeout(r, 200));
+  report.palette.afterEsc = await run("document.getElementById('slashPanel').hidden");
+
+  // 清空输入后应保持关闭
+  await run(`(() => {
+    const input = document.getElementById("input");
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  await new Promise((r) => setTimeout(r, 200));
+  report.palette.afterClear = await run("document.getElementById('slashPanel').hidden");
+
+  // ── 批次 C：☰ 菜单（F8）与资料抽屉 ──
+  await run("document.getElementById('btnMenu').click()");
+  await new Promise((r) => setTimeout(r, 200));
+  report.menu = await run(`({
+    hidden: document.getElementById("menuBox").hidden,
+    items: [...document.querySelectorAll("#menuList .mi")].map((n) => n.textContent.trim())
+  })`);
+
+  await run("document.getElementById('btnMenu').click()");
+  await new Promise((r) => setTimeout(r, 200));
+  report.menu.closedAgain = await run("document.getElementById('menuBox').hidden");
+
+  await run("document.getElementById('btnInfo').click()");
+  await new Promise((r) => setTimeout(r, 200));
+  report.drawer = await run(`({
+    hidden: document.getElementById("infoDrawer").hidden,
+    session: document.getElementById("infoSession").textContent,
+    bridge: document.getElementById("infoBridge").textContent,
+    events: document.getElementById("infoEvents").textContent
+  })`);
+
   // ── 发送 / 中断：两种回合状态要分别验 ──
   //
   // 运行中 → 发送键应是「中断」，点击应发 abort（不是 send）
@@ -325,12 +391,40 @@ app.whenReady().then(async () => {
     report.a11.preloadErrors.length === 0 &&
     report.a11.renderGone.length === 0;
 
+  // 斜杠面板（F7）：初始隐藏 → 敲 / 弹出 → 打字过滤 → Esc 关闭 → 清空保持关闭
+  const okPalette =
+    report.palette.initiallyHidden === true &&
+    report.palette.afterSlash.hidden === false &&
+    report.palette.afterSlash.query === "/" &&
+    report.palette.afterSlash.rows >= 2 &&
+    report.palette.afterType.query === "/sk" &&
+    report.palette.afterType.rows >= 1 &&
+    report.palette.afterType.rows <= report.palette.afterSlash.rows &&
+    report.palette.afterEsc === true &&
+    report.palette.afterClear === true;
+
+  // ☰ 菜单（F8）：点开有项、再点关掉；「按需确认」是灰项
+  const okMenu =
+    report.menu.hidden === false &&
+    report.menu.items.length >= 5 &&
+    report.menu.items.some((t) => t.includes("按需确认")) &&
+    report.menu.items.some((t) => t.includes("项目")) &&
+    report.menu.closedAgain === true;
+
+  // 资料抽屉（F8）：三行齐全，桥地址是回环地址
+  const okDrawer =
+    report.drawer.hidden === false &&
+    report.drawer.session.length > 0 &&
+    report.drawer.session !== "–" &&
+    report.drawer.bridge.includes("127.0.0.1");
+
   report.checks = {
-    okNotBlank, okB1, okB4, okTopbar, okHead, okPerm, okSend, okStream, okSendPath, okStatus, okDock, okA11,
+    okNotBlank, okB1, okB4, okTopbar, okHead, okPerm, okSend, okStream, okSendPath,
+    okStatus, okDock, okPalette, okMenu, okDrawer, okA11,
   };
   report.verdict =
     okNotBlank && okB1 && okB4 && okTopbar && okHead && okPerm && okSend && okStream &&
-    okSendPath && okStatus && okDock && okA11
+    okSendPath && okStatus && okDock && okPalette && okMenu && okDrawer && okA11
       ? "pass"
       : "fail";
 

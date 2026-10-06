@@ -79,6 +79,12 @@
 
       <!-- 输入区 -->
       <footer class="composer" id="composer">
+        <!-- 斜杠命令面板（F7）：弹在输入框上方，id 固定供验收脚本读 -->
+        <div class="slash" id="slashPanel" hidden>
+          <div class="slash-q" id="slashQuery">/</div>
+          <div class="slash-list" id="slashList"></div>
+        </div>
+
         <!-- 状态条：只在回合运行中出现（F5）。深色底，文案「正在运行 <工具名>」 -->
         <div class="status" id="status" hidden>
           <span class="spin"></span><span id="statusText">正在运行</span>
@@ -128,15 +134,32 @@
         </div>
       </footer>
 
-      <!-- 左缘「资料」抽屉入口（F8，批次 C 接入） -->
+      <!-- 顶栏 ☰ 菜单（F8）与会话列表（F9） -->
+      <div class="menu-box" id="menuBox" hidden>
+        <div id="menuList"></div>
+        <div id="sessList" hidden></div>
+      </div>
+
+      <!-- 左缘「资料」抽屉入口（F8） -->
       <button class="drawer-tab" id="btnInfo">资料</button>
+
+      <!-- 资料抽屉（F8）：会话 id / 桥地址 / 事件计数 -->
+      <div class="info-drawer" id="infoDrawer" hidden>
+        <div class="row"><span class="k">会话 id</span><span class="v" id="infoSession">–</span></div>
+        <div class="row"><span class="k">桥地址</span><span class="v" id="infoBridge">–</span></div>
+        <div class="row"><span class="k">事件计数</span><span class="v" id="infoEvents">–</span></div>
+      </div>
     </div>
 
     <!--
-      加载顺序有依赖：bridge-client 定义 WhaleBridge，app.js 用它。
+      加载顺序有依赖：bridge-client 定义 WhaleBridge，palette / panels / render
+      各自定义自己的命名空间，app.js 最后把它们接起来。
       顺序错了会在启动时抛 ReferenceError，现象是「窗口在、什么都没接上」。
     -->
     <script src="bridge-client.js"></script>
+    <script src="render.js"></script>
+    <script src="palette.js"></script>
+    <script src="panels.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -1,0 +1,133 @@
+/**
+ * 斜杠命令面板与会话标签单测
+ *
+ * 职责：钉住两条「看起来很直白、实际很容易写错」的判定——
+ *       命令过滤规则、会话三档标签的判据。
+ * 所属层：测试（tests/unit）
+ *
+ * palette.js / panels.js 是浏览器 script（不能 import），用 node:vm 造一个
+ * 带假 window 的沙箱加载后取出它们的命名空间。
+ *
+ * 这两条判据值得单测的理由：
+ *   - 过滤规则写错的表现是「搜不到」——用户会以为功能坏了
+ *   - 标签判据写错的表现是「点了一个切不过去的会话」——错误更难归因
+ */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createContext, runInContext } from "node:vm";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const RENDERER = join(ROOT, "whale-window", "renderer");
+
+/** 在假 window 里加载一个渲染层模块，取回它挂上去的命名空间。 */
+function loadModule(file, exportName) {
+  const sandbox = {
+    window: {},
+    console: { warn: () => {}, log: () => {} },
+  };
+  sandbox.window.document = {
+    createElement: () => ({
+      className: "",
+      textContent: "",
+      id: "",
+      hidden: false,
+      appendChild: () => {},
+      addEventListener: () => {},
+    }),
+  };
+  createContext(sandbox);
+  runInContext(readFileSync(join(RENDERER, file), "utf8"), sandbox, { filename: file });
+  return sandbox.window[exportName];
+}
+
+const palette = loadModule("palette.js", "WhalePalette");
+const panels = loadModule("panels.js", "WhalePanels");
+
+/**
+ * 断言一个「标签」对象。
+ *
+ * 不能直接 deepEqual：返回值是在 vm 沙箱里创建的对象，
+ * 与本测试所在的 realm 不同源，严格深比对会因 prototype 不同而失败
+ * （报「Values have same structure but are not reference-equal」）。
+ * 逐字段取值来比，跨 realm 也没问题。
+ */
+function assertLabel(actual, cls, text) {
+  assert.equal(actual.cls, cls, "标签类不对");
+  assert.equal(actual.text, text, "标签文案不对");
+}
+
+/** 跨 realm 安全地取字符串数组（vm 里的 Array.prototype 与本 realm 不同源）。 */
+function idsOf(list) {
+  return Array.from(list).map((x) => x.id ?? x);
+}
+
+test("命令清单含三条，语音是灰项（command 为 null）", () => {
+  assert.equal(palette.COMMANDS.length, 3);
+  const voice = Array.from(palette.COMMANDS).find((c) => c.label === "语音");
+  assert.ok(voice !== undefined, "缺「语音」项");
+  assert.equal(voice.command, null, "语音未接通 → command 必须是 null（渲染成灰项）");
+});
+
+test("空输入：可用命令都列出，且灰项保留（规范要求显示为灰）", () => {
+  // 《页面框架》4.3 的示意里「🎤 语音（暂不可用）[灰]」是**要显示的**——
+  // 灰 = 能力未接通，而不是「不显示」。所以空输入时应包含灰项。
+  const all = palette.filterCommands("/");
+  assert.ok(all.length >= 2, "空输入应列出命令");
+  const hasUsable = all.some((c) => c.command !== null);
+  assert.equal(hasUsable, true, "至少要有一条可用命令");
+});
+
+test("按命令名过滤：/sk 命中技能类", () => {
+  const out = palette.filterCommands("/sk");
+  assert.ok(out.length > 0, "/sk 应有命中");
+  assert.ok(out.some((c) => c.command === "/sk"), "应命中 /sk");
+});
+
+test("按中文标签过滤：搜「技能」也能命中", () => {
+  // 用户常记得「技能」而不是 /skills —— 所以过滤要同时看命令名与标签
+  const out = palette.filterCommands("/技能");
+  assert.ok(out.length > 0, "搜中文标签应有命中");
+  assert.ok(out.some((c) => c.label.includes("技能")), "应命中含「技能」的项");
+});
+
+test("过滤不区分大小写", () => {
+  const lower = Array.from(palette.filterCommands("/sk")).map((c) => c.command);
+  const upper = Array.from(palette.filterCommands("/SK")).map((c) => c.command);
+  assert.deepEqual(upper, lower, "大小写不该影响结果");
+});
+
+test("无命中时返回空数组，不返回全部（否则像「搜什么都没用」）", () => {
+  assert.equal(palette.filterCommands("/绝不可能存在的命令").length, 0);
+});
+
+test("会话标签：当前会话 → 当前", () => {
+  assertLabel(panels.labelFor({ sessionId: "a" }, "a"), "cur", "当前");
+});
+
+test("会话标签：内存里有 agent → 可切换", () => {
+  assertLabel(panels.labelFor({ sessionId: "b", agentAvailable: true }, "a"), "sw", "可切换");
+});
+
+test("会话标签：只在磁盘上 → 历史（需先唤醒）", () => {
+  assertLabel(panels.labelFor({ sessionId: "c", agentAvailable: false }, "a"), "hist", "历史");
+});
+
+test("会话标签：agentAvailable 缺失时按「历史」处理（保守）", () => {
+  // 宁可让用户多点一次唤醒，也不要让他点一个切不过去的会话
+  assert.equal(panels.labelFor({ sessionId: "d" }, "a").cls, "hist");
+});
+
+test("菜单项顺序固定，且「按需确认」是灰项", () => {
+  const ids = idsOf(Array.from(panels.MENU_ITEMS).filter((i) => i.id !== undefined));
+  assert.deepEqual(ids, ["projects", "approval", "skills", "plugins", "more"]);
+  const approval = Array.from(panels.MENU_ITEMS).find((i) => i.id === "approval");
+  assert.equal(approval.badge, "灰", "能力未接通项必须标灰");
+});
+
+test("「更多」含三个窗口动作", () => {
+  assert.deepEqual(idsOf(Array.from(panels.MORE_ITEMS)), ["minimize", "reload", "quit"]);
+});

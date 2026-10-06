@@ -75,6 +75,8 @@
       contextWindow: null,
       /** 权限档位（三档文案之一）。 */
       permission: null,
+      /** 已收到的事件数（资料抽屉要显示）。 */
+      eventsSeen: 0,
       port,
     };
 
@@ -208,6 +210,7 @@
           return;
         }
         if (payload === null || typeof payload !== "object") return;
+        state.eventsSeen += 1;
         applyEvent(payload);
         state.offline = false;
         state.renderedOffline = false;

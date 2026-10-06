@@ -36,6 +36,17 @@ const appJs = read(join("renderer", "app.js"));
 const clientJs = read(join("renderer", "bridge-client.js"));
 const preloadText = read("preload.cjs");
 
+/**
+ * 渲染层全部脚本的合并文本。
+ *
+ * 断言「界面里存在某文案/某分支」时应扫**整个渲染层**，而不是只扫 app.js：
+ * 批次 C 把纯渲染拆到 render.js 之后，只扫 app.js 的断言会全部误报
+ * （那是布局变化，不是契约变化）。按职责拆文件是要求，不是违约。
+ */
+const rendererAll = ["app.js", "render.js", "palette.js", "panels.js", "bridge-client.js"]
+  .map((f) => read(join("renderer", f)))
+  .join("\n");
+
 const hasId = (id) => new RegExp(`id="${id}"`).test(html);
 
 test("顶栏六元素齐全（F2）", () => {
@@ -80,35 +91,35 @@ test("灰色项不得有 hover 反馈（规范 2：不假装能用）", () => {
 
 test("发送键的 aria 约定（B7 判据按此读 DOM）", () => {
   assert.match(css, /\.send\.stop\s*\{[^}]*background:\s*var\(--bad\)/s, "运行中必须是红方块");
-  assert.match(appJs, /aria-label.*中断|"中断"/, "运行中 aria-label 必须是「中断」");
-  assert.match(appJs, /"发送"/, "空闲 aria-label 必须是「发送」");
+  assert.match(rendererAll, /aria-label.*中断|"中断"/, "运行中 aria-label 必须是「中断」");
+  assert.match(rendererAll, /"发送"/, "空闲 aria-label 必须是「发送」");
 });
 
 test("用量圆环周长与公式一致（2πr = 50.27）", () => {
   assert.match(html, /stroke-dasharray="50\.3"/, "周长 50.3");
-  assert.match(appJs, /50\.3 \* \(1 - pct \/ 100\)/, "offset = 周长 × (1 − 百分比/100)");
+  assert.match(rendererAll, /50\.3 \* \(1 - pct \/ 100\)/, "offset = 周长 × (1 − 百分比/100)");
   assert.match(css, /\.usage-ring svg\s*\{[^}]*rotate\(-90deg\)/s, "从 12 点方向顺时针增长");
 });
 
 test("权限三档文案与主窗口逐字一致（F6/B9）", () => {
   for (const text of ["仅可查看", "工作区内修改", "完全权限"]) {
-    assert.ok(appJs.includes(text), `缺文案「${text}」`);
+    assert.ok(rendererAll.includes(text), `缺文案「${text}」`);
   }
 });
 
 test("角色文案：用户「你」，助手「DSH」", () => {
-  assert.ok(appJs.includes('"你"'), "用户角色文案应为「你」");
-  assert.ok(appJs.includes('"DSH"'), "助手角色文案应为「DSH」");
+  assert.ok(rendererAll.includes('"你"'), "用户角色文案应为「你」");
+  assert.ok(rendererAll.includes('"DSH"'), "助手角色文案应为「DSH」");
 });
 
 test("消息按桥给的 kind 分流，不得读 role（读错字段不报错，只是全部渲染成助手）", () => {
   // 桥的面板投影给的是 {kind:"user"|"assistant"|"tool", text, seq}。
   // 曾经渲染层按 m.role 读，于是每条消息都渲染成「DSH」、
   // 用户的发言完全看不出来——而且**不报任何错**。
-  assert.ok(!/m\.role/.test(appJs), "不得读 m.role；桥给的是 kind");
-  assert.match(appJs, /m\.kind/, "必须按 kind 分流");
+  assert.ok(!/m\.role/.test(rendererAll), "不得读 m.role；桥给的是 kind");
+  assert.match(rendererAll, /m\.kind/, "必须按 kind 分流");
   for (const kind of ["user", "assistant", "tool"]) {
-    assert.ok(appJs.includes(`"${kind}"`), `必须处理 kind="${kind}"`);
+    assert.ok(rendererAll.includes(`"${kind}"`), `必须处理 kind="${kind}"`);
   }
 });
 
@@ -130,7 +141,7 @@ test("面板字段形状与桥的投影一致（字段名对不上是静默故�
   assert.deepEqual(todosOf(fold), [{ content: "做A", status: "pending" }]);
   // 渲染层必须认识这三个 kind
   for (const m of messages) {
-    assert.ok(appJs.includes(`"${m.kind}"`), `渲染层不认识 kind="${m.kind}"`);
+    assert.ok(rendererAll.includes(`"${m.kind}"`), `渲染层不认识 kind="${m.kind}"`);
   }
   // 状态条要靠 runningToolOf 的产出说工具名
   assert.equal(runningToolOf(fold), "bash");
@@ -139,8 +150,8 @@ test("面板字段形状与桥的投影一致（字段名对不上是静默故�
 
 test("任务坞的三种状态与桥的 todo 口径一致", () => {
   // 桥给的是宿主的 status，色点映射必须覆盖 completed / in_progress / 其余
-  assert.match(appJs, /"completed"/, "已完成的色点");
-  assert.match(appJs, /"in_progress"/, "进行中的色点");
+  assert.match(rendererAll, /"completed"/, "已完成的色点");
+  assert.match(rendererAll, /"in_progress"/, "进行中的色点");
   assert.match(css, /\.pd\.done/, "绿点样式");
   assert.match(css, /\.pd\.doing/, "橙点样式");
   assert.match(css, /\.pd\.todo/, "灰空心样式");
@@ -172,9 +183,15 @@ test("崩溃兜底页的脚本必须外链（CSP 会拦内联）", () => {
   assert.ok(existsSync(join(WIN, "renderer", "crashed.js")), "crashed.js 必须存在");
 });
 
-test("脚本加载顺序：bridge-client → app", () => {
+test("脚本加载顺序：各模块先定义、app.js 最后装配", () => {
   const tags = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(tags, ["bridge-client.js", "app.js"], "顺序错了会在启动时抛 ReferenceError");
+  assert.deepEqual(
+    tags,
+    ["bridge-client.js", "render.js", "palette.js", "panels.js", "app.js"],
+    "顺序错了会在启动时抛 ReferenceError（现象是「窗口在、什么都没接上」）",
+  );
+  // app.js 必须最后：它是装配层，要用到前面每个模块的命名空间
+  assert.equal(tags[tags.length - 1], "app.js", "app.js 必须在最后加载");
 });
 
 test("--shadow-pad 必须等于主进程的 SHADOW_PAD（否则阴影被硬切）", () => {
@@ -230,9 +247,9 @@ test("渲染层不出现 @deepseek-ai/，也不出现第三方裸包", () => {
 });
 
 test("降级：桥断时显示空态文案，不伪造读数", () => {
-  assert.ok(appJs.includes("桥未连接 · 重试中"), "空态文案必须取自规范 6.3");
-  assert.ok(appJs.includes("还没有消息"), "消息流为空的文案必须取自规范 6.3");
-  assert.ok(appJs.includes('"–"'), "拿不到数一律显示 –");
+  assert.ok(rendererAll.includes("桥未连接 · 重试中"), "空态文案必须取自规范 6.3");
+  assert.ok(rendererAll.includes("还没有消息"), "消息流为空的文案必须取自规范 6.3");
+  assert.ok(rendererAll.includes('"–"'), "拿不到数一律显示 –");
 });
 
 test("面板接口必须先拿到 sessionId（否则 400，窗口永远停在未连接）", () => {

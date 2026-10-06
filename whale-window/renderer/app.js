@@ -1,13 +1,10 @@
 /*
  * 小窗入口与装配
  *
- * 职责：接线——顶栏交互、会话标题行、消息流渲染、输入区、以及
- *       `window.whale` 主进程通道的使用。
+ * 职责：接线——把桥的数据接给渲染器，把界面动作接给桥与主进程。
+ *       渲染细节在 render.js，取数在 bridge-client.js，
+ *       斜杠面板在 palette.js，菜单与会话切换在 panels.js。
  * 所属层：小窗（whale-window/renderer）
- *
- * 本批（切片 5 批次 A）只做「窗口站得住」：顶栏六个元素、会话标题行、
- * 标题与副标题跟随桥的数据。消息流与输入区先接线到位（结构齐、能渲染），
- * 真正的发送/排队/中断在批次 B 验收。
  *
  * 纪律：改完这个文件**必须实地起一次窗口**——`node --check` 只查语法，
  * 查不出 TDZ；脚本顶层抛错会让后面的事件绑定**一行都不执行**，
@@ -16,13 +13,6 @@
 
 (function main(global) {
   "use strict";
-
-  /** 权限三档文案（必须与主窗口逐字一致，PRD F6）。 */
-  const PERMISSION_TEXT = {
-    "read-only": "仅可查看",
-    "workspace-write": "工作区内修改",
-    "danger-full-access": "完全权限",
-  };
 
   /** 权限档位轮转顺序（点一下切下一档）。 */
   const PERMISSION_ORDER = ["read-only", "workspace-write", "danger-full-access"];
@@ -41,7 +31,6 @@
     shTitle: $("shTitle"),
     shSub: $("shSub"),
     stream: $("stream"),
-    streamEmpty: $("streamEmpty"),
     status: $("status"),
     statusText: $("statusText"),
     dock: $("dock"),
@@ -54,202 +43,111 @@
     urFg: $("urFg"),
     usagePct: $("usagePct"),
     btnInfo: $("btnInfo"),
+    slashPanel: $("slashPanel"),
+    slashQuery: $("slashQuery"),
+    slashList: $("slashList"),
+    menuBox: $("menuBox"),
+    menuList: $("menuList"),
+    sessList: $("sessList"),
+    infoDrawer: $("infoDrawer"),
+    infoSession: $("infoSession"),
+    infoBridge: $("infoBridge"),
+    infoEvents: $("infoEvents"),
   };
-
-  /** 桥客户端。必须在任何渲染函数之前建好。 */
-  const client = global.WhaleBridge.createClient({
-    onChange () { render(); },
-  });
 
   /** 当前权限档位（本地态，发命令后由桥侧生效）。 */
   let permission = "workspace-write";
 
-  /** 任务清单上一次渲染的签名（只在变化时重建，保住用户展开状态）。 */
-  let lastDockSignature = null;
+  /** 桥地址（资料抽屉要显示）。 */
+  const BRIDGE_BASE = `http://127.0.0.1:${global.WhaleBridge.portFromLocation()}`;
 
-  // ── 渲染 ──────────────────────────────────────────
+  /** 渲染器。必须在任何渲染调用之前建好。 */
+  const renderer = global.WhaleRender.createRenderer({
+    dom,
+    getPermission: () => permission,
+  });
 
-  /** 顶栏标题 + 会话标题行 + 副标题。 */
-  function renderHeader(state) {
-    if (state.offline) {
-      // 文案取自《前端设计规范》6.3 空态文案表，不自创措辞
-      dom.tbTitle.textContent = "未连接";
-      dom.shTitle.textContent = "未连接";
-      dom.shSub.textContent = "桥未连接 · 重试中";
-      return;
-    }
-    const title = state.title ?? "（无标题会话）";
-    dom.tbTitle.textContent = title;
-    dom.shTitle.textContent = title;
+  /** 桥客户端。同样要在渲染之前建好。 */
+  const client = global.WhaleBridge.createClient({
+    onChange() { renderer.all(client.getState()); },
+  });
 
-    const parts = [];
-    if (typeof state.workspace === "string" && state.workspace !== "") parts.push(state.workspace);
-    parts.push(state.running ? "回合运行中" : "桥已连接");
-    dom.shSub.textContent = parts.join(" · ");
+  /**
+   * 如实地告诉用户「这个能力没接通」。
+   *
+   * 规范要求灰项点击**不得有静默效果**——不假装能用。
+   *
+   * @param {string} name
+   */
+  function notifyUnavailable(name) {
+    global.console.warn(`${name}：能力未接通`);
   }
 
   /**
-   * 消息流。
+   * 斜杠命令面板（F7）。
    *
-   * 按桥给的 `kind` 分流：`user` / `assistant` / `tool`。
-   * **不要按 `role` 读**——桥给的是 `kind`，读错字段的表现是每条消息都渲染成
-   * 助手、用户发言完全看不出来，而且不报错。
-   *
-   * 只在「消息条数或最后一条变了」时重建：每 5 秒轮询都重建会把用户
-   * 正在滚动的位置重置回底部。
+   * 选中可用命令时走 `client.command()` —— 命令**不经模型**，由宿主直接执行。
    */
-  let lastSignature = null;
-  function renderStream(state) {
-    const last = state.messages[state.messages.length - 1];
-    const sig = `${state.messages.length}|${last?.text ?? ""}|${last?.name ?? ""}`;
-    if (sig === lastSignature) return;
-    lastSignature = sig;
+  const palette = global.WhalePalette.createPalette({
+    dom: { panel: dom.slashPanel, query: dom.slashQuery, list: dom.slashList, input: dom.input },
+    onPick(command) {
+      client.command(command).then((out) => {
+        if (!out.ok) global.console.warn(`命令失败：${out.code}`);
+      });
+    },
+    onUnavailable: notifyUnavailable,
+  });
 
-    dom.stream.innerHTML = "";
-    if (state.messages.length === 0) {
-      const empty = global.document.createElement("div");
-      empty.className = "empty";
-      empty.id = "streamEmpty";
-      empty.textContent = state.offline ? "桥未连接 · 重试中" : "还没有消息";
-      dom.stream.appendChild(empty);
-      return;
-    }
-
-    state.messages.forEach(function (m) {
-      const kind = m.kind ?? "assistant";
-
-      // 工具调用单独一种行样式（等宽、浅底）
-      if (kind === "tool") {
-        const line = global.document.createElement("div");
-        line.className = "tool-line";
-        line.textContent = `tool · ${m.name ?? "未知工具"}`;
-        dom.stream.appendChild(line);
+  /** 菜单与会话切换（F8/F9）。 */
+  const panels = global.WhalePanels.createPanels({
+    dom: { menuBtn: dom.btnMenu, menuBox: dom.menuBox, menuList: dom.menuList, sessList: dom.sessList },
+    getSessions: () => client.getState().sessions ?? [],
+    getCurrentId: () => client.getState().sessionId,
+    onSwitch(sessionId) {
+      client.activate(sessionId).then((out) => {
+        if (!out.ok) global.console.warn(`切换失败：${out.code}`);
+      });
+    },
+    onResume(sessionId) {
+      // 历史：先唤醒，成功后才切；失败要如实说原因并还原标签
+      client.resume(sessionId).then((out) => {
+        if (out.ok) {
+          panels.markWoke(sessionId);
+          client.activate(sessionId);
+          return;
+        }
+        panels.markWakeFailed(sessionId);
+        global.console.warn(`唤醒失败：${out.code}`);
+      });
+    },
+    onAction(action) {
+      if (action === "minimize") {
+        global.whale.windowAction("minimize");
         return;
       }
-
-      const wrap = global.document.createElement("div");
-      wrap.className = `msg ${kind === "user" ? "me" : "ai"}`;
-      const role = global.document.createElement("div");
-      role.className = "role";
-      // 角色文案：用户「你」，助手「DSH」
-      role.textContent = kind === "user" ? "你" : "DSH";
-      const body = global.document.createElement("div");
-      body.textContent = m.text ?? "";
-      wrap.appendChild(role);
-      wrap.appendChild(body);
-      dom.stream.appendChild(wrap);
-    });
-    dom.stream.scrollTop = dom.stream.scrollHeight;
-  }
-
-  /** 发送键：回合运行中是红方块（B7 判据按 aria-label 读 DOM）。 */
-  function renderSend(state) {
-    const running = state.running === true;
-    dom.btnSend.classList.toggle("stop", running);
-    dom.btnSend.setAttribute("aria-label", running ? "中断" : "发送");
-  }
-
-  /**
-   * 状态条：回合运行中出现，文案「正在运行 <工具名>」。
-   *
-   * 工具名取不到时只说「正在运行」，不编造一个工具名
-   * （规范 6.3：不使用模糊措辞，也不假装知道）。
-   */
-  function renderStatus(state) {
-    if (state.running !== true) {
-      dom.status.hidden = true;
-      return;
-    }
-    dom.status.hidden = false;
-    dom.statusText.textContent =
-      typeof state.toolName === "string" && state.toolName !== ""
-        ? `正在运行 ${state.toolName}`
-        : "正在运行";
-  }
-
-  /**
-   * 任务坞：有任务清单才出现，默认收起。
-   *
-   * 计数只算已完成 / 总数（标题行是「任务  2 / 5」）。
-   */
-  function renderDock(state) {
-    const todos = Array.isArray(state.todos) ? state.todos : [];
-    if (todos.length === 0) {
-      dom.dock.hidden = true;
-      return;
-    }
-    dom.dock.hidden = false;
-
-    const done = todos.filter((t) => t.status === "completed").length;
-    dom.dockProg.textContent = `${done} / ${todos.length}`;
-
-    // 只在清单变了时重建，避免每 5 秒轮询把展开状态顶掉
-    const sig = todos.map((t) => `${t.status}:${t.content}`).join("|");
-    if (sig === lastDockSignature) return;
-    lastDockSignature = sig;
-
-    dom.dockList.innerHTML = "";
-    todos.forEach((t) => {
-      const row = global.document.createElement("div");
-      row.className = "task";
-      const dot = global.document.createElement("span");
-      // 绿 = 已完成、橙 = 进行中、灰空心 = 待办
-      const status = t.status === "completed" ? "done" : t.status === "in_progress" ? "doing" : "todo";
-      dot.className = `pd ${status}`;
-      const text = global.document.createElement("span");
-      text.textContent = t.content ?? "";
-      row.appendChild(dot);
-      row.appendChild(text);
-      dom.dockList.appendChild(row);
-    });
-  }
-
-  /** 用量圆环：周长 2πr = 2π×8 ≈ 50.27。 */
-  function renderUsage(state) {
-    const used = state.contextUsed;
-    const total = state.contextWindow;
-    if (typeof used !== "number" || typeof total !== "number" || total <= 0) {
-      dom.usagePct.textContent = "–";
-      dom.urFg.setAttribute("stroke-dashoffset", "50.3");
-      return;
-    }
-    const pct = Math.max(0, Math.min(100, Math.round((used / total) * 100)));
-    dom.usagePct.textContent = String(pct);
-    // offset = 周长 × (1 − 百分比/100)
-    dom.urFg.setAttribute("stroke-dashoffset", String(50.3 * (1 - pct / 100)));
-  }
-
-  /** 权限按钮文案（三档，与主窗逐字一致）。 */
-  function renderPermission() {
-    dom.btnPerm.textContent = PERMISSION_TEXT[permission] ?? PERMISSION_TEXT["workspace-write"];
-  }
-
-  /** 整屏渲染。 */
-  function render() {
-    const state = client.getState();
-    renderHeader(state);
-    renderStream(state);
-    renderStatus(state);
-    renderDock(state);
-    renderSend(state);
-    renderUsage(state);
-    renderPermission();
-  }
-
-  // ── 交互 ──────────────────────────────────────────
+      if (action === "reload") {
+        global.whale.windowAction("reload");
+        return;
+      }
+      if (action === "quit") {
+        global.whale.windowAction("close");
+      }
+    },
+    onUnavailable: notifyUnavailable,
+  });
 
   /**
    * 顶栏拖动。
    *
    * 无边框窗口没有系统标题栏，只能由渲染层把鼠标位移交给主进程。
-   * 阈值 3px：位移超过才算拖动，否则算点击（避免「手抖一下窗口就歪了」）。
+   * 阈值 3px：位移超过才算拖动（避免「手抖一下窗口就歪了」）。
    */
   function bindDrag() {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
 
-    dom.topbar.addEventListener("mousedown", function (ev) {
+    dom.topbar.addEventListener("mousedown", (ev) => {
       // 点在按钮上不拖（按钮自己 no-drag，这里再判一次更稳）
       if (ev.target.closest && ev.target.closest("button")) return;
       dragging = true;
@@ -257,7 +155,7 @@
       lastY = ev.screenY;
     });
 
-    global.document.addEventListener("mousemove", function (ev) {
+    global.document.addEventListener("mousemove", (ev) => {
       if (!dragging) return;
       const dx = ev.screenX - lastX;
       const dy = ev.screenY - lastY;
@@ -267,7 +165,7 @@
       global.whale.drag(dx, dy);
     });
 
-    global.document.addEventListener("mouseup", function () {
+    global.document.addEventListener("mouseup", () => {
       if (!dragging) return;
       dragging = false;
       // 松手立刻补写一次位置（防抖之外的最后一次）
@@ -280,101 +178,119 @@
     const at = PERMISSION_ORDER.indexOf(permission);
     const next = PERMISSION_ORDER[(at + 1) % PERMISSION_ORDER.length];
     permission = next;
-    renderPermission();
-    client.command(`/permission ${  next}`).then(function (out) {
-      if (!out.ok) {
-        global.console.warn(`切权限失败：${  out.code}`);
+    renderer.permission();
+    client.command(`/permission ${next}`).then((out) => {
+      if (!out.ok) global.console.warn(`切权限失败：${out.code}`);
+    });
+  }
+
+  /** 发送或中断（F4）。 */
+  function onSubmit() {
+    const state = client.getState();
+    if (state.running) {
+      // 中断：桥侧只在明确探测到活跃回合时才真的取消（带护栏）
+      client.abort().then((out) => {
+        if (!out.ok) global.console.warn(`中断失败：${out.code}`);
+      });
+      return;
+    }
+    const text = dom.input.value.trim();
+    if (text === "") return;
+
+    // 乐观渲染：消息立刻上屏，同时真的进会话。
+    // 排队不是失败——桥会在回合运行中把它排到下一回合。
+    dom.input.value = "";
+    client.send(text).then((out) => {
+      if (out.ok) {
+        if (out.raw && out.raw.queued === true) {
+          global.console.log("消息已排队，等当前回合结束");
+        }
+        return;
       }
+      // 发送失败要如实告诉用户，并把输入还原（否则内容丢了）
+      global.console.warn(`发送失败：${out.code}`);
+      dom.input.value = text;
     });
   }
 
   /** 事件绑定。 */
   function bindEvents() {
-    dom.btnMin.addEventListener("click", function () { global.whale.windowAction("minimize"); });
-    dom.btnPin.addEventListener("click", function () {
-      global.whale.windowAction("toggle-pin").then(function (out) {
+    dom.btnMin.addEventListener("click", () => global.whale.windowAction("minimize"));
+    dom.btnPin.addEventListener("click", () => {
+      global.whale.windowAction("toggle-pin").then((out) => {
         if (out && out.ok) dom.btnPin.classList.toggle("on", out.pinned === true);
       });
     });
 
-    // 顶栏 × 语义：拦截成「隐藏」而不是退出（F10，与 DSH 主窗行为一致）
-    dom.btnMenu.addEventListener("click", function () { global.whale.windowAction("hide"); });
-    dom.btnGear.addEventListener("click", function () {
-      // 侧边工作台属批次 C；此处明确不做静默效果
-      global.console.warn("侧边工作台尚未接通（批次 C）");
-    });
+    // 顶栏 ☰ = 菜单（F8）；「隐藏」走「更多 → 最小化」那条路
+    dom.btnMenu.addEventListener("click", () => panels.toggleMenu());
+    dom.btnGear.addEventListener("click", () => notifyUnavailable("侧边工作台"));
 
     dom.btnPerm.addEventListener("click", cyclePermission);
 
     // 任务坞：默认收起，点标题展开（F5）
-    dom.dockHead.addEventListener("click", function () {
+    dom.dockHead.addEventListener("click", () => {
       dom.dock.classList.toggle("open");
       dom.dockList.hidden = !dom.dock.classList.contains("open");
     });
 
-    dom.btnInfo.addEventListener("click", function () {
-      global.console.warn("资料抽屉尚未接通（批次 C）");
-    });
-
-    // 发送/中断（F4）
-    dom.btnSend.addEventListener("click", function () {
-      const state = client.getState();
-      if (state.running) {
-        // 中断：桥侧只在明确探测到活跃回合时才真的取消（带护栏）
-        client.abort().then(function (out) {
-          if (!out.ok) global.console.warn(`中断失败：${out.code}`);
-        });
-        return;
+    // 资料抽屉（F8）
+    dom.btnInfo.addEventListener("click", () => {
+      if (dom.infoDrawer.hidden) {
+        renderer.infoDrawer(client.getState(), BRIDGE_BASE);
+        dom.infoDrawer.hidden = false;
+      } else {
+        dom.infoDrawer.hidden = true;
       }
-      const text = dom.input.value.trim();
-      if (text === "") return;
-
-      // 乐观渲染：消息立刻上屏，同时真的进会话。
-      // 排队不是失败——桥会在回合运行中把它排到下一回合。
-      dom.input.value = "";
-      client.send(text).then(function (out) {
-        if (out.ok) {
-          if (out.raw && out.raw.queued === true) {
-            global.console.log("消息已排队，等当前回合结束");
-          }
-          return;
-        }
-        // 发送失败要如实告诉用户，并把输入还原（否则内容丢了）
-        global.console.warn(`发送失败：${out.code}`);
-        dom.input.value = text;
-      });
     });
+
+    // 点面板外区域关掉菜单（无边框窗口里没有系统菜单，得自己收）
+    global.document.addEventListener("mousedown", (ev) => {
+      if (dom.menuBox.hidden) return;
+      if (dom.menuBox.contains(ev.target) || ev.target === dom.btnMenu) return;
+      panels.closeMenu();
+    });
+
+    dom.btnSend.addEventListener("click", onSubmit);
 
     // Enter 发送，Shift+Enter 换行（F4）
-    dom.input.addEventListener("keydown", function (ev) {
+    // 但**面板打开时 Enter 不发送**（F7）——先让面板消费掉
+    dom.input.addEventListener("keydown", (ev) => {
+      if (palette.onKeyDown(ev)) return;
       if (ev.key === "Enter" && !ev.shiftKey) {
         ev.preventDefault();
-        dom.btnSend.click();
+        onSubmit();
       }
     });
 
+    // 输入变化时同步斜杠面板：敲 / 弹出、删掉 / 关闭、继续打字实时过滤
+    dom.input.addEventListener("input", () => palette.sync());
+
     // 禁掉整窗右键菜单（无边框窗口里它没有意义，还会盖住界面）
-    global.document.addEventListener("contextmenu", function (ev) {
-      ev.preventDefault();
-    });
+    global.document.addEventListener("contextmenu", (ev) => ev.preventDefault());
 
     bindDrag();
   }
 
-  // ── 启动 ──────────────────────────────────────────
-
+  /** 启动。 */
   function start() {
     bindEvents();
-    renderPermission();
+    renderer.permission();
 
-    global.whale.ready().then(function (info) {
-      global.whale.log(`小窗就绪，桥端口 ${  info && info.port}`);
+    global.whale.ready().then((info) => {
+      global.whale.log(`小窗就绪，桥端口 ${info && info.port}`);
       if (info && info.pinned === true) dom.btnPin.classList.add("on");
     });
 
     client.refresh();
     client.connect();
     client.startPolling();
+
+    // 唤醒倒计时（F9）：「唤醒中 3s」每秒推进；抽屉开着时同步事件计数
+    global.setInterval(() => {
+      panels.tickWaking();
+      if (!dom.infoDrawer.hidden) renderer.infoDrawer(client.getState(), BRIDGE_BASE);
+    }, 1000);
   }
 
   if (global.document.readyState === "loading") {
