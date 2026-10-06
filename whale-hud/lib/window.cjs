@@ -21,17 +21,29 @@
 const geometry = require("./geometry.cjs");
 
 /**
+ * 等页面加载的上限。
+ *
+ * 为什么需要它：`loadFile` 那一步一旦被漏掉（真实发生过，窗口全白），
+ * `did-finish-load` 永不触发，等它的人会**永久挂住**——
+ * 报告里只剩一串 null 与 timeout，反而看不出「页面没加载」这个真因。
+ * 超时后 resolve(false)，把判断权交给调用方。
+ */
+const LOAD_TIMEOUT_MS = 8000;
+
+/**
  * 建悬浮条窗口。
  *
  * @param {object} deps
  * @param {object} deps.BrowserWindow Electron 的 BrowserWindow 构造器
  * @param {object} deps.screen Electron 的 screen 模块（须在 app ready 之后使用）
+ * @param {string} deps.rendererFile renderer/index.html 的绝对路径
  * @param {string} deps.preloadFile  preload.cjs 的绝对路径
  * @param {object} deps.log
+ * @param {Record<string, string>} [deps.query] 传给页面的查询串（联调时用来指定桥端口）
  * @returns {object} 窗口句柄封装
  */
 function createHudWindow(deps) {
-  const { BrowserWindow, screen, preloadFile, log } = deps;
+  const { BrowserWindow, screen, rendererFile, preloadFile, log } = deps;
 
   const win = new BrowserWindow({
     show: false,
@@ -74,8 +86,23 @@ function createHudWindow(deps) {
 
   /** 页面加载完成（验收脚本据此判断「首帧到了」）。 */
   const loaded = new Promise((resolve) => {
-    win.webContents.once("did-finish-load", () => resolve(true));
+    const timer = setTimeout(() => resolve(false), LOAD_TIMEOUT_MS);
+    if (typeof timer.unref === "function") timer.unref();
+    win.webContents.once("did-finish-load", () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
   });
+
+  /**
+   * 加载渲染层。
+   *
+   * **必须在建窗口时就走这一步**：这是窗口里「有东西」的唯一来源。
+   * 曾经因为 lint 报「参数未使用」把这个参数删掉，结果窗口成了一片空白——
+   * 而验收探针自己调了 loadFile，于是测试全绿、产品全白。
+   * 教训：产品与探针**不能各加载一次页面**，加载这件事只能有一处。
+   */
+  win.loadFile(rendererFile, deps.query ? { query: deps.query } : undefined);
 
   /** 取当前工作区（DIP）。每次都重新取：任务栏挪位置时工作区会变。 */
   function workArea() {

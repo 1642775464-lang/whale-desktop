@@ -24,9 +24,7 @@ const { app, BrowserWindow, ipcMain, Menu, screen } = require("electron");
 const path = require("node:path");
 
 const { createLogger } = require("./lib/log.cjs");
-const { createHudState } = require("./lib/state.cjs");
-const { createHudWindow } = require("./lib/window.cjs");
-const { registerIpc } = require("./lib/ipc.cjs");
+const { bootHud } = require("./lib/boot.cjs");
 
 /** 运行数据目录：日志与 Electron 自身的缓存都放这儿（PRD 七节）。 */
 const USER_DATA_DIR = path.join(__dirname, ".userdata");
@@ -89,39 +87,19 @@ function watchRenderer(win) {
 app.whenReady().then(() => {
   log.info("悬浮条启动");
 
-  runtime.state = createHudState({
-    onChange: (form, reason) => {
-      log.info(`形态变化 → ${form}（原因：${reason}）`);
-      runtime.hudWindow.applyForm(form);
-    },
-  });
-
-  runtime.hudWindow = createHudWindow({
+  const { hudWindow, state } = bootHud({
     BrowserWindow,
     screen,
-    rendererFile: path.join(__dirname, "renderer", "index.html"),
-    preloadFile: path.join(__dirname, "preload.cjs"),
-    log,
-  });
-
-  watchRenderer(runtime.hudWindow.win);
-
-  runtime.ipc = registerIpc({
     ipcMain,
-    state: runtime.state,
-    hudWindow: runtime.hudWindow,
     app,
     Menu,
     log,
     port: Number(process.env.WHALE_BRIDGE_PORT ?? 19387),
-    version: app.getVersion(),
+    onWindowReady: (win) => watchRenderer(win.win),
   });
 
-  // 先摆好位置再显示：反过来会先看到窗口在 (0,0) 闪一下
-  runtime.hudWindow.applyForm(runtime.state.form());
-  runtime.hudWindow.show();
-
-  runtime.hudWindow.loaded.then(() => log.info("界面已加载"));
+  runtime.hudWindow = hudWindow;
+  runtime.state = state;
 });
 
 app.on("window-all-closed", () => {
