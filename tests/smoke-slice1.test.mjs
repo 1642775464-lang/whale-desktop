@@ -14,8 +14,22 @@ import { connect } from "node:net";
 
 import { apply, dispose } from "../whale-bridge/host.js";
 
-/** 冒烟测试用的端口：避开正式端口，防止与真实宿主冲突。 */
+/**
+ * 冒烟测试用的端口：避开正式端口，防止与真实宿主冲突。
+ *
+ * 为什么必须显式传端口：Node 测试运行器并发执行各测试文件，它们共享同一个
+ * 进程——用环境变量协调会互相覆盖，谁最后写谁赢。显式传参没有这个竞态。
+ */
 const TEST_PORT = 19388;
+
+/**
+ * 走 apply() 的用例专用端口。
+ *
+ * 与 TEST_PORT 分开：同级 test() 在同一文件内也是并发执行的，而 apply() 起的是
+ * 单例服务——若与上面那组手动 listen 的用例共用端口，关服务/退订会掐断另一个
+ * 用例正在进行的 fetch（表现为 ECONNRESET）。
+ */
+const APPLY_PORT = 19390;
 
 /**
  * 构造假宿主 ctx。
@@ -86,10 +100,9 @@ function rawRequest(port, raw) {
 
 test("桥骨架端到端冒烟", async (t) => {
   const ctx = fakeCtx();
-  process.env.WHALE_TEST_PORT = String(TEST_PORT);
 
-  // 直接调 apply —— 但 apply 内部固定用 PORT。
-  // 为不干扰真实 19387，这里临时改监听：用 server 模块单独起一份。
+  // 这里不起 apply()：本组测的是「路由处理器本身」，需要自己控制监听端口。
+  // apply() 的完整启动路径由下面两个用例覆盖。
   const { createHostAccess } = await import("../whale-bridge/lib/host-ctx.mjs");
   const { registerSliceOneRoutes } = await import("../whale-bridge/lib/handlers-slice1.mjs");
   const { createBridgeServer, listen, close } = await import("../whale-bridge/lib/server.mjs");
@@ -101,7 +114,6 @@ test("桥骨架端到端冒烟", async (t) => {
 
   t.after(async () => {
     await close(server);
-    await dispose();
   });
 
   await t.test("GET /whale 返回概览与 22 条路由", async () => {
@@ -225,27 +237,30 @@ test("桥骨架端到端冒烟", async (t) => {
   });
 });
 
-test("apply 在真实端口上可启动并注册 4 条路由", async (t) => {
+test("apply/dispose 生命周期（串行）", async (t) => {
+  // 这两条必须串行：apply() 起的是模块级单例服务，同级并发调用会互相覆盖
+  // state（后者的 apply 覆盖前者的 server 引用），导致 dispose 关错对象、
+  // 或用例之间互相掐断正在进行的 fetch。
   const ctx = fakeCtx();
-  await apply(ctx);
-  t.after(async () => {
-    await dispose();
+
+  await t.test("apply 在指定端口上可启动并注册已实现的路由", async () => {
+    await apply(ctx, { port: APPLY_PORT });
+
+    const res = await fetch(`http://127.0.0.1:${APPLY_PORT}/whale`);
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    // 切片 1 四条 + 切片 2 的 /whale/fold
+    assert.equal(json.implementedCount, 5);
+    assert.equal(json.routeCount, 22);
   });
 
-  const res = await fetch("http://127.0.0.1:19387/whale");
-  assert.equal(res.status, 200);
-  const json = await res.json();
-  assert.equal(json.implementedCount, 4);
-});
+  await t.test("dispose 后端口释放，可再次 apply", async () => {
+    await dispose();
 
-test("dispose 后端口释放，可再次 apply", async () => {
-  const ctx = fakeCtx();
-  await apply(ctx);
-  await dispose();
-
-  // 端口应已释放，能再次绑定
-  await apply(ctx);
-  const res = await fetch("http://127.0.0.1:19387/whale");
-  assert.equal(res.status, 200);
-  await dispose();
+    // 端口应已释放，能再次绑定
+    await apply(ctx, { port: APPLY_PORT });
+    const res = await fetch(`http://127.0.0.1:${APPLY_PORT}/whale`);
+    assert.equal(res.status, 200);
+    await dispose();
+  });
 });
