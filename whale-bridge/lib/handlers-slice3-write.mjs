@@ -148,11 +148,26 @@ async function open({ body, bridge }) {
   return toResponse(bridge.windows.open(options));
 }
 
-/** POST /whale/close —— 关闭小窗。 */
+/**
+ * POST /whale/close —— 关闭窗口。
+ *
+ * 三种口径（与 windows.close 一致）：
+ *   - `{pid}`           → 只关那一个
+ *   - `{target}`        → 只关该目标的（"window" / "hud"）
+ *   - `{all: true}`     → 全关（卸载时用）
+ *
+ * ⚠️ `target` 必须在**这里**就传下去。
+ * 曾经只在 windows.close 里实现了按 target 关，处理器却只读 pid/all——
+ * 于是 `{target:"window"}` 被丢掉，close() 落到「按 pid 匹配」分支、
+ * 匹配不到任何窗口，返回 `{ok:true, closed:0}`：
+ * **看起来成功、实际一个都没关**。表现就是「点鲸鱼收不起小窗、绿环也不灭」。
+ * 这类「成功但什么也没做」的返回比报错更难查，所以这条注释留在这里。
+ */
 async function closeWindows({ body, bridge }) {
   const pid = typeof body?.pid === "number" ? body.pid : undefined;
   const all = body?.all === true;
-  return toResponse(bridge.windows.close({ pid, all }));
+  const target = typeof body?.target === "string" ? body.target : undefined;
+  return toResponse(bridge.windows.close({ pid, all, target }));
 }
 
 /**

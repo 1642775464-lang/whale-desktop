@@ -264,6 +264,81 @@ test("close：pid 不存在时返回 0 而不是报错", () => {
   assert.equal(out.closed, 0);
 });
 
+test("close：按 target 关只关该目标（不被另一目标挡住）", () => {
+  // 这条是补上来的。切片 6 泛化出 target 后，我只在管理器里实现了按 target 关，
+  // 忘了在 HTTP 处理器里把 target 传下去 —— `{target:"window"}` 被丢掉后
+  // 落到「按 pid 匹配」分支、返回 `{ok:true, closed:0}`：
+  // **看着成功、实际一个都没关**（用户报「点鲸鱼收不起小窗、绿环不灭」）。
+  let n = 200;
+  const mgr = createWindowManager({
+    repoRoot: ROOT,
+    existsFn: allExist,
+    spawnFn: () => fakeChild((n += 1)),
+  });
+
+  mgr.open({ target: "hud" });
+  mgr.open({ target: "window" });
+  assert.equal(mgr.count(), 2, "两个目标应各起一个");
+
+  const out = mgr.close({ target: "hud" });
+  assert.equal(out.closed, 1, "按 target 关必须真的关掉一个（closed=0 却是 ok 正是那个 bug）");
+  assert.equal(mgr.count(), 1, "只剩小窗");
+  assert.equal(mgr.pidsOf("window").length, 1, "小窗不该被误关");
+  assert.equal(mgr.pidsOf("hud").length, 0, "悬浮条应被关掉");
+});
+
+test("close：all 优先于 target（卸载时要把两个都关掉）", () => {
+  let n = 300;
+  const mgr = createWindowManager({
+    repoRoot: ROOT,
+    existsFn: allExist,
+    spawnFn: () => fakeChild((n += 1)),
+  });
+  mgr.open({ target: "hud" });
+  mgr.open({ target: "window" });
+
+  const out = mgr.close({ all: true, target: "hud" });
+  assert.equal(out.closed, 2, "all 必须压过 target");
+  assert.equal(mgr.count(), 0);
+});
+
+test("close：未知 target 退回默认（小窗），不报错也不误伤悬浮条", () => {
+  let n = 400;
+  const mgr = createWindowManager({
+    repoRoot: ROOT,
+    existsFn: allExist,
+    spawnFn: () => fakeChild((n += 1)),
+  });
+  mgr.open({ target: "hud" });
+  mgr.open({ target: "window" });
+
+  // 未知目标归一化成 window —— 客户端版本比桥新时不至于整条按钮点不动
+  const out = mgr.close({ target: "不存在的目标" });
+  assert.equal(out.closed, 1);
+  assert.equal(mgr.pidsOf("hud").length, 1, "悬浮条不该被误关");
+});
+
+test("open：两个目标各自复用，互不遮挡", () => {
+  // 泛化时最容易犯的错：复用不看目标 ——
+  // 存活的悬浮条会挡住拉起小窗，表现是「点按钮只起来一个」。
+  let n = 500;
+  const mgr = createWindowManager({
+    repoRoot: ROOT,
+    existsFn: allExist,
+    spawnFn: () => fakeChild((n += 1)),
+  });
+
+  const h1 = mgr.open({ target: "hud" });
+  const w1 = mgr.open({ target: "window" });
+  assert.notEqual(h1.pid, w1.pid, "两个目标必须是两个进程");
+
+  // 再各开一次：应各自复用自己那个
+  assert.equal(mgr.open({ target: "hud" }).pid, h1.pid);
+  assert.equal(mgr.open({ target: "window" }).pid, w1.pid);
+  assert.equal(mgr.open({ target: "hud" }).reused, true);
+  assert.equal(mgr.count(), 2, "复用不该多起进程");
+});
+
 test("closeAll：关闭全部，供卸载时调用", () => {
   let n = 100;
   const mgr = createWindowManager({

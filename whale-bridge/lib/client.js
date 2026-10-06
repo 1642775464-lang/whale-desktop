@@ -43,6 +43,11 @@ window.__ModuleLoader__.load({
      * 契约测试会比对它与 favicon-whale.svg 是否一致，一旦漂移立刻红。
      *
      * 内联而不是外链：客户端插件跑在页面里，取不到仓库内的文件。
+     *
+     * ⚠️ **fill 必须显式给**。源 svg 上是 `fill="none"`，真正的颜色本来由
+     * 悬浮条的 CSS（`.whale svg path{fill:var(--ink)}`）填上。
+     * 但客户端插件**没有自己的样式表**，照抄源 svg 的 `fill="none"`
+     * 会画出一条**空心轮廓 = 看着就是个透明块**（用户报过一次）。
      */
     function WhaleIcon() {
       return h(
@@ -51,12 +56,12 @@ window.__ModuleLoader__.load({
           viewBox: "0 0 50 50",
           width: 24,
           height: 24,
-          fill: "none",
           "aria-hidden": "true",
           focusable: "false",
           style: { display: "block" },
         },
-        h("path", { d: WHALE_PATH_D }),
+        // 深色鲸鱼配浅紫底（与悬浮条同一配色硬约束：浅底必须配深色）
+        h("path", { d: WHALE_PATH_D, fill: "#1F2430" }),
       );
     }
 

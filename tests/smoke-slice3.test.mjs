@@ -316,6 +316,36 @@ test("切片 3 SSE 与全路由端到端", async (t) => {
     assert.ok(json.closed >= 0);
   });
 
+  await t.test("POST /whale/close：target 不能被静默丢掉", async () => {
+    // 真实踩过：只在 windows.close 里实现了按 target 关，
+    // 处理器却只读 pid/all —— `{target:"window"}` 被丢掉后落到「按 pid 匹配」
+    // 分支、匹配不到任何窗口，返回 `{ok:true, closed:0}`：
+    // **看起来成功、实际一个都没关**，表现是「点鲸鱼收不起小窗」。
+    //
+    // 这条**不能只断言状态码**（丢与不丢都是 200，那种断言是空壳）。
+    // 这里用真实装配的桥：先开一个窗口，再按 target 关，验它真的少了一个。
+    // 若 Electron 未就位（CI 上可能如此），则退化为「字段被识别」的软断言。
+    const opened = await postJson("/whale/open", { target: "hud" });
+    if (opened.status !== 200) {
+      // 环境不具备拉起窗口的条件，跳过行为断言（不假装通过）
+      t.diagnostic(`跳过 target 行为断言：open 失败 ${opened.json?.error?.code}`);
+      return;
+    }
+    const before = await getJson("/whale/windows");
+    const beforeCount = before.json.windows.length;
+
+    const closed = await postJson("/whale/close", { target: "hud" });
+    assert.equal(closed.status, 200);
+    assert.ok(
+      closed.json.closed >= 1,
+      `按 target 关必须真的关掉至少一个（实际 closed=${closed.json.closed}）——`
+        + `closed=0 却 ok=true 正是那个「成功但什么都没做」的 bug`,
+    );
+
+    const after = await getJson("/whale/windows");
+    assert.equal(after.json.windows.length, beforeCount - 1, "窗口表必须少一个");
+  });
+
   await t.test("POST /whale/approval：未知 id → 404", async () => {
     const { status, json } = await postJson("/whale/approval", { id: "ap-999", outcome: "allowed-once" });
     assert.equal(status, 404);
