@@ -176,6 +176,33 @@ test("阴影是三层的（缺一不可）", () => {
   assert.ok(layers >= 3, `条的阴影层数不足（找到 ${layers} 层）`);
 });
 
+test("等宽数字段必须垂直居中（基线对齐要配满高行盒）", () => {
+  // 用户报过「token 流速与上下文不是上下居中的」。
+  // 根因：`.seg.mono` 用 align-items: baseline（为让 tok/s 落在数字基线上，
+  // 这是刻意的），但内层 flex 行只撑出内容高（约 24.75px）且**贴着盒子顶部**，
+  // 36px 盒子里少掉的那 5.6px 全跑到下面 —— 实测文字中心偏上 **6px**。
+  //
+  // 修法：数字自己的行盒撑满容器高度（line-height = 盒高），
+  // 基线自然落回中心。
+  //
+  // 这条断言盯住两件事，缺一就会漂回去：
+  const monoRule = /\.seg\.mono\s*\{[^}]*\}/s.exec(css)?.[0] ?? "";
+  assert.ok(monoRule !== "", "找不到 .seg.mono 规则");
+  assert.match(monoRule, /align-items:\s*baseline/, "基线对齐是刻意的排版意图，不能随手改成 center");
+  assert.match(
+    monoRule,
+    /line-height:\s*36px/,
+    "行盒必须撑满 36px 盒高，否则内容会贴顶、看起来偏上 6px",
+  );
+
+  // 单位（tok/s）要贴基线，所以它自己必须是紧行高——
+  // 否则它的行盒会把整行撑出去，居中又被破坏
+  const unitRule = /\.seg\.mono\s+\.unit\s*\{[^}]*\}/s.exec(css)?.[0] ?? "";
+  assert.ok(unitRule !== "", "找不到 .seg.mono .unit 规则");
+  assert.match(unitRule, /line-height:\s*1\b/, "单位必须紧行高，不参与撑行");
+  assert.doesNotMatch(unitRule, /line-height:\s*36px/, "单位不该撑满盒高——那样会顶偏数字");
+});
+
 test("收起态自己声明 scaleX(0)，且 overflow 可见", () => {
   // 陷阱 1：靠动画的 forwards 停留态，摘掉动画类会连填充一起消失
   assert.match(css, /body\.collapsed\s+\.bar\s*\{[^}]*transform:\s*scaleX\(0\)/s, "终态必须由 .collapsed 自己声明");

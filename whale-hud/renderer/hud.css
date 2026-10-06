@@ -249,7 +249,19 @@ body {
   height: 36px;
   padding: 0 10px;
   display: flex;
+  /*
+   * 基线对齐是刻意的：tok/s 要落在数字的基线上，而不是各自居中。
+   *
+   * ⚠️ 但基线对齐有个坑：内层 flex 行的高度 = 内容高度（约 24.75px），
+   * 而它**贴着容器顶部**排。36px 盒子里少掉的那 5.6px 全跑到下面，
+   * 于是整段数字看起来偏上 —— 实测偏 **6px**（用户报「不是上下居中」）。
+   *
+   * 修法：让数字自己的行盒撑满容器高度（line-height = 盒高），
+   * 这样内容高度就等于盒高、行占满整个盒子，基线自然落回中心。
+   * 单位仍用紧行高（见下），它会贴到数字基线上而不会把行撑破。
+   */
   align-items: baseline;
+  line-height: 36px;
   gap: 4px;
   font-family: var(--mono);
   font-size: 15px;
@@ -259,6 +271,8 @@ body {
 }
 
 .seg.mono .unit {
+  /* 紧行高：单位只需贴到数字基线上，不参与撑行（否则会把行盒顶出去） */
+  line-height: 1;
   font-size: 11px;
   font-weight: 500;
   color: var(--ink3);
