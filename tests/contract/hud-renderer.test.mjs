@@ -98,10 +98,16 @@ test("CSP 必须放行 'self'，否则 hud.js / hud.css 被静默拦截", () => 
   assert.ok(!/connect-src[^;]*\s\*/.test(csp), "connect-src 不得写成裸 *");
 });
 
-test("脚本加载顺序：bridge-client → carousel → hud", () => {
+test("脚本加载顺序：各模块先定义、hud.js 最后装配", () => {
   // 只在 <script src> 里找：注释里也提到了文件名，拿全文 indexOf 会误判
   const tags = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(tags, ["bridge-client.js", "carousel.js", "hud.js"], "加载顺序错了会在启动时抛 ReferenceError");
+  assert.deepEqual(
+    tags,
+    ["bridge-client.js", "carousel.js", "drag.js", "hud.js"],
+    "加载顺序错了会在启动时抛 ReferenceError",
+  );
+  // hud.js 必须最后：它是装配层，要用到前面每个模块的命名空间
+  assert.equal(tags[tags.length - 1], "hud.js", "hud.js 必须在最后");
 });
 
 test("preload 暴露的通道与主进程注册的通道一一对应", () => {
@@ -212,6 +218,88 @@ test("图标内联块里的 path 数据非空（防止「鲸鱼不见了」）",
   assert.ok(block !== null, "找不到图标标记块");
   const d = /<path d="([^"]+)"/.exec(block[1]);
   assert.ok(d !== null && d[1].length > 200, "path 数据缺失或过短");
+});
+
+test("鲸鱼点击是**切换**语义，不只是唤起（F2①）", () => {
+  // PRD F2①：单击唤起小窗；**小窗已在跑时再点收起**。
+  // 曾经函数名叫 toggle、实现却只调 openSmallWindow —— 表现是
+  // 「点几次都只是重新唤起，永远关不掉」，用户报过一次。
+  //
+  // ⚠️ 这一条**不能只查「两个方法名都出现过」**。
+  // 我第一次就是这么写的，随后做注入验证（把切换改回只唤起）时它照样全绿——
+  // 因为注入只改了调用关系、方法名仍在文件里，那种断言是空壳。
+  // 所以这里必须查到**真实的条件分支结构**。
+  const toggle = /function toggleSmallWindow[\s\S]*?\n  \}/.exec(hv);
+  assert.ok(toggle !== null, "找不到 toggleSmallWindow");
+  const body = toggle[0];
+
+  assert.match(body, /isSmallWindowRunning/, "必须先问真实运行态");
+  // 必须有「据运行态二选一」的结构，两种写法都接受：
+  //   三元：running ? closeSmallWindow() : openSmallWindow()
+  //   分支：if (running) { ...close } else { ...open }
+  const ternary = /running\s*\?\s*client\.closeSmallWindow\(\)/.test(body) &&
+    /:\s*client\.openSmallWindow\(\)/.test(body);
+  assert.ok(
+    ternary || hasToggleBranch(body),
+    "切换必须按运行态真的二选一：在跑调 closeSmallWindow、没跑调 openSmallWindow。"
+      + "只让两个方法名出现是不够的（曾因此漏判）。",
+  );
+});
+
+/**
+ * 判断一段代码里是否有「据 running 真的二选一」的分支结构。
+ *
+ * 单独提出来是为了让主断言与负向验证**共用同一条规则**——
+ * 规则若在两处各写一遍，改了一处忘了另一处时负向验证会失真。
+ *
+ * @param {string} body
+ * @returns {boolean}
+ */
+function hasToggleBranch(body) {
+  const ifElse = /if\s*\([^)]*running[^)]*\)\s*\{[\s\S]*?closeSmallWindow[\s\S]*?\}\s*else\s*\{[\s\S]*?openSmallWindow/;
+  const ternary = /running\s*\?\s*client\.closeSmallWindow\(\)[\s\S]*?:\s*client\.openSmallWindow\(\)/;
+  return ifElse.test(body) || ternary.test(body);
+}
+
+test("负向验证：只唤起不收起确实会被上一条规则抓到", () => {
+  // 规则若是空壳（永远通过），上面那条断言毫无意义。
+  // 这里直接喂一段「只唤起」的实现，确认它被判为不合格。
+  const bad = `function toggleSmallWindow() {
+    client.isSmallWindowRunning().then((running) => {
+      const action = client.openSmallWindow(); void running; void client.closeSmallWindow;
+      return action;
+    });
+  }`;
+  const good = `function toggleSmallWindow() {
+    client.isSmallWindowRunning().then((running) => {
+      const action = running ? client.closeSmallWindow() : client.openSmallWindow();
+      return action;
+    });
+  }`;
+  assert.equal(hasToggleBranch(bad), false, "「只唤起」必须被判不合格");
+  assert.equal(hasToggleBranch(good), true, "真正的切换应通过");
+});
+
+test("判定「在跑」要问桥，不靠本地猜（小窗可被用户自己关掉）", () => {
+  assert.match(bc, /isSmallWindowRunning/, "桥客户端必须提供运行态查询");
+  assert.match(hv, /isSmallWindowRunning/, "切换前必须查真实运行态");
+  // 查询要读 target 字段（泛化后窗口表里同时有 hud 与 window）
+  assert.match(bc, /w\.target === "window"/, "必须按 target 区分，否则会把悬浮条自己算成小窗");
+});
+
+test("外圈绿环 = 小窗在跑（F2①），且跟随现实", () => {
+  assert.match(hv, /renderWhaleRing/, "必须有绿环渲染");
+  assert.match(hv, /classList\.toggle\("on"/, "绿环用 .on 类");
+  // 用户从小窗自己退出后绿环也得灭 —— 需要定时核对
+  assert.match(hv, /RING_WATCH_MS/, "必须有定期核对，否则指示会停在错的态");
+  assert.match(hv, /setInterval/, "核对要周期性跑，不能只在点击时更新");
+});
+
+test("收起失败要红闪（不静默）", () => {
+  const toggle = /function toggleSmallWindow[\s\S]*?\n  \}/.exec(hv);
+  assert.ok(toggle !== null);
+  assert.match(toggle[0], /flashFail/, "失败必须红闪");
+  assert.match(toggle[0], /console\.warn/, "失败必须留可查痕迹");
 });
 
 test("结构断言确实去掉了注释（负向验证）", () => {

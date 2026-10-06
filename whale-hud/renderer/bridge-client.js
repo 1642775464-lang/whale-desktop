@@ -177,7 +177,39 @@
      * @returns {Promise<{ok: boolean, code?: string, reused?: boolean}>}
      */
     function openSmallWindow() {
-      return post("/whale/open", { reason: "hud" });
+      return post("/whale/open", { reason: "hud", target: "window" });
+    }
+
+    /**
+     * 收起（关闭）小窗进程。
+     *
+     * PRD F2①：小窗已在跑时再点鲸鱼要**收起**，不是重复唤起。
+     * 关的是进程而不是隐藏窗口——小窗 PRD 的「临时收起」另有 `−` 最小化那条路，
+     * 鲸鱼这一下对应的是「关掉」。
+     *
+     * @returns {Promise<{ok: boolean, code?: string, closed?: number}>}
+     */
+    function closeSmallWindow() {
+      return post("/whale/close", { target: "window" });
+    }
+
+    /**
+     * 问桥：小窗现在在跑吗。
+     *
+     * 鲸鱼的绿环与「点一下是唤起还是收起」都取决于它。
+     * 取不到就当作「没在跑」——宁可多点一次唤起，也不要让用户点了个关不掉的键。
+     *
+     * @returns {Promise<boolean>}
+     */
+    function isSmallWindowRunning() {
+      return global
+        .fetch(`${base}/whale/windows`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          const list = Array.isArray(json?.windows) ? json.windows : [];
+          return list.some((w) => w.target === "window");
+        })
+        .catch(() => false);
     }
 
     /**
@@ -233,8 +265,10 @@
     return {
       activate,
       close,
+      closeSmallWindow,
       connect,
       getState () { return state; },
+      isSmallWindowRunning,
       openSmallWindow,
       refresh,
       startPolling,

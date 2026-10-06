@@ -70,11 +70,12 @@
 
     <!--
       加载顺序有依赖：bridge-client 定义 WhaleBridge，carousel 定义 WhaleCarousel，
-      hud.js 同时用到两者。顺序错了会在启动时抛 ReferenceError，
+      drag 定义 WhaleDrag，hud.js 同时用到三者。顺序错了会在启动时抛 ReferenceError，
       而现象是「窗口在、但什么都没接上」。契约测试会钉住这个顺序。
     -->
     <script src="bridge-client.js"></script>
     <script src="carousel.js"></script>
+    <script src="drag.js"></script>
     <script src="hud.js"></script>
   </body>
 </html>

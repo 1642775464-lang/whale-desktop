@@ -15,8 +15,8 @@
 (function main(global) {
   "use strict";
 
-  /** 拖动判定阈值：位移**超过** 3px 才算拖动，否则算单击（A10）。 */
-  const DRAG_THRESHOLD_PX = 3;
+  // 拖动阈值与双击窗口都在 drag.js 里（那里是唯一处理鼠标序列的地方），
+  // 不再在这里各放一份——两处各一份时改一处忘一处，行为会静默不一致。
 
   /** 完成提醒震动时长（规范 1.6）。 */
   const SHAKE_MS = 2000;
@@ -24,8 +24,13 @@
   /** 悬停移出后浮层隐藏延迟，与主进程的 180ms 缩回保持一致。 */
   const DETAIL_HIDE_MS = 180;
 
-  /** 双击判定窗口：两次点击间隔小于它就当双击（展开成条）。 */
-  const DOUBLE_CLICK_MS = 300;
+  /**
+   * 小窗运行态的核对间隔。
+   *
+   * 取 2s：与桥心跳同频，用户从小窗自己退出后最迟 2 秒绿环就灭。
+   * 再快没有意义（人感知不到），再慢会让指示显得「卡住」。
+   */
+  const RING_WATCH_MS = 2000;
 
   const grouped = new Intl.NumberFormat("zh-CN");
 
@@ -244,6 +249,25 @@
     if (!state.offline) detectTurnEnd(state.sessions);
   }
 
+  /**
+   * 定期核对小窗运行态，让绿环跟着现实走。
+   *
+   * 为什么不能只在点击时更新：用户可能从小窗自己的「更多 → 退出小窗」关掉它，
+   * 那样本地标记会一直停在「在跑」，绿环亮着但再点却是唤起——
+   * 指示与语义不一致，比没有指示更糟。
+   */
+  function startRingWatch() {
+    const check = function () {
+      client.isSmallWindowRunning().then((running) => {
+        if (running === smallWindowRunning) return;
+        smallWindowRunning = running;
+        renderWhaleRing();
+      });
+    };
+    check();
+    global.setInterval(check, RING_WATCH_MS);
+  }
+
   // ── 悬停详情（F3）────────────────────────────────────
 
   /**
@@ -321,24 +345,54 @@
     }
   }
 
-  // ── 鲸鱼点击：唤起小窗（F2①）────────────────────────
+  // ── 鲸鱼点击：唤起 / 收起小窗（F2①）──────────────────
+
+  /** 小窗是否在跑（决定鲸鱼外圈绿环与点击语义）。 */
+  let smallWindowRunning = false;
 
   /**
    * 唤起 / 收起小窗。
    *
-   * 切片 5 之前 `whale-window/` 不存在，桥会返回 `entry-missing`。
-   * 这时**红闪并落原因**，不静默、不假装成功（规范 2「灰色项不得有静默效果」同源）。
+   * **PRD F2① 是切换语义**：单击唤起；小窗已在跑时再点**收起**。
+   * 曾经只实现了「唤起」那一半——函数名叫 toggle、实现却只调 open，
+   * 表现就是「点几次都只是重新唤起，永远关不掉」。
+   *
+   * 失败时红闪并落原因，不静默（规范 2「灰色项不得有静默效果」同源）。
    */
   function toggleSmallWindow() {
-    client.openSmallWindow().then((out) => {
-      if (out.ok) {
-        dom.whale.classList.add("on");
-        return;
-      }
-      global.console.warn(`唤起小窗失败：${out.code}`);
-      flashFail();
-      dom.whale.classList.remove("on");
+    // 先问桥小窗在不在跑，而不是靠本地猜：
+    // 小窗可能被用户用 ⌘ 更多→退出 关掉，本地标记会过期
+    client.isSmallWindowRunning().then((running) => {
+      smallWindowRunning = running;
+      renderWhaleRing();
+
+      const action = running ? client.closeSmallWindow() : client.openSmallWindow();
+      return action.then((out) => {
+        if (out.ok) {
+          // 关掉后状态立刻变（不等下一轮轮询）
+          smallWindowRunning = !running;
+          renderWhaleRing();
+          return;
+        }
+        global.console.warn(`${running ? "收起" : "唤起"}小窗失败：${out.code}`);
+        flashFail();
+        // 失败时按实际情况刷新绿环，别停在错的指示上
+        client.isSmallWindowRunning().then((now) => {
+          smallWindowRunning = now;
+          renderWhaleRing();
+        });
+      });
     });
+  }
+
+  /**
+   * 鲸鱼外圈绿环：小窗在跑时亮。
+   *
+   * PRD F2①：**外圈绿环 = 小窗在跑**。它不只是装饰——
+   * 它是「再点一下会收起」的唯一提示，缺了用户就不知道当前是哪一半语义。
+   */
+  function renderWhaleRing() {
+    dom.whale.classList.toggle("on", smallWindowRunning);
   }
 
   /** 操作失败的红闪。 */
@@ -352,53 +406,21 @@
   // ── 拖动（A10）───────────────────────────────────────
 
   /**
-   * 球的拖动。
+   * 绑定拖动与单击/双击手势。
    *
-   * 阈值 3px：`mousedown` → `mouseup` 之间位移**超过** 3px 算拖动，否则算单击。
-   * 放在渲染层是因为只有它看得到完整的鼠标序列。
+   * 鼠标序列的处理在 `drag.js`（那是唯一看得到完整 mousedown→up 的地方，
+   * 且三种手势互相牵制）。这里只提供「当前形态能不能拖」与三个回调。
    */
   function bindDrag() {
-    let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    /** 上一次球单击时刻：用于把「单击唤起小窗」与「双击展开」分开。 */
-    let lastBallClickAt = 0;
-
-    dom.whale.addEventListener("mousedown", function (ev) {
+    global.WhaleDrag.bindDrag({
+      handle: dom.whale,
       // 只在球形态下允许拖动：条形态是「状态栏」语义，位置固定（PRD 已知限制）
-      if (form !== "ball" || ev.button !== 0) return;
-      ev.preventDefault();
-      dragging = true;
-      startX = ev.screenX;
-      startY = ev.screenY;
-      global.hud.dragStart();
-    });
-
-    global.document.addEventListener("mousemove", function (ev) {
-      if (!dragging) return;
-      global.hud.dragMove(ev.screenX - startX, ev.screenY - startY);
-    });
-
-    global.document.addEventListener("mouseup", (ev) => {
-      if (!dragging) return;
-      dragging = false;
-      const moved = Math.abs(ev.screenX - startX) > DRAG_THRESHOLD_PX
-        || Math.abs(ev.screenY - startY) > DRAG_THRESHOLD_PX;
-      global.hud.dragEnd();
-
-      // 位移超过阈值 = 拖动，不算点击
-      if (moved) return;
-
-      // 球的单击 / 双击全在这里判：拖动逻辑本来就掌握完整的鼠标序列，
-      // 再挂一个 click 监听会与这里的判定打架（一次点击被处理两遍）。
-      const now = Date.now();
-      if (now - lastBallClickAt < DOUBLE_CLICK_MS) {
-        lastBallClickAt = 0;
-        expand();
-        return;
-      }
-      lastBallClickAt = now;
-      toggleSmallWindow();
+      canDrag () { return form === "ball"; },
+      onDragStart () { global.hud.dragStart(); },
+      onDragMove (dx, dy) { global.hud.dragMove(dx, dy); },
+      onDragEnd () { global.hud.dragEnd(); },
+      onClick: toggleSmallWindow,
+      onDoubleClick: expand,
     });
   }
 
@@ -453,6 +475,8 @@
     client.connect();
     // 兜底轮询：SSE 静默失效（网络层不报错但也不再推）时把数字拉回真实值
     client.startPolling();
+    // 鲸鱼绿环跟随小窗真实运行态（F2①）
+    startRingWatch();
   }
 
   if (global.document.readyState === "loading") {
