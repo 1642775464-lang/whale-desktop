@@ -21,7 +21,8 @@ export const BRIDGE_NAME = "whale-bridge";
  * 返回版本、路由表、插件名。路由表是唯一事实源，直接由 routes.mjs 生成，
  * 每条标注 `implemented`，便于一眼看出哪些路由尚未落地。
  */
-function overview() {  const routes = describeRoutes();
+function overview() {
+  const routes = describeRoutes();
   return {
     ok: true,
     name: BRIDGE_NAME,
