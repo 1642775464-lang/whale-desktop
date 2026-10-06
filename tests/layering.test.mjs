@@ -219,16 +219,54 @@ test("A-4 负向验证：渲染层与主进程侧的判定确实不同", () => {
   assert.equal(isMainProcessFile(join(ROOT, "whale-hud", "renderer", "hud.js")), false);
 });
 
-test("桥的运行时依赖数为 0（只允许 node: 内置与相对路径）", () => {
-  const files = walk(join(ROOT, "whale-bridge")).filter((f) => /\.(mjs|cjs|js)$/.test(f));
+test("桥的运行时依赖数为 0（宿主侧只许 node: 内置；浏览器侧另算）", () => {
+  // 口径与 tools/scan-deps.mjs 的闸门 5 保持一致：
+  //   · 宿主/主进程侧 → 只允许 node: 内置与相对路径
+  //   · 浏览器侧（package.json 的 exports["./client"]）→ 允许宿主模块表的基线模块，
+  //     但**禁止** node: 内置模块（浏览器里根本不存在，引了必崩）
+  //
+  // 为什么浏览器侧要另算：客户端半侧跑在页面里，Node 从不加载它。
+  // 它 require("react") 是从宿主模块表取的，不是 npm 依赖
+  // （本机同槽位的 dsh-agnes-image 同样写法、同样不声明 react 依赖）。
+  const pkgDir = join(ROOT, "whale-bridge");
+  const manifest = JSON.parse(read(join(pkgDir, "package.json")));
+  const clientEntry = manifest.exports?.["./client"];
+  const browserFile = typeof clientEntry === "string"
+    ? join(pkgDir, clientEntry.replace(/^\.\//, ""))
+    : null;
+
+  const BROWSER_OK = new Set(["react", "react-dom", "react/jsx-runtime"]);
+  const EVERYWHERE_OK = new Set(["electron"]);
+
+  const files = walk(pkgDir).filter((f) => /\.(mjs|cjs|js)$/.test(f));
   const offenders = [];
   for (const file of files) {
     const text = read(file);
     const imports = [...text.matchAll(/(?:from\s+|require\(\s*)["']([^"']+)["']/g)].map((m) => m[1]);
+    const isBrowser = browserFile !== null && file === browserFile;
     for (const spec of imports) {
-      if (spec.startsWith(".") || spec.startsWith("node:") || spec.startsWith("/")) continue;
+      if (spec.startsWith(".") || spec.startsWith("/")) continue;
+      if (EVERYWHERE_OK.has(spec)) continue;
+      if (isBrowser) {
+        if (BROWSER_OK.has(spec)) continue;
+        offenders.push(`${relative(ROOT, file)} → ${spec}（浏览器侧只许宿主模块表提供的模块）`);
+        continue;
+      }
+      if (spec.startsWith("node:")) continue;
       offenders.push(`${relative(ROOT, file)} → ${spec}`);
     }
   }
   assert.deepEqual(offenders, [], `桥引入了外部依赖：\n${offenders.join("\n")}`);
+});
+
+test("浏览器侧确实存在且被正确识别（防止上一条断言变成空壳）", () => {
+  // 若 exports["./client"] 丢了，上面那条会把 client.js 当宿主侧文件扫，
+  // 于是 react 又被判违规——这条用来区分「口径生效」与「豁免落空」
+  const manifest = JSON.parse(read(join(ROOT, "whale-bridge", "package.json")));
+  assert.equal(manifest.exports?.["./client"], "./lib/client.js", "必须声明客户端入口");
+  assert.equal(manifest.dsh?.client?.platform, "web", "客户端必须标 web 平台");
+  const clientPath = join(ROOT, "whale-bridge", "lib", "client.js");
+  assert.equal(existsSync(clientPath), true, "客户端文件必须真的存在");
+  // 而且它确实 require 了 react —— 否则这条测试与上一条都没有实际约束力
+  assert.match(read(clientPath), /require\(["']react["']\)/, "客户端应使用宿主模块表的 react");
 });

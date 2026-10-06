@@ -128,14 +128,21 @@ async function resume({ body, bridge }) {
 }
 
 /**
- * POST /whale/open —— 唤起小窗。
+ * POST /whale/open —— 唤起小窗或悬浮条。
  *
- * 复用语义（C8）：已有存活小窗则直接返回 `{reused:true}`，不拉新进程。
+ * 复用语义（C8）：**该目标**已有存活窗口则直接返回 `{reused:true}`，不拉新进程。
+ * 复用按目标分开——存活的悬浮条不该挡住拉起小窗。
+ *
+ * `target` 可选（切片 6 新增）：
+ *   - `"window"`（缺省）→ 小窗
+ *   - `"hud"`            → 悬浮条
+ * 缺省保持 window，既有调用行为不变。
  */
 async function open({ body, bridge }) {
   const options = {
     sessionId: typeof body?.sessionId === "string" ? body.sessionId : undefined,
     reason: typeof body?.reason === "string" ? body.reason : "user",
+    target: typeof body?.target === "string" ? body.target : undefined,
     port: bridge.port,
   };
   return toResponse(bridge.windows.open(options));

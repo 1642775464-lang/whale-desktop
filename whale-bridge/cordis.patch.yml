@@ -1,0 +1,11 @@
+# Whale Desktop 宿主桥 + 页面内小鲸鱼按钮
+#
+# 一个包两个半侧：
+#   host.js      宿主半侧（HTTP/SSE 服务，22 条路由）
+#   lib/client.js 客户端半侧（页面右下角的小鲸鱼按钮）
+#
+# 为什么同一个包：Cordis 的客户端半侧插件必须与宿主插件同包声明，
+# 见《轻量架构草案》§5.4 的归属决策。
+- insert:
+    - id: whale-bridge
+      name: "whale-bridge"

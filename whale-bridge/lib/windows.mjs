@@ -28,11 +28,58 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-/** 小窗主进程入口（相对仓库根）。 */
+/**
+ * 小窗主进程入口（相对仓库根）。
+ *
+ * @deprecated 用 TARGETS.window.entry。保留此导出是为了不破坏既有引用。
+ */
 export const WINDOW_ENTRY = path.join("whale-window", "main.cjs");
+
+/**
+ * 可拉起的窗口目标表。
+ *
+ * 为什么要泛化（切片 6）：页面按钮要「单击同时拉起悬浮条与小窗」，
+ * 而此前本模块是小窗专用的——入口写死、复用也不分目标。
+ *
+ * 两个目标都通过 **环境变量 `WHALE_BRIDGE_PORT`** 接收桥端口
+ * （whale-window/main.cjs:76、whale-hud/main.cjs:97 都是这么读的），
+ * 所以传参机制不需要为悬浮条新增一套。
+ */
+export const TARGETS = {
+  window: {
+    entry: path.join("whale-window", "main.cjs"),
+    cwd: "whale-window",
+    label: "小窗",
+  },
+  hud: {
+    entry: path.join("whale-hud", "main.cjs"),
+    cwd: "whale-hud",
+    label: "悬浮条",
+  },
+};
+
+/** 默认目标：缺省仍是小窗，既有调用行为不变。 */
+export const DEFAULT_TARGET = "window";
 
 /** Electron 可执行文件（相对仓库根，PRD K-7：运行时共享）。 */
 export const ELECTRON_RELATIVE = path.join("runtime", "electron.exe");
+
+/**
+ * 归一化目标名。
+ *
+ * 未知目标一律退回默认（小窗）——**不报错**。
+ * 理由：调用方是客户端插件，它的版本可能比桥新；
+ * 那里传了个桥不认识的目标时，拉起小窗总比整条按钮点不动好。
+ *
+ * @param {unknown} value
+ * @returns {"window" | "hud"}
+ */
+export function normalizeTarget(value) {
+  if (typeof value === "string" && Object.hasOwn(TARGETS, value)) {
+    return value;
+  }
+  return DEFAULT_TARGET;
+}
 
 /**
  * 建立小窗管理器。
@@ -57,21 +104,27 @@ export function createWindowManager(deps) {
   const stats = { opened: 0, reused: 0, closed: 0, spawnFailed: 0, exitObserved: 0 };
 
   /**
-   * 拉起或复用一个小窗。
+   * 拉起或复用某个目标的窗口。
    *
-   * @param {{sessionId?: string, reason?: string}} [options]
-   * @returns {{ok: boolean, code?: string, message?: string, pid?: number, reused?: boolean}}
+   * **复用按目标分开**：一个存活的悬浮条不该挡住拉起小窗，反之亦然。
+   * 早先的写法是「任意存活就复用」，泛化后会变成「点按钮只起来一个」。
+   *
+   * @param {{sessionId?: string, reason?: string, target?: string, port?: number}} [options]
+   * @returns {{ok: boolean, code?: string, message?: string, pid?: number, reused?: boolean, target?: string}}
    */
   function open(options = {}) {
-    // 复用：已有存活小窗就直接返回，不拉新的（C8）
-    const alive = findAlive();
+    const target = normalizeTarget(options.target);
+    const spec = TARGETS[target];
+
+    // 复用：该目标已有存活窗口就直接返回，不拉新的（C8）
+    const alive = findAlive(target);
     if (alive !== undefined) {
       stats.reused += 1;
-      return { ok: true, pid: alive.pid, reused: true };
+      return { ok: true, pid: alive.pid, reused: true, target };
     }
 
     const electronPath = path.join(repoRoot, ELECTRON_RELATIVE);
-    const entryPath = path.join(repoRoot, WINDOW_ENTRY);
+    const entryPath = path.join(repoRoot, spec.entry);
 
     // 启动前先确认两个文件在——缺文件时 spawn 会以晦涩的系统错误失败，
     // 提前检查能给出可读得多的报错
@@ -85,7 +138,7 @@ export function createWindowManager(deps) {
     }
     if (!existsFn(entryPath)) {
       stats.spawnFailed += 1;
-      return { ok: false, code: "entry-missing", message: `未找到小窗入口：${entryPath}` };
+      return { ok: false, code: "entry-missing", message: `未找到${spec.label}入口：${entryPath}` };
     }
 
     const env = buildEnv(options);
@@ -103,7 +156,7 @@ export function createWindowManager(deps) {
       // 现在入口给绝对路径，就不再依赖这两处之间的相对关系；
       // tests/unit/windows.test.mjs 另有一条断言直接检查「组合后存在」。
       child = spawnFn(electronPath, ["--no-sandbox", entryPath], {
-        cwd: path.join(repoRoot, "whale-window"),
+        cwd: path.join(repoRoot, spec.cwd),
         env,
         detached: false,
         stdio: "ignore",
@@ -111,17 +164,18 @@ export function createWindowManager(deps) {
       });
     } catch (err) {
       stats.spawnFailed += 1;
-      return { ok: false, code: "spawn-failed", message: err?.message ?? "无法启动小窗进程" };
+      return { ok: false, code: "spawn-failed", message: err?.message ?? `无法启动${spec.label}进程` };
     }
 
     const pid = child.pid;
     if (typeof pid !== "number") {
       stats.spawnFailed += 1;
-      return { ok: false, code: "spawn-failed", message: "小窗进程未返回 pid" };
+      return { ok: false, code: "spawn-failed", message: `${spec.label}进程未返回 pid` };
     }
 
     const entry = {
       pid,
+      target,
       sessionId: options.sessionId ?? null,
       reason: options.reason ?? "user",
       startedAt: now(),
@@ -135,12 +189,12 @@ export function createWindowManager(deps) {
       child.once("exit", (code, signal) => {
         stats.exitObserved += 1;
         windows.delete(pid);
-        log(`[桥] 小窗进程 ${pid} 已退出（code=${code ?? "null"} signal=${signal ?? "null"}）`);
+        log(`[桥] ${spec.label}进程 ${pid} 已退出（code=${code ?? "null"} signal=${signal ?? "null"}）`);
       });
     }
 
-    log(`[桥] 已拉起小窗 pid=${pid}`);
-    return { ok: true, pid, reused: false };
+    log(`[桥] 已拉起${spec.label} pid=${pid}`);
+    return { ok: true, pid, reused: false, target };
   }
 
   /**
@@ -155,21 +209,30 @@ export function createWindowManager(deps) {
   function buildEnv(options) {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    // 小窗需要知道往哪个端口的桥回报
+    // 两个目标都靠这个环境变量知道往哪个端口的桥回报
+    // （whale-window/main.cjs 与 whale-hud/main.cjs 都是这么读的）
     if (options.port !== undefined) env.WHALE_BRIDGE_PORT = String(options.port);
     return env;
   }
 
   /**
-   * 关闭小窗。
+   * 关闭窗口。
    *
-   * @param {{pid?: number, all?: boolean}} [options]
+   * 三种口径：
+   *   - `{pid}`        → 只关那一个
+   *   - `{target}`     → 只关该目标的
+   *   - `{all: true}`  → 全关（卸载时用）
+   *
+   * @param {{pid?: number, target?: string, all?: boolean}} [options]
    * @returns {{ok: boolean, code?: string, message?: string, closed?: number}}
    */
   function close(options = {}) {
+    const all = [...windows.values()];
     const targets = options.all === true
-      ? [...windows.values()]
-      : [...windows.values()].filter((w) => w.pid === options.pid);
+      ? all
+      : options.target !== undefined
+        ? all.filter((w) => w.target === normalizeTarget(options.target))
+        : all.filter((w) => w.pid === options.pid);
 
     if (targets.length === 0) {
       return { ok: true, closed: 0 };
@@ -199,7 +262,7 @@ export function createWindowManager(deps) {
   }
 
   /**
-   * 列出小窗进程。
+   * 列出窗口进程。
    * @returns {Array<object>}
    */
   function list() {
@@ -207,6 +270,8 @@ export function createWindowManager(deps) {
     for (const entry of windows.values()) {
       out.push({
         pid: entry.pid,
+        // 带上目标：页面按钮拉起两个进程后，靠它区分谁是谁
+        target: entry.target,
         sessionId: entry.sessionId,
         reason: entry.reason,
         startedAt: entry.startedAt,
@@ -216,16 +281,18 @@ export function createWindowManager(deps) {
     return out;
   }
 
-  /** 找一个存活的小窗（取最早启动的那个，行为稳定可预期）。 */
-  function findAlive() {
+  /** 找一个存活的窗口（取最早启动的那个，行为稳定可预期）。 */
+  function findAlive(target = undefined) {
     let oldest;
     for (const entry of windows.values()) {
+      // 指定目标时只在该目标里找——否则存活的悬浮条会挡住拉起小窗
+      if (target !== undefined && entry.target !== target) continue;
       if (oldest === undefined || entry.startedAt < oldest.startedAt) oldest = entry;
     }
     return oldest;
   }
 
-  /** 当前存活小窗数。 */
+  /** 当前存活窗口数。 */
   function count() {
     return windows.size;
   }
@@ -239,5 +306,7 @@ export function createWindowManager(deps) {
     stats,
     /** 仅测试用：直接看进程表的 pid 集合 */
     pids: () => [...windows.keys()],
+    /** 仅测试用：按目标看 pid（验「两个目标各自复用」用） */
+    pidsOf: (target) => [...windows.values()].filter((w) => w.target === target).map((w) => w.pid),
   };
 }

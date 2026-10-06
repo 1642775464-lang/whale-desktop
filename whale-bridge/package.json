@@ -2,10 +2,30 @@
   "name": "whale-bridge",
   "version": "0.1.0",
   "private": true,
-  "description": "Whale Desktop 宿主桥插件：唯一通路 HTTP/SSE 服务",
+  "description": "Whale Desktop 宿主桥插件：唯一通路 HTTP/SSE 服务 + 页面内小鲸鱼按钮",
   "type": "module",
   "main": "host.js",
+  "exports": {
+    ".": "./host.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "host.js",
+    "lib",
+    "cordis.patch.yml"
+  ],
   "engines": {
     "node": ">=22.12.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
   }
 }
