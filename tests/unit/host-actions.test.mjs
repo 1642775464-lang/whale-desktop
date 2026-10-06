@@ -120,13 +120,20 @@ test("send：消息形状对齐 createUserMessage（role/content/source）", () 
   assert.ok(msg.source.kind);
 });
 
-test("send：有 attachments.admitPromptContent 时优先走它", () => {
+test("send：纯文本不走 admission（它是 async，且纯文本本就不需要）", () => {
+  // 宿主的 admitPromptContent 是 **async**（dsh-attachment/lib/index.js:242）。
+  // 曾经桥同步调用它、把返回的 Promise 当内容块数组塞进消息 ——
+  // 宿主 session.append 做 snapshotJsonValue 时遇到 Promise 返回 undefined，
+  // 抛 `carries non-JSON-serializable data`，发一条消息就 500。
+  //
+  // 而且宿主注释写明：没有 image 部分的 prompt "performs no storage operation"，
+  // 纯文本根本不需要 admission。所以这里断言**不调用**它。
   const agent = fakeAgent("idle");
   let admitted = false;
   const host = fakeHost({
     agent,
     attachments: {
-      admitPromptContent(content) {
+      async admitPromptContent(content) {
         admitted = true;
         return content;
       },
@@ -134,13 +141,31 @@ test("send：有 attachments.admitPromptContent 时优先走它", () => {
   });
   const actions = createHostActions({ host });
 
-  actions.send({ sessionId: "s1", text: "hi" });
+  const out = actions.send({ sessionId: "s1", text: "hi" });
 
-  assert.equal(admitted, true);
-  assert.equal(agent.calls[0].msg.role, "user");
+  assert.equal(out.ok, true);
+  assert.equal(admitted, false, "纯文本不该走 admission（它返回 Promise，会污染消息）");
+  // 内容块是同步可用的数组，不是 Promise
+  assert.ok(Array.isArray(agent.calls[0].msg.content));
+  assert.equal(agent.calls[0].msg.content[0].text, "hi");
 });
 
-test("send：admission 抛错时退回自建内容块，不阻断发送", () => {
+test("send：消息内容必须可 JSON 序列化（宿主会强制校验）", () => {
+  // 宿主 session.append → snapshotJsonValue(data)，不可序列化就直接抛。
+  // 这条是那次 500 的最小复现防线：断言 content 绝不是 Promise。
+  const agent = fakeAgent("idle");
+  const actions = createHostActions({ host: fakeHost({ agent }) });
+  actions.send({ sessionId: "s1", text: "hi" });
+
+  const msg = agent.calls[0].msg;
+  assert.equal(typeof msg.content.then, "undefined", "content 不能是 Promise");
+  assert.doesNotThrow(() => JSON.stringify(msg), "整条消息必须能序列化");
+  const parsed = JSON.parse(JSON.stringify(msg));
+  assert.equal(parsed.content[0].text, "hi");
+  assert.equal(parsed.role, "user");
+});
+
+test("send：admission 抛错时不影响发送（纯文本本就不走它）", () => {
   const agent = fakeAgent("idle");
   const host = fakeHost({
     agent,

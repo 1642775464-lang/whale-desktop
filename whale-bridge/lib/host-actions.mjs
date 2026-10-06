@@ -126,24 +126,52 @@ export function createHostActions({ host }) {
   }
 
   /**
-   * 把文本包成宿主可接受的内容块。
-   *
-   * 优先走宿主的 `attachments.admitPromptContent`（对齐真实 UI 的 admission 路径），
-   * 它不存在时退回自行构造——自行构造已由《host-interfaces》确认形状等价。
-   */
-  function wrapContent(text, input) {
-    const attachments = host.attachments;
-    if (attachments !== undefined && typeof attachments.admitPromptContent === "function") {
-      try {
-        const admitted = attachments.admitPromptContent(textContent(text));
-        if (admitted !== undefined && admitted !== null) {
-          return createUserMessage(admitted, sourceOf(input));
-        }
-      } catch {
-        // admission 失败不能阻断发送：退回自建内容块（形状已确认等价）
-      }
+ * 判断一个值能否无损 JSON 序列化。
+ *
+ * 为什么桥要自己判：宿主在 `session.append` 里对事件 data 做
+ * `snapshotJsonValue(data)`，返回 undefined 就抛
+ * `session event "X" carries non-JSON-serializable data`。
+ * 真实踩过：把 `attachments.admitPromptContent` 的返回值（一个 **Promise**）
+ * 原样当内容块数组塞进消息，宿主一 append 就 500，表现为发消息必失败。
+ *
+ * 用 JSON 往返判定，不用 structuredClone（会破坏活对象语义）。
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+  function isSerializable(value) {
+    try {
+      const raw = JSON.stringify(value);
+      if (typeof raw !== "string") return false;
+      JSON.parse(raw);
+      return true;
+    } catch {
+      return false;
     }
-    return createUserMessage(textContent(text), sourceOf(input));
+  }
+
+  /**
+ * 把文本包成宿主可接受的内容块。
+ *
+ * **纯文本不走 `attachments.admitPromptContent`**，两个理由：
+ *
+ *   1. 那个方法是 **async**（`dsh-attachment/lib/index.js:242`），返回 Promise。
+ *      直接把返回值当内容块数组用，消息里就会被塞进一个 Promise —— 宿主
+ *      `snapshotJsonValue` 遇到 Promise 返回 undefined，抛出
+ *      `session event "agent/inbox/spliced" carries non-JSON-serializable data`。
+ *      （真实踩过：装进真实宿主后，发一条消息就 500。）
+ *   2. 宿主自己的注释写明：没有 image 部分的 prompt
+ *      "performs no storage operation" —— 纯文本**不需要** admission。
+ *      桥目前只发纯文本，自建内容块形状等价（见《host-interfaces》）。
+ */
+  function wrapContent(text, input) {
+    const content = textContent(text);
+    // 防线：宿主 append 事件时会强制 snapshotJsonValue。这里先自检一次，
+    // 宁可退回最小文本块，也不能把坏值交给宿主让它抛。
+    if (!isSerializable(content)) {
+      return createUserMessage([{ type: "text", text: String(text ?? "") }], sourceOf(input));
+    }
+    return createUserMessage(content, sourceOf(input));
   }
 
   /** 来源标记：标明消息来自悬浮窗而非宿主主界面。 */
@@ -344,3 +372,4 @@ export function createHostActions({ host }) {
     }
   }
 }
+
