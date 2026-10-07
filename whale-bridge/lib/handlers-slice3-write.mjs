@@ -66,6 +66,12 @@ export function statusOf(code) {
   // 宿主拒绝这次模型选择（模型不存在/该 provider 不接受这个 effort）——
   // 这是**调用方的输入问题**，不是桥或宿主的故障，所以 400 而不是 500。
   if (code === "session/model-unavailable") return 400;
+  // 宿主拒绝这次上传（非规范 base64 / 超出图片批量限制等）——
+  // AttachmentError 的稳定 code 同样是调用方输入问题 → 400。
+  if (code === "INVALID_FILE_BASE64" || code === "INVALID_IMAGE_BASE64") return 400;
+  if (code === "ATTACHMENT_FILES_UNSUPPORTED" || code === "ATTACHMENT_IMAGES_UNSUPPORTED") return 501;
+  // 宿主没这个上传能力是部署形态问题 → 503（与其它 unavailable 同口径）。
+  if (code === "attachments-unavailable") return 503;
   if (
     code === "commands-unavailable" ||
     code === "sessions-unavailable" ||
@@ -216,6 +222,23 @@ async function action({ body, bridge }) {
   }
 }
 
+/**
+ * POST /whale/upload/file —— 上传一个文件（base64 → 宿主 attachments）。
+ *
+ * 交给宿主 attachments.saveFile（admission 层标注的浏览器上传共享入口）。
+ * 返回内容寻址引用；调用方（小窗）把它放进待发消息。
+ */
+async function uploadFile({ body, bridge }) {
+  return toResponse(await bridge.hostActions.uploadFile(body));
+}
+
+/**
+ * POST /whale/upload/images —— 批量上传图片（base64 → 宿主 attachments）。
+ */
+async function uploadImages({ body, bridge }) {
+  return toResponse(await bridge.hostActions.uploadImages(body));
+}
+
 /** 注册本片全部写操作处理器。 */
 export function registerSliceThreeWriteRoutes() {
   register("POST", "/whale/send", send);
@@ -228,7 +251,13 @@ export function registerSliceThreeWriteRoutes() {
   register("POST", "/whale/close", closeWindows);
   register("POST", "/whale/approval", approval);
   register("POST", "/whale/action", action);
+  // 切片 7 第二批：＋ 真上传
+  register("POST", "/whale/upload/file", uploadFile);
+  register("POST", "/whale/upload/images", uploadImages);
 }
 
 /** 本片写操作路由条数。 */
 export const SLICE_THREE_WRITE_ROUTES = 10;
+
+/** 切片 7 新增的写操作路由条数（单测核对用）。 */
+export const SLICE_SEVEN_WRITE_ROUTES = 2;

@@ -218,9 +218,9 @@ report.touchedServices = [...touched].sort();
 report.host = HOST;
 report.checks = {
   appliedOk: report.phases.some((p) => p.phase === "apply" && p.ok === true),
-  // 24 = 切片 1–3 的 22 条 + 切片 7 新增 /whale/commands 与 /whale/presets。
+  // 26 = 切片 1–3 的 22 条 + 切片 7 新增 commands/presets/upload.file/upload.images。
   // 写死总数是有意的：新增路由时必须**显式改这一行**，而不是让预检悄悄放行。
-  allRoutesImplemented: report.phases.find((p) => p.phase === "GET /whale")?.implemented === 24,
+  allRoutesImplemented: report.phases.find((p) => p.phase === "GET /whale")?.implemented === 26,
   sendLanded: report.phases.find((p) => p.phase === "POST /whale/send")?.json?.ok === true,
   abortGuarded: report.phases.find((p) => p.phase === "POST /whale/abort")?.json?.error?.code === "no-active-turn",
   disposeClean: report.phases.some((p) => p.phase === "port-closed-after-dispose" && p.ok === true),

@@ -178,3 +178,138 @@ test("切片 7：宿主拒绝模型选择时按其错误码回", async () => {
   }
 });
 
+/**
+ * ＋ 真上传：把 base64 文件交给宿主的 attachments 存储。
+ *
+ * 宿主的 wire 契约（dsh-attachment admission，"the shared entry for every
+ * RPC endpoint accepting browser uploads"）：
+ *   attachments.saveFile({ data: <canonical base64>, name? })  → 内容寻址引用
+ *   attachments.saveImages([...])                              → 图片批量
+ *
+ * 为什么是 base64：宿主的 admission 层会做 canonical base64 校验
+ * （decodeCanonicalBase64 拒绝非规范形式），这是它的公开口径。
+ */
+const SLICE7_UPLOAD_PORT = 19395;
+const slice7UploadHttp = createHttpTools(SLICE7_UPLOAD_PORT);
+
+test("切片 7：真上传——文件与图片都落进宿主的 attachments", async (t) => {
+  const savedFiles = [];
+  const savedImages = [];
+  const ctx = createFakeCtx({
+    services: {
+      attachments: {
+        saveFile: async (input) => {
+          savedFiles.push(input);
+          return { id: "file-1", name: input.name };
+        },
+        saveImages: async (inputs) => {
+          savedImages.push(...inputs);
+          return inputs.map((_, i) => ({ id: `img-${i}` }));
+        },
+      },
+    },
+  });
+
+  await apply(ctx, { port: SLICE7_UPLOAD_PORT });
+
+  try {
+    await t.test("POST /whale/upload/file：base64 交给 saveFile，引用原样返回", async () => {
+      const { status, json } = await slice7UploadHttp.postJson("/whale/upload/file", {
+        name: "设计稿.pdf",
+        dataBase64: "JVBERi0xLjQK",
+      });
+      assert.equal(status, 200);
+      assert.equal(json.ok, true);
+      assert.deepEqual(json.reference, { id: "file-1", name: "设计稿.pdf" });
+      assert.equal(savedFiles.length, 1);
+      assert.equal(savedFiles[0].data, "JVBERi0xLjQK", "base64 必须原样交给宿主，不做二次编码");
+      assert.equal(savedFiles[0].name, "设计稿.pdf", "显示名要带上");
+    });
+
+    await t.test("POST /whale/upload/file：缺 dataBase64 → 400", async () => {
+      const { status, json } = await slice7UploadHttp.postJson("/whale/upload/file", { name: "x" });
+      assert.equal(status, 400);
+      assert.equal(json.error.code, "bad-request");
+    });
+
+    await t.test("POST /whale/upload/images：批量交给 saveImages，引用按序返回", async () => {
+      const { status, json } = await slice7UploadHttp.postJson("/whale/upload/images", {
+        images: [
+          { dataBase64: "aGVsbG8=", mediaType: "image/png" },
+          { dataBase64: "d29ybGQ=", mediaType: "image/jpeg" },
+        ],
+      });
+      assert.equal(status, 200);
+      assert.equal(json.ok, true);
+      assert.equal(json.references.length, 2);
+      assert.equal(json.references[0].id, "img-0");
+      assert.equal(savedImages.length, 2);
+      assert.equal(savedImages[0].data, "aGVsbG8=");
+    });
+
+    await t.test("POST /whale/upload/images：空批量 → 400（不空转调宿主）", async () => {
+      const { status, json } = await slice7UploadHttp.postJson("/whale/upload/images", { images: [] });
+      assert.equal(status, 400);
+      assert.equal(json.error.code, "bad-request");
+    });
+  } finally {
+    await dispose();
+  }
+});
+
+/**
+ * 宿主拒绝这次上传时，桥要把宿主的错误码原样带出来。
+ *
+ * 单独一个 test + 独立端口：它需要换一个会拒绝的 attachments 桩，
+ * 而同一端口上 dispose→apply 有竞态（刚关的 server 未完全释放，
+ * 重连会 ECONNRESET/500，把后面的兄弟用例一起拖垮——真实踩过）。
+ */
+const SLICE7_REFUSE_PORT = 19396;
+const slice7RefuseHttp = createHttpTools(SLICE7_REFUSE_PORT);
+
+test("切片 7：宿主拒绝上传时按其错误码回", async () => {
+  const ctx = createFakeCtx({
+    services: {
+      attachments: {
+        saveFile: async () => {
+          const err = new Error("bad payload");
+          err.code = "INVALID_FILE_BASE64";
+          throw err;
+        },
+      },
+    },
+  });
+
+  await apply(ctx, { port: SLICE7_REFUSE_PORT });
+  try {
+    const { status, json } = await slice7RefuseHttp.postJson("/whale/upload/file", {
+      name: "x", dataBase64: "!!!",
+    });
+    // 400：AttachmentError 的稳定 code 是**调用方输入问题**（非规范 base64），
+    // 不是桥或宿主的故障。
+    assert.equal(status, 400);
+    assert.equal(json.error.code, "INVALID_FILE_BASE64");
+  } finally {
+    await dispose();
+  }
+});
+
+/**
+ * attachments 缺失时 503。同样独立端口（理由同上）。
+ */
+const SLICE7_MISSING_PORT = 19397;
+const slice7MissingHttp = createHttpTools(SLICE7_MISSING_PORT);
+
+test("切片 7：attachments 缺失时 503，不假装成功", async () => {
+  await apply(createFakeCtx(), { port: SLICE7_MISSING_PORT });
+  try {
+    const { status, json } = await slice7MissingHttp.postJson("/whale/upload/file", {
+      name: "x", dataBase64: "aGk=",
+    });
+    assert.equal(status, 503);
+    assert.equal(json.error.code, "attachments-unavailable");
+  } finally {
+    await dispose();
+  }
+});
+

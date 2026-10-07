@@ -6,7 +6,13 @@
  *
  * 设计原则（《边界与 NFR》四条降级原则之一：宁可局部失效不整体崩溃）：
  * 任何宿主服务缺失都**不抛错**，只标记为不可用，由处理器决定降级方式。
+ *
+ * 模型目录/切换、权限档位、附件上传**不在本文件**——
+ * 它们是「输入框选择与附件」这个业务域，拆在 host-catalog.mjs
+ * （host-ctx 加上它们后超过 500 行上限，强制 14 要求按职责拆而不是放宽）。
  */
+
+import { createHostCatalog } from "./host-catalog.mjs";
 
 /**
  * 探测一个宿主服务是否可用。
@@ -106,25 +112,13 @@ export function createHostAccess(ctx) {
   const attachments = optionalServiceOf(ctx, "attachments");
 
   /**
-   * 模型目录与切换、权限档位所需的两个宿主服务。
-   *
-   * 都走可选读取（ctx.get）而不是 inject：
-   *   - `sessionController` 由 dsh-api-session-controller 提供，
-   *     宿主 UI 的模型选择器就走它（`modelCatalog()` 内部包着 buildModelCatalog）
-   *   - `permissionPresets` 由 dsh-permission-presets 提供，
-   *     档位清单以它为准（内含配置项 + 运行期注册的 auto）
-   * 取不到时降级并如实说明原因，而不是让插件不启动。
-   *
-   * ⚠️ **必须是延迟解析（函数），不能在 apply 时取一次存进 const。**
-   *
-   * 真实踩过：这两个服务由**启动顺序在桥之后**的插件提供，apply 那一刻
-   * 它们还没就绪。存进 const 就永远是 undefined —— 表现是
-   * `/whale/probe` 恒报 false、`/whale/models` 恒返回 0，
-   * 而路由都在、其它服务（attachments 等更早就绪的）都正常，极具迷惑性。
-   * 每次调用现取，宿主的启动顺序走完后自然就能取到。
+   * 模型目录/切换、权限档位、附件上传都走可选服务
+   * （sessionController / permissionPresets / attachments）。
+   * 它们的实现在 host-catalog.mjs —— 按业务域拆出去（强制 14），
+   * 那边同样遵守「延迟解析，不缓存 apply 快照」的纪律
+   * （这两个服务由启动顺序在桥之后的插件提供，缓存会永远取不到，真实踩过）。
    */
-  const sessionControllerOf = () => optionalServiceOf(ctx, "sessionController");
-  const permissionPresetsOf = () => optionalServiceOf(ctx, "permissionPresets");
+  const catalog = createHostCatalog({ ctx, getSession, attachments });
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */
   function safe(fn, fallback) {
@@ -323,138 +317,21 @@ export function createHostAccess(ctx) {
   }
 
   /**
-   * 读宿主的模型目录（含各模型的可选推理档位）。
-   *
-   * **走 `sessionController.modelCatalog()`，不自己拼。**
-   * 宿主 UI 的模型选择器就是读它（内部是 buildModelCatalog：
-   * listProviders → listModels → resolveModelInfo 取 reasoning.efforts）。
-   * 桥复刻一遍等于维护第二份逻辑，宿主一改就悄悄不一致。
-   *
-   * 返回形状（宿主已 detach，可直接序列化）：
-   *   `{ default, routableProviders, groups, failures }`，其中
-   *   `groups[].models[].reasoning.efforts` 是各模型的可选推理档位。
-   *
-   * 取不到一律返回 null（由 `/whale/models` 给出 reason），不抛错——
-   * 「读不到目录」不该让整个接口 500。
-   *
-   * @returns {Promise<object | null>}
-   */
-  async function modelCatalog() {
-    const sessionController = sessionControllerOf();
-    if (sessionController === undefined) return null;
-    if (typeof sessionController.modelCatalog !== "function") return null;
-    try {
-      const catalog = await sessionController.modelCatalog();
-      return catalog === null || typeof catalog !== "object" ? null : catalog;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * 切换某会话的模型 / 推理档位。
-   *
-   * 走 `sessionController.selectModel({sessionId, provider, model, reasoningEffort})`
-   * —— 宿主 UI 切模型的正规通路（它会 resolveAgent 恢复冷会话、
-   * 用 resolveCallConfig 校验能力、并把选择存成默认）。
-   *
-   * **桥不自己改 agent 状态**：那会绕过宿主的校验与持久化。
-   *
-   * @param {{sessionId?: string, provider?: string, model?: string, reasoningEffort?: string}} input
-   * @returns {Promise<{ok: boolean, code?: string, message?: string, selected?: object}>}
-   */
-  async function selectModel(input) {
-    const sessionId = input?.sessionId;
-    const provider = input?.provider;
-    const model = input?.model;
-
-    if (typeof sessionId !== "string" || sessionId === "") {
-      return { ok: false, code: "bad-request", message: "缺少 sessionId" };
-    }
-    if (typeof provider !== "string" || provider === "" || typeof model !== "string" || model === "") {
-      return { ok: false, code: "bad-request", message: "缺少 provider 或 model" };
-    }
-    const sessionController = sessionControllerOf();
-    if (sessionController === undefined || typeof sessionController.selectModel !== "function") {
-      return {
-        ok: false,
-        code: "model-switch-unavailable",
-        message: "宿主未提供 sessionController，桥不代为修改模型",
-      };
-    }
-
-    // 形状对齐宿主的 SessionSelectModelRequest：**没给 effort 就不带这个键**
-    // （宿主用 `...request.reasoningEffort === void 0 ? {} : {...}` 的口径）
-    const request = { sessionId, provider, model };
-    if (typeof input?.reasoningEffort === "string" && input.reasoningEffort !== "") {
-      request.reasoningEffort = input.reasoningEffort;
-    }
-
-    try {
-      const value = await sessionController.selectModel(request);
-      return { ok: true, selected: value?.selected ?? null };
-    } catch (err) {
-      return {
-        ok: false,
-        code: err?.code ?? "model-switch-failed",
-        message: err?.message ?? "切换模型失败",
-      };
-    }
-  }
-
-  /**
-   * 读权限档位清单与当前档位。
-   *
-   * 档位以宿主的 `permissionPresets` 为准（`names` 是配置项 + 运行期注册的 auto）。
-   * 小窗原先硬编码三档，而宿主实际还有 `auto` —— 硬编码必然漏档位。
-   *
-   * 取不到返回 null，由调用方如实说明，**不编造档位**。
-   *
-   * 它是**同步**的：宿主的 names 是 getter、current() 也是同步方法，
-   * 没有需要 await 的东西。写成 async 会让调用方多一层无意义的 Promise，
-   * 也会触发 `require-await` 规则。
-   *
-   * @param {string} sessionId
-   * @returns {{options: Array<string>, current: string | null} | null}
-   */
-  function permissionPresets(sessionId) {
-    const service = permissionPresetsOf();
-    if (service === undefined) return null;
-    try {
-      const names = service.names;
-      if (!Array.isArray(names) || names.length === 0) return null;
-
-      let current = null;
-      if (typeof service.current === "function") {
-        const session = getSession(sessionId);
-        if (session !== undefined) {
-          current = safe(() => service.current(session), null);
-        }
-      }
-      return { options: names.map(String), current: typeof current === "string" ? current : null };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * 运行时探测（对应 `/whale/probe`）。
    *
    * 只报告「有没有」，不报告「能不能用」——后者需要实际调用，代价过大。
    * @returns {object}
    */
   function probe() {
+    // catalog.availability() 现取：模型目录/权限档位的两个服务
+    // 由启动顺序在桥之后的插件提供，缓存结论会永远报 false。
     return {
       sessions: sessions !== undefined,
       agents: agents !== undefined,
       commands: commands !== undefined,
       projections: projections !== undefined,
       attachments: attachments !== undefined,
-      // 切片 7 第二批新增的两个可选服务：模型目录/切换、权限档位清单。
-      // 现取（延迟解析）——它们由启动顺序在桥之后的插件提供，
-      // 缓存 apply 时刻的结论会永远报 false。
-      sessionController: sessionControllerOf() !== undefined,
-      permissionPresets: permissionPresetsOf() !== undefined,
+      ...catalog.availability(),
       sessionCount: listSessions().length,
       // 把「为什么取不到」一并报出来：这是区分「宿主没这个服务」
       // 与「插件没声明依赖」的唯一线索（两者表现完全一样）
@@ -469,10 +346,10 @@ export function createHostAccess(ctx) {
     commands,
     projections,
     attachments,
-    // 用 getter：调用方每次拿到的都是当前状态，不是 apply 时刻的快照
-    get sessionController() { return sessionControllerOf(); },
-    // available 也必须是 getter：否则「启动顺序靠后的服务后来就绪了」
-    // 这个结论会被冻在 apply 时刻，调用方永远看到旧值。
+    // 模型目录/切换、权限档位、上传都在 catalog 里（按业务域拆到 host-catalog.mjs）。
+    // sessionController 与 available 用 getter：调用方每次拿到的是当前状态，
+    // 而不是 apply 时刻的快照（这两个服务由启动顺序靠后的插件提供）。
+    get sessionController() { return catalog.availability().sessionController ? catalog : undefined; },
     get available() {
       return {
         sessions: sessions !== undefined,
@@ -480,8 +357,7 @@ export function createHostAccess(ctx) {
         commands: commands !== undefined,
         projections: projections !== undefined,
         attachments: attachments !== undefined,
-        sessionController: sessionControllerOf() !== undefined,
-        permissionPresets: permissionPresetsOf() !== undefined,
+        ...catalog.availability(),
       };
     },
     listSessions,
@@ -489,10 +365,13 @@ export function createHostAccess(ctx) {
     getAgent,
     listCommands,
     listModels,
-    modelCatalog,
-    permissionPresets,
+    // 以下四个由 catalog 提供（模型目录/切换、权限档位、上传）
+    modelCatalog: catalog.modelCatalog,
+    selectModel: catalog.selectModel,
+    permissionPresets: catalog.permissionPresets,
+    uploadFile: catalog.uploadFile,
+    uploadImages: catalog.uploadImages,
     probe,
-    selectModel,
     titleOf,
   };
 }

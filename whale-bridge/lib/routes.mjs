@@ -65,6 +65,8 @@ export const ROUTE_DEFS = [
   { method: "POST", path: "/whale/resume", purpose: "唤醒历史会话", slice: 3 },
   { method: "POST", path: "/whale/approval", purpose: "应答权限确认", slice: 3 },
   { method: "POST", path: "/whale/action", purpose: "宿主侧动作", slice: 3 },
+  { method: "POST", path: "/whale/upload/file", purpose: "上传文件（base64 → 宿主 attachments）", slice: 7 },
+  { method: "POST", path: "/whale/upload/images", purpose: "批量上传图片（base64 → 宿主 attachments）", slice: 7 },
   { method: "GET", path: "/whale/hud", purpose: "悬浮条数据：全量快照", slice: 3 },
   { method: "GET", path: "/whale/hud/events", purpose: "悬浮条 SSE 增量推送", slice: 3 },
 ];

@@ -66,6 +66,8 @@ export function createHostActions({ host }) {
     setModel,
     resume,
     setApprovalPolicy,
+    uploadFile: (input) => host.uploadFile(input ?? {}),
+    uploadImages: (input) => host.uploadImages(input ?? {}),
   };
 
   /**
