@@ -64,7 +64,7 @@ function probe({ host }) {
  * @param {object} ctx.host
  * @param {object} [ctx.bridge] 桥运行时依赖（含 foldSet）
  */
-function panel({ query, host, bridge }) {
+async function panel({ query, host, bridge }) {
   const sessionId = query.get("sessionId");
   if (sessionId === null || sessionId === "") {
     const err = new Error("缺少 sessionId 参数");
@@ -73,8 +73,24 @@ function panel({ query, host, bridge }) {
     throw err;
   }
 
+  /**
+   * 冷会话要先从**持久层**种进折叠器。
+   *
+   * 宿主的 sessions 服务只认活会话（注释写明 "All **live** sessions"），
+   * 重启后空闲的那条 `getSession()` 返回 undefined —— 原先这里直接 404，
+   * 于是「桥明明能从持久层读到它」却「不肯交给小窗」。
+   * 这是两件必须分开测的事。
+   *
+   * 种子会校验宿主确实认识该 id，所以不存在的会话仍然走到下面的 404。
+   */
+  const foldSet = bridge?.foldSet;
+  const inFold = foldSet !== undefined && foldSet.sessions.has(sessionId);
+  if (!inFold && bridge?.seed !== undefined) {
+    await bridge.seed.ensureSeeded(sessionId);
+  }
+
   const session = host.getSession(sessionId);
-  if (session === undefined) {
+  if (session === undefined && (foldSet === undefined || !foldSet.sessions.has(sessionId))) {
     const err = new Error(`会话 ${sessionId} 不存在`);
     err.code = "session-not-found";
     err.status = 404;
@@ -82,7 +98,6 @@ function panel({ query, host, bridge }) {
   }
 
   const agent = host.getAgent(sessionId);
-  const foldSet = bridge?.foldSet;
   const payload = foldSet === undefined
     ? null
     : panelPayload({

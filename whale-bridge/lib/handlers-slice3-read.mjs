@@ -105,8 +105,20 @@ function hudStream(ctx) {
  * GET /whale/hud —— 悬浮条全量快照。
  *
  * 这是客户端启动时拉的第一份数据，也是断线补不全（`missed: true`）后的兜底。
+ *
+ * ⚠️ 折叠器为空时先做一次**冷会话种子**。
+ * 折叠器只由 `session/event` 填充，而宿主重启后那条会话是空闲的、
+ * 不再产生任何事件 —— 于是 hud 会给出「零个会话」，小窗拿不到 sessionId，
+ * 权限/切模型/发命令全部 bad-request（用户报的原始症状）。
+ * 轮询救不了这个：会话继续空闲就永远没有事件。
+ * 只有读宿主的**持久层**才能看到它（见 seed.mjs）。
+ *
+ * 只在折叠器真的为空时种——事件流一填上就再也走不到这里，
+ * 不会和实时状态抢位置。
+ *
+ * @returns {Promise<object>}
  */
-function hud({ bridge }) {
+async function hud({ bridge }) {
   const foldSet = bridge?.foldSet;
   if (foldSet === undefined) {
     const err = new Error("折叠器未装配");
@@ -114,6 +126,11 @@ function hud({ bridge }) {
     err.status = 503;
     throw err;
   }
+
+  if (foldSet.sessions.size === 0 && bridge.seed !== undefined) {
+    await bridge.seed.seedRecent();
+  }
+
   return {
     ok: true,
     ...hudSnapshot(foldSet, {

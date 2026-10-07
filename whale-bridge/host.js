@@ -24,6 +24,7 @@ import { CHANNEL_EVENTS, CHANNEL_HUD, createSseHub } from "./lib/sse.mjs";
 import { snapshotOf } from "./lib/fold-view.mjs";
 import { createApprovalBridge } from "./lib/approval-bridge.mjs";
 import { createHostActions } from "./lib/host-actions.mjs";
+import { createColdSeed } from "./lib/seed.mjs";
 import { createWindowManager } from "./lib/windows.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -147,9 +148,24 @@ export async function apply(ctx, options = {}) {
   const approval = createApprovalBridge({ log });
   const hostActions = createHostActions({ host });
 
+  /**
+   * 冷会话种子：折叠器为空时从宿主持久层读「最近一次会话」及其历史。
+   *
+   * 折叠器只由 `session/event` 填充，而宿主重启后那条会话是空闲的、
+   * 不再产生任何事件 → hud 给出「零个会话」→ 小窗拿不到 sessionId →
+   * 权限档位读不到、切模型与发命令全部 bad-request（用户报的原始症状）。
+   * **轮询救不了**：会话继续空闲就永远没有事件，这是永久性空窗。
+   * 而宿主的 `sessions.list()` 只含 "All live sessions"，冷会话连清单都不在
+   * —— 只能走 `sessionController.list / inspect`（读持久层但不激活 agent）。
+   */
+  const seed = createColdSeed({ host, foldSet, log });
+
   bridge.windows = windows;
   bridge.approval = approval;
   bridge.hostActions = hostActions;
+  // 处理器靠这个访问种子（/whale/hud 与 /whale/panel 在折叠器为空时调它）
+  bridge.seed = seed;
+  bridge.seed = seed;
 
   /**
    * 标题兜底：折叠器没有标题时读宿主投影。

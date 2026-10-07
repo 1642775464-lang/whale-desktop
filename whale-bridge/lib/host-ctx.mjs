@@ -365,10 +365,12 @@ export function createHostAccess(ctx) {
     getAgent,
     listCommands,
     listModels,
-    // 以下四个由 catalog 提供（模型目录/切换、权限档位、上传）
+    // 以下由 catalog 提供（模型目录/切换、权限档位、上传、冷会话读取）
     modelCatalog: catalog.modelCatalog,
     selectModel: catalog.selectModel,
     permissionPresets: catalog.permissionPresets,
+    recentSessions: catalog.recentSessions,
+    sessionEvents: catalog.sessionEvents,
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,

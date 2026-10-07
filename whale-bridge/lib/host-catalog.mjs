@@ -228,6 +228,80 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
     }
   }
 
+  /**
+   * 读**所有可见会话**（含冷会话），按宿主给的顺序返回。
+   *
+   * 走 `sessionController.list(request, signal)` —— 宿主注释写明
+   * "Read every visible attached and persisted Session **without activating an Agent**"，
+   * 且内部 `items.sort((l, r) => r.updatedAt - l.updatedAt)`：
+   * **第一项就是最近一次会话，桥不再自己排**（两处排序口径迟早不一致）。
+   *
+   * 为什么必须走这条而不是 `sessions.list()`：后者宿主注释是
+   * "All **live** sessions"——重启后空闲的会话根本不在里面。
+   * 这正是小窗启动后「没有会话、全都点不动」的根因。
+   *
+   * 归一化只做两件事：取 sessionId、从**投影**里取标题
+   * （宿主 listFields 只给 parentSessionId/origin/cwd，**冷会话没有 title**）。
+   *
+   * @returns {Promise<Array<object>>} 取不到给空数组
+   */
+  async function recentSessions() {
+    const sessionController = sessionControllerOf();
+    if (sessionController === undefined || typeof sessionController.list !== "function") return [];
+    try {
+      // 宿主真实签名 list(_request, signal)：两参都要，第二个会被 throwIfAborted
+      const value = await sessionController.list({}, new AbortController().signal);
+      const items = Array.isArray(value?.items)
+        ? value.items
+        : (Array.isArray(value) ? value : []);
+
+      const out = [];
+      for (const item of items) {
+        const sessionId = item?.sessionId ?? item?.id;
+        if (typeof sessionId !== "string" || sessionId === "") continue;
+        // 标题在投影里：projections.values.title（冷会话没有 title 事件）
+        const raw = item?.title ?? item?.projections?.values?.title ?? null;
+        out.push({
+          sessionId,
+          title: typeof raw === "string" && raw !== "" ? raw : null,
+          cwd: typeof item?.cwd === "string" ? item.cwd : null,
+          updatedAt: typeof item?.updatedAt === "number" ? item.updatedAt : null,
+          running: item?.running === true,
+        });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 读某会话的**历史事件**（不激活 agent）。
+   *
+   * 走 `sessionController.inspect(sessionId, signal)`，返回
+   * `{ meta, inheritedEventCount, events }`。
+   *
+   * ⚠️ **事件原样透传，不做任何形状转换。**
+   * 持久层的事件本来就是 `{ seq, type, data }`，与折叠器吃的一字不差
+   * （见宿主 dsh-session-query 的 `event.data.content` /
+   * `event.data.message.content`）。桥这里再加一层「归一化」
+   * 只会制造两个真相，以后哪边改了都不知道谁对。
+   *
+   * @param {string} sessionId
+   * @returns {Promise<Array<object>>} 取不到给空数组
+   */
+  async function sessionEvents(sessionId) {
+    const sessionController = sessionControllerOf();
+    if (typeof sessionId !== "string" || sessionId === "") return [];
+    if (sessionController === undefined || typeof sessionController.inspect !== "function") return [];
+    try {
+      const value = await sessionController.inspect(sessionId, new AbortController().signal);
+      return Array.isArray(value?.events) ? value.events : [];
+    } catch {
+      return [];
+    }
+  }
+
   /** 服务当前是否可见（probe 用，实时读取）。 */
   function availability() {
     return {
@@ -238,7 +312,9 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
 
   return {
     modelCatalog,
+    recentSessions,
     selectModel,
+    sessionEvents,
     permissionPresets,
     uploadFile,
     uploadImages,
