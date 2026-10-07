@@ -1,16 +1,15 @@
 /*
  * 桥的数据接入（小窗）
  *
- * 职责：从桥拿数并维护一份本地快照——`/whale/panel` 全量 + `/whale/events` 增量 +
- *       降级标记；以及三个写操作（发消息 / 中断 / 切会话 / 唤醒）。
+ * 职责：从桥拿数并维护本地快照（面板全量 + SSE 增量 + 降级标记）；
+ *       以及写操作（发消息 / 中断 / 切会话 / 唤醒 / 切模型 / 上传附件）。
  * 所属层：小窗（whale-window/renderer）
  *
  * 为什么与渲染分开：这两件事的**改动原因完全不同**。
  * 「桥的接口变了」只动这里；「界面长什么样」只动 app.js。
  *
  * 与悬浮条那份的关系：职责同源、实现独立。刻意**不共享文件**——
- * 两者进程独立、userData 独立，将来任一方要单独演进时不该被另一方拖住；
- * 共享一份反而会制造「改小窗会不会弄坏悬浮条」的假顾虑。
+ * 两者进程独立、userData 独立，单独演进时不该被另一方拖住。
  *
  * 本文件是浏览器 script（不能 import），对外只暴露 window.WhaleBridge。
  */
@@ -70,6 +69,8 @@
       /** 步/回合计数。 */
       steps: 0,
       turns: 0,
+      /** 累计用量四桶（用量浮层用；D1 决策 C 的口径）。 */
+      usageTotals: { input: null, output: null, cacheRead: null, cacheWrite: null },
       /** 上下文占用与窗口（用量圆环用）。 */
       contextUsed: null,
       contextWindow: null,
@@ -172,6 +173,11 @@
           state.toolName = typeof json.toolName === "string" ? json.toolName : null;
           state.steps = json.steps ?? 0;
           state.turns = json.turns ?? 0;
+          // 累计四桶（D1 决策 C）：面板有就刷新，取不到保留旧值
+          if (json.totalInput !== undefined) state.usageTotals.input = json.totalInput;
+          if (json.totalOutput !== undefined) state.usageTotals.output = json.totalOutput;
+          if (json.totalCacheRead !== undefined) state.usageTotals.cacheRead = json.totalCacheRead;
+          if (json.totalCacheWrite !== undefined) state.usageTotals.cacheWrite = json.totalCacheWrite;
           if (json.contextUsed !== undefined) state.contextUsed = json.contextUsed;
           if (json.contextWindow !== undefined) state.contextWindow = json.contextWindow;
           if (typeof json.permission === "string") state.permission = json.permission;
@@ -362,6 +368,91 @@
       return post("/whale/activate", { sessionId });
     }
 
+    /**
+     * 权限档位清单与当前档位（切片 7 第二批）。
+     *
+     * 失败返回 null —— 调用方要如实显示「读不到」，**不退回硬编码档位**。
+     *
+     * @returns {Promise<{options: Array<string>, current: string|null} | null>}
+     */
+    function permissionPresets() {
+      if (typeof state.sessionId !== "string" || state.sessionId === "") return Promise.resolve(null);
+      return global
+        .fetch(`${base}/whale/presets?sessionId=${encodeURIComponent(state.sessionId)}`)
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (json) {
+          if (!json || !Array.isArray(json.options) || json.options.length === 0) return null;
+          return { options: json.options, current: json.current ?? null };
+        })
+        .catch(function () { return null; });
+    }
+
+    /**
+     * 模型目录（切片 7 第二批）。
+     *
+     * 形状：{default, groups:[{id, name, models:[{id, name, reasoning:{efforts}}]}], failures}
+     * 失败返回 null —— 调用方要如实显示「读不到」，不退回硬编码模型表。
+     *
+     * @returns {Promise<object|null>}
+     */
+    function modelCatalog() {
+      return global
+        .fetch(`${base}/whale/models`)
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (json) {
+          if (!json || !Array.isArray(json.groups) || json.groups.length === 0) return null;
+          return json;
+        })
+        .catch(function () { return null; });
+    }
+
+    /**
+     * 切换模型 / 推理档位（切片 7 第二批）。
+     *
+     * @param {{provider: string, model: string, reasoningEffort?: string}} selection
+     * @returns {Promise<{ok: boolean, code?: string, selected?: object}>}
+     */
+    function setModel(selection) {
+      return post("/whale/model", {
+        sessionId: state.sessionId,
+        provider: selection?.provider,
+        model: selection?.model,
+        reasoningEffort: selection?.reasoningEffort,
+      });
+    }
+
+    /**
+     * 上传一批文件（切片 7 第二批：＋ 真上传）。
+     *
+     * 桥的单文件路由一次收一个文件（{name, dataBase64}），
+     * 这里逐个发并收集引用；某个失败不吞掉——如实带回它的 code。
+     *
+     * @param {Array<{name?: string, dataBase64: string}>} files
+     * @returns {Promise<{ok: boolean, code?: string, references?: Array<object>}>}
+     */
+    function uploadFiles(files) {
+      return Promise.all(files.map(function (f) {
+        return post("/whale/upload/file", { name: f.name, dataBase64: f.dataBase64 })
+          .then(function (out) {
+            return out.ok ? { ok: true, reference: out.raw.reference } : out;
+          });
+      })).then(function (results) {
+        const failed = results.filter(function (r) { return !r.ok; })[0];
+        if (failed) return { ok: false, code: failed.code ?? "upload-failed" };
+        return { ok: true, references: results.map(function (r) { return r.reference; }) };
+      });
+    }
+
+    /**
+     * 批量上传图片（切片 7 第二批）。
+     *
+     * @param {Array<{name?: string, dataBase64: string, mediaType?: string}>} images
+     * @returns {Promise<{ok: boolean, code?: string, references?: Array<object>}>}
+     */
+    function uploadImages(images) {
+      return post("/whale/upload/images", { images });
+    }
+
     /** 唤醒历史会话（F9）。 */
     function resume(sessionId) {
       return post("/whale/resume", { sessionId });
@@ -387,10 +478,15 @@
       connect,
       getState () { return state; },
       listCommands,
+      modelCatalog,
+      permissionPresets,
       refresh,
       resume,
       send,
+      setModel,
       startPolling,
+      uploadFiles,
+      uploadImages,
     };
   }
 

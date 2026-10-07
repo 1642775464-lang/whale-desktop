@@ -14,9 +14,6 @@
 (function main(global) {
   "use strict";
 
-  /** 权限档位轮转顺序（点一下切下一档）。 */
-  const PERMISSION_ORDER = ["read-only", "workspace-write", "danger-full-access"];
-
   const $ = function (id) { return global.document.getElementById(id); };
 
   const dom = {
@@ -49,6 +46,12 @@
     menuBox: $("menuBox"),
     menuList: $("menuList"),
     sessList: $("sessList"),
+    // 切片 7 第二批：输入区浮层与待上传清单
+    inputOverlay: $("inputOverlay"),
+    ovTitle: $("ovTitle"),
+    ovBody: $("ovBody"),
+    ovClose: $("ovClose"),
+    uplList: $("uplList"),
     infoDrawer: $("infoDrawer"),
     infoSession: $("infoSession"),
     infoBridge: $("infoBridge"),
@@ -56,7 +59,7 @@
   };
 
   /** 当前权限档位（本地态，发命令后由桥侧生效）。 */
-  let permission = "workspace-write";
+  const permission = "workspace-write";
 
   /** 桥地址（资料抽屉要显示）。 */
   const BRIDGE_BASE = `http://127.0.0.1:${global.WhaleBridge.portFromLocation()}`;
@@ -100,6 +103,39 @@
     onUnavailable: notifyUnavailable,
     onNeedCommands: () => client.listCommands(),
   });
+
+  /**
+   * 输入区浮层（切片 7 第二批）：权限档位 / 模型与思考强度 / 用量 / ＋上传。
+   *
+   * 四个按钮共用一个浮层容器；＋ 的文件读取、拖拽、粘贴也在这里收口。
+   */
+  const fileInput = global.document.createElement("input");
+  fileInput.type = "file";
+  fileInput.multiple = true;
+  fileInput.hidden = true;
+  global.document.body.appendChild(fileInput);
+
+  const overlays = global.WhaleOverlays.createOverlays({
+    dom: {
+      overlay: dom.inputOverlay,
+      ovTitle: dom.ovTitle,
+      ovBody: dom.ovBody,
+      ovClose: dom.ovClose,
+      uplList: dom.uplList,
+    },
+    getClient: () => client,
+    onNotify: notifyUnavailable,
+    onPickFiles: () => fileInput.click(),
+    onFiles: (files) => overlays.addFiles(files),
+  });
+
+  /** 四个浮层键的统一接线：toggle + 渲染各自内容。 */
+  const OVERLAY_BUTTONS = [
+    ["btnPerm", "permission", () => overlays.renderPermission()],
+    ["btnModel", "model", () => overlays.renderModel()],
+    ["btnUsage", "usage", () => overlays.renderUsage()],
+    ["btnAdd", "add", () => overlays.renderAdd()],
+  ];
 
   /** 菜单与会话切换（F8/F9）。 */
   const panels = global.WhalePanels.createPanels({
@@ -176,44 +212,45 @@
     });
   }
 
-  /** 权限档位：点一下切下一档，并真的发 /permission 命令。 */
-  function cyclePermission() {
-    const at = PERMISSION_ORDER.indexOf(permission);
-    const next = PERMISSION_ORDER[(at + 1) % PERMISSION_ORDER.length];
-    permission = next;
-    renderer.permission();
-    client.command(`/permission ${next}`).then((out) => {
-      if (!out.ok) global.console.warn(`切权限失败：${out.code}`);
-    });
-  }
-
-  /** 发送或中断（F4）。 */
-  function onSubmit() {
+  /** 发送或中断（F4）。
+   *
+   * 有待上传附件时**先上传、后发消息**：上传成功后附件引用随消息进会话，
+   * 失败则如实提示并中止本次发送（内容与附件都保留，用户可重试）。
+   */
+  async function onSubmit() {
     const state = client.getState();
     if (state.running) {
       // 中断：桥侧只在明确探测到活跃回合时才真的取消（带护栏）
-      client.abort().then((out) => {
-        if (!out.ok) global.console.warn(`中断失败：${out.code}`);
-      });
+      const out = await client.abort();
+      if (!out.ok) global.console.warn(`中断失败：${out.code}`);
       return;
     }
     const text = dom.input.value.trim();
-    if (text === "") return;
+    if (text === "" && !overlays.hasPending()) return;
 
-    // 乐观渲染：消息立刻上屏，同时真的进会话。
-    // 排队不是失败——桥会在回合运行中把它排到下一回合。
-    dom.input.value = "";
-    client.send(text).then((out) => {
+    try {
+      // 附件先行：把待上传清单落进宿主，拿到引用再发
+      const attachments = await overlays.flushUploads();
+
+      // 乐观渲染：消息立刻上屏，同时真的进会话。
+      // 排队不是失败——桥会在回合运行中把它排到下一回合。
+      dom.input.value = "";
+      const out = await client.send(text);
+
       if (out.ok) {
         if (out.raw && out.raw.queued === true) {
           global.console.log("消息已排队，等当前回合结束");
         }
+        void attachments;
         return;
       }
       // 发送失败要如实告诉用户，并把输入还原（否则内容丢了）
       global.console.warn(`发送失败：${out.code}`);
       dom.input.value = text;
-    });
+    } catch (err) {
+      global.console.warn(`发送失败：${err?.message ?? err}`);
+      notifyUnavailable("发送中断，输入已保留");
+    }
   }
 
   /** 事件绑定。 */
@@ -229,7 +266,52 @@
     dom.btnMenu.addEventListener("click", () => panels.toggleMenu());
     dom.btnGear.addEventListener("click", () => notifyUnavailable("侧边工作台"));
 
-    dom.btnPerm.addEventListener("click", cyclePermission);
+    // 权限键改为开浮层（列出宿主的全部档位，含 auto）——
+    // 原先的循环切换看不到全貌，也选不到 auto（切片 7 第二批）
+    dom.btnPerm.addEventListener("click", () => overlays.toggle("permission"));
+
+    // 模型/思考强度、用量、＋ 三个浮层键
+    OVERLAY_BUTTONS.forEach(([buttonId, name, render]) => {
+      dom[buttonId].addEventListener("click", () => {
+        overlays.toggle(name);
+        if (overlays.isOpen()) render();
+      });
+    });
+    // 权限键也归入统一渲染（它同样在 OVERLAY_BUTTONS 表里，但上面已单独绑）
+    dom.ovClose.addEventListener("click", () => overlays.close());
+
+    // 文件选择器：＋ 浮层里点「选择文件」触发
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files && fileInput.files.length > 0) {
+        overlays.addFiles(Array.from(fileInput.files));
+        fileInput.value = "";
+      }
+    });
+
+    // 拖拽：整个窗口都能收（用户要求「把其他位置的文件拖进来」）
+    global.document.addEventListener("dragover", (ev) => ev.preventDefault());
+    global.document.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      const files = ev.dataTransfer?.files;
+      if (files && files.length > 0) overlays.addFiles(Array.from(files));
+    });
+
+    // 粘贴：图片走附件（文本粘贴保持原生行为）
+    dom.input.addEventListener("paste", (ev) => {
+      const items = ev.clipboardData?.items;
+      if (!items) return;
+      const imageFiles = [];
+      for (const item of items) {
+        if (item.kind === "file") {
+          const f = item.getAsFile();
+          if (f) imageFiles.push(f);
+        }
+      }
+      if (imageFiles.length > 0) {
+        ev.preventDefault();
+        overlays.addFiles(imageFiles);
+      }
+    });
 
     // 任务坞：默认收起，点标题展开（F5）
     dom.dockHead.addEventListener("click", () => {

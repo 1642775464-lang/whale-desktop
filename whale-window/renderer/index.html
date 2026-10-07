@@ -140,6 +140,17 @@
         <div id="sessList" hidden></div>
       </div>
 
+      <!-- 输入区浮层（切片 7 第二批）：四个面板共用一个容器，谁开谁显示 -->
+      <div class="overlay" id="inputOverlay" hidden>
+        <div class="ov-head"><span class="ov-title" id="ovTitle">–</span>
+          <button class="ov-close" id="ovClose" aria-label="关闭">×</button>
+        </div>
+        <div class="ov-body" id="ovBody"></div>
+      </div>
+
+      <!-- 上传清单（＋/拖拽/粘贴 共用）：列出已选文件，随消息一并发送 -->
+      <div class="upl-list" id="uplList" hidden></div>
+
       <!-- 左缘「资料」抽屉入口（F8） -->
       <button class="drawer-tab" id="btnInfo">资料</button>
 
@@ -160,6 +171,7 @@
     <script src="render.js"></script>
     <script src="palette.js"></script>
     <script src="panels.js"></script>
+    <script src="overlays.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
