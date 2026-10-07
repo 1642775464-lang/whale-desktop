@@ -219,14 +219,23 @@ export function createHostActions({ host }) {
    *
    * 对齐宿主 commands 服务：`execute(agent, line, submittedAttachments, signal)`。
    *
-   * ⚠️ **`signal` 是必传的，不能给 `undefined`。**
-   * 宿主 `execute` 第二行就无条件读 `signal.aborted`（dsh-commands:332），
-   * 传 undefined 会抛 `Cannot read properties of undefined (reading 'aborted')`。
+   * ⚠️ **`submittedAttachments` 与 `signal` 都是必传的，不能给 `undefined`。**
+   *
+   * 宿主 `execute` 对这两个参数**都没有空值保护**：
+   *   - 第 332 行无条件读 `signal.aborted`
+   *   - 第 353 行无条件读 `submittedAttachments.length`
+   * 传 undefined 会分别抛：
+   *   `Cannot read properties of undefined (reading 'aborted')`
+   *   `Cannot read properties of undefined (reading 'length')`
+   *
    * 真实症状：**权限三档切换点了没反应** —— 桥把 500 吞成失败、
    * 界面只在 console 里 warn 一句，用户看不到任何反馈。
+   *
+   * 修掉第一个坑（signal）之后立刻撞上第二个（attachments）——
+   * 所以这两个参数写在一起说明，避免下次只修一个。
    * `abortError(signal)` 还会读 `signal.reason`，所以要给真 AbortSignal。
    *
-   * @param {{sessionId?: string, line?: string, signal?: AbortSignal}} input
+   * @param {{sessionId?: string, line?: string, attachments?: Array<object>, signal?: AbortSignal}} input
    * @returns {{ok: boolean, code?: string, message?: string}}
    */
   function command(input) {
@@ -254,8 +263,11 @@ export function createHostActions({ host }) {
     // **不能省成 undefined** —— 见上面的注释。
     const signal = input?.signal instanceof AbortSignal ? input.signal : new AbortController().signal;
 
+    // 空数组表示「这条命令没有附件」。宿主要读它的 .length，所以不能给 undefined。
+    const attachments = Array.isArray(input?.attachments) ? input.attachments : [];
+
     try {
-      const promise = commands.execute(agent, line, undefined, signal);
+      const promise = commands.execute(agent, line, attachments, signal);
       // execute 可能同步返回结果，也可能返回 Promise；统一按 Promise 处理
       if (promise !== null && typeof promise?.then === "function") {
         return promise.then(

@@ -180,7 +180,11 @@ function models({ host }) {
  * 取不到 agent 时返回空表 + `reason`，不编造。
  */
 function commands({ host, query }) {
-  const sessionId = query?.sessionId;
+  // ⚠️ query 是 URLSearchParams，**必须用 .get() 取**。
+  // 写成 `query?.sessionId` 会恒为 undefined（属性访问取不到查询串），
+  // 表现是接口永远回「需要 sessionId」—— 而我明明传了。
+  // handlers-slice1/slice2 里都有同样的注释，这是桥的既有约定。
+  const sessionId = query?.get?.("sessionId");
   if (typeof sessionId !== "string" || sessionId === "") {
     return {
       ok: true,

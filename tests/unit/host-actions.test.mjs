@@ -245,6 +245,72 @@ test("command：同步返回结果", () => {
   assert.equal(out.result.text, "帮助内容");
 });
 
+test("command：第 3、4 个参数必传且形状正确（宿主无空值保护）", () => {
+  // 真实踩过两次，且是接连撞上的：
+  //   commands.execute(agent, line, undefined, undefined)
+  //   宿主第 332 行无条件读 signal.aborted → 抛 reading 'aborted'
+  //   修好后再跑，第 353 行无条件读 submittedAttachments.length → 抛 reading 'length'
+  // 症状都是「权限三档切换点了没反应」（桥把 500 吞成失败，界面只 console.warn）。
+  //
+  // ⚠️ 这条断言**必须检查真实调用签名**。
+  // 原先那几条 command 测试用的假 execute 把参数全忽略了，
+  // 所以传 undefined 也照样「通过」——那是空壳，这正是不该重复的错。
+  let seen = null;
+  const agent = fakeAgent();
+  const host = fakeHost({
+    agent,
+    commands: {
+      execute: (...args) => {
+        seen = args;
+        return { text: "ok" };
+      },
+    },
+  });
+  const actions = createHostActions({ host });
+  actions.command({ sessionId: "s1", line: "/permission read-only" });
+
+  assert.ok(seen !== null, "execute 应被调用");
+  const [calledAgent, calledLine, calledAttachments, calledSignal] = seen;
+  assert.equal(calledAgent, agent, "第 1 参是 agent");
+  assert.equal(calledLine, "/permission read-only", "第 2 参是完整命令行");
+  assert.ok(
+    Array.isArray(calledAttachments),
+    `第 3 参必须是数组（宿主读它的 .length），实际 ${typeof calledAttachments}`,
+  );
+  assert.equal(calledAttachments.length, 0, "没附件时给空数组");
+  assert.ok(
+    calledSignal !== undefined && typeof calledSignal.aborted === "boolean",
+    `第 4 参必须是真 AbortSignal（宿主读 .aborted 与 .reason），实际 ${typeof calledSignal}`,
+  );
+  assert.equal(calledSignal.aborted, false, "现造的 signal 不应处于已中断态");
+});
+
+test("command：调用方给了 signal 就用它的（便于外部取消）", () => {
+  let seen = null;
+  const controller = new AbortController();
+  const host = fakeHost({
+    agent: fakeAgent(),
+    commands: { execute: (...args) => { seen = args; return { text: "ok" }; } },
+  });
+  createHostActions({ host }).command({
+    sessionId: "s1",
+    line: "/help",
+    signal: controller.signal,
+  });
+  assert.equal(seen[3], controller.signal, "应原样透传调用方的 signal");
+});
+
+test("command：附件数组原样透传", () => {
+  let seen = null;
+  const files = [{ type: "file", name: "a.txt" }];
+  const host = fakeHost({
+    agent: fakeAgent(),
+    commands: { execute: (...args) => { seen = args; return { text: "ok" }; } },
+  });
+  createHostActions({ host }).command({ sessionId: "s1", line: "/help", attachments: files });
+  assert.deepEqual(seen[2], files, "附件应原样传给宿主");
+});
+
 test("command：异步返回结果", async () => {
   const agent = fakeAgent();
   const host = fakeHost({ agent, commands: { execute: async () => ({ text: "ok" }) } });
