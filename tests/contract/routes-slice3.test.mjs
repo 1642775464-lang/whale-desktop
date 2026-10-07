@@ -31,10 +31,13 @@ registerSliceThreeReadRoutes({ bridge: {} });
 registerSliceThreeWriteRoutes();
 
 /**
- * PRD F2 的 22 条路由，按 PRD 表格顺序抄在这里。
+ * PRD F2 的路由表，按 PRD 表格顺序抄在这里。
  *
- * 为什么要再抄一遍：路由表自己说 22 条，只能证明「它自己一致」；
+ * 为什么要再抄一遍：路由表自己说多少条，只能证明「它自己一致」；
  * 与 PRD 逐条比对才能证明「实现与承诺一致」。这两件事都值得钉死。
+ *
+ * 切片 7 新增 /whale/commands 时，这条断言的正确做法是
+ * **先改 PRD、再改这里** —— 它当时就是这么拦住我的。
  */
 const PRD_ROUTES = [
   ["GET", "/whale"],
@@ -46,6 +49,7 @@ const PRD_ROUTES = [
   ["GET", "/whale/fold"],
   ["GET", "/whale/follow"],
   ["GET", "/whale/models"],
+  ["GET", "/whale/commands"],
   ["GET", "/whale/approval"],
   ["POST", "/whale/open"],
   ["POST", "/whale/close"],
@@ -69,7 +73,7 @@ test("路由表与 PRD 逐条一致（顺序、方法、路径）", () => {
   );
 });
 
-test("22 条路由全部已实现（C1 的静态侧）", () => {
+test("23 条路由全部已实现（C1 的静态侧）", () => {
   const missing = ROUTE_DEFS.filter((d) => getHandler(d.method, d.path) === undefined);
   assert.deepEqual(
     missing.map((d) => `${d.method} ${d.path}`),
@@ -84,14 +88,19 @@ test("已实现的处理器都是函数", () => {
   }
 });
 
-test("切片归属分布：切片 1 有 4 条，其余 18 条属切片 2/3", () => {
+test("切片归属分布：切片 1 有 4 条，切片 2/3 有 18 条，切片 7 有 1 条", () => {
   assert.equal(ROUTE_DEFS.filter((d) => d.slice === 1).length, 4);
   assert.equal(ROUTE_DEFS.filter((d) => d.slice === 2 || d.slice === 3).length, 18);
+  // 切片 7（输入框交互全量复刻）新增：命令目录
+  assert.equal(ROUTE_DEFS.filter((d) => d.slice === 7).length, 1);
 });
 
 test("每条路由都标了切片归属（进度可见）", () => {
+  // 合法切片：1/2/3（一期六片中的前三个桥切片）+ 7（切片 7 新增）。
+  // 新增路由时要**显式把它的切片号加进来**，别让这条例外悄悄扩大。
+  const LEGAL = [1, 2, 3, 7];
   for (const def of ROUTE_DEFS) {
-    assert.ok([1, 2, 3].includes(def.slice), `${def.path} 缺合法切片标记`);
+    assert.ok(LEGAL.includes(def.slice), `${def.path} 缺合法切片标记（当前只认 ${LEGAL.join("/")}）`);
   }
 });
 

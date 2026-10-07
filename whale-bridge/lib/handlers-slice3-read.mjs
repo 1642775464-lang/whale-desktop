@@ -170,6 +170,41 @@ function models({ host }) {
 }
 
 /**
+ * GET /whale/commands —— 斜杠命令目录（宿主真命令）。
+ *
+ * 为什么要这条路由：命令面板原先只显示桥里硬编码的三条，
+ * 而宿主实际有二十多条（文件 / 目标 / 计划 / 压缩 / 权限 / 模型…）。
+ * 靠硬编码永远追不上宿主的命令表，**必须问宿主**。
+ *
+ * 需要 `sessionId`：命令按 agent 可见性过滤（不同会话可见集合可能不同）。
+ * 取不到 agent 时返回空表 + `reason`，不编造。
+ */
+function commands({ host, query }) {
+  const sessionId = query?.sessionId;
+  if (typeof sessionId !== "string" || sessionId === "") {
+    return {
+      ok: true,
+      commands: [],
+      total: 0,
+      reason: "需要 sessionId：命令表按会话可见性过滤",
+    };
+  }
+
+  const agent = host.getAgent(sessionId);
+  if (agent === undefined) {
+    return {
+      ok: true,
+      commands: [],
+      total: 0,
+      reason: `会话 ${sessionId} 的 agent 不可用`,
+    };
+  }
+
+  const list = host.listCommands(agent);
+  return { ok: true, commands: list, total: list.length };
+}
+
+/**
  * GET /whale/approval —— 待确认权限请求。
  *
  * 桥只报告「当前是否有挂起的审批请求」，实际应答走 POST /whale/approval。
@@ -205,9 +240,16 @@ export function registerSliceThreeReadRoutes(deps) {
   register("GET", "/whale/models", models);
   register("GET", "/whale/approval", approval);
 
+  // 切片 7 新增：命令目录。取名字不同（commands 而非 slice3 前缀），
+  // 因为它是二期第一条路由，切片归属写在路由表的 slice 字段里。
+  register("GET", "/whale/commands", commands);
+
   // deps 目前只用来自检装配是否完整；保留参数便于后续扩展
   void deps;
 }
 
 /** 本片只读路由条数（供单测核对）。 */
 export const SLICE_THREE_READ_ROUTES = 7;
+
+/** 切片 7 新增的只读路由条数（单测核对用；与 slice3 分开计数，便于追溯）。 */
+export const SLICE_SEVEN_READ_ROUTES = 1;

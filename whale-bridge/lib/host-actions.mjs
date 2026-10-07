@@ -219,7 +219,14 @@ export function createHostActions({ host }) {
    *
    * 对齐宿主 commands 服务：`execute(agent, line, submittedAttachments, signal)`。
    *
-   * @param {{sessionId?: string, line?: string}} input
+   * ⚠️ **`signal` 是必传的，不能给 `undefined`。**
+   * 宿主 `execute` 第二行就无条件读 `signal.aborted`（dsh-commands:332），
+   * 传 undefined 会抛 `Cannot read properties of undefined (reading 'aborted')`。
+   * 真实症状：**权限三档切换点了没反应** —— 桥把 500 吞成失败、
+   * 界面只在 console 里 warn 一句，用户看不到任何反馈。
+   * `abortError(signal)` 还会读 `signal.reason`，所以要给真 AbortSignal。
+   *
+   * @param {{sessionId?: string, line?: string, signal?: AbortSignal}} input
    * @returns {{ok: boolean, code?: string, message?: string}}
    */
   function command(input) {
@@ -243,8 +250,12 @@ export function createHostActions({ host }) {
       return { ok: false, code: "commands-unavailable", message: "宿主未提供 commands 服务" };
     }
 
+    // 调用方给了就用它的（便于外部取消）；没给就现造一个不会中断的。
+    // **不能省成 undefined** —— 见上面的注释。
+    const signal = input?.signal instanceof AbortSignal ? input.signal : new AbortController().signal;
+
     try {
-      const promise = commands.execute(agent, line, undefined, undefined);
+      const promise = commands.execute(agent, line, undefined, signal);
       // execute 可能同步返回结果，也可能返回 Promise；统一按 Promise 处理
       if (promise !== null && typeof promise?.then === "function") {
         return promise.then(

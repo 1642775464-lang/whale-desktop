@@ -65,11 +65,57 @@ function idsOf(list) {
   return Array.from(list).map((x) => x.id ?? x);
 }
 
-test("命令清单含三条，语音是灰项（command 为 null）", () => {
-  assert.equal(palette.COMMANDS.length, 3);
-  const voice = Array.from(palette.COMMANDS).find((c) => c.label === "语音");
+test("兜底表含三条，语音是灰项（command 为 null）", () => {
+  // 切片 7 起命令表问宿主；这份本地表只在桥拿不到时顶上。
+  assert.equal(palette.FALLBACK_COMMANDS.length, 3);
+  const voice = Array.from(palette.FALLBACK_COMMANDS).find((c) => c.label === "语音");
   assert.ok(voice !== undefined, "缺「语音」项");
   assert.equal(voice.command, null, "语音未接通 → command 必须是 null（渲染成灰项）");
+});
+
+test("fromHost：把宿主 descriptor 转成面板条目", () => {
+  // 宿主 descriptor 形状：{name, description, hint, definitionId}
+  // name 不含斜杠；hint 是参数占位（如 <preset>）
+  const out = palette.fromHost([
+    { name: "permission", description: "切换权限预设", hint: "<preset>" },
+    { name: "compact", description: "压缩以上对话内容", hint: null },
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].command, "/permission", "必须补上前导斜杠，否则命令发不出去");
+  assert.equal(out[0].label, "permission");
+  assert.match(out[0].desc, /切换权限预设/, "描述要带上");
+  assert.match(out[0].desc, /<preset>/, "参数提示要显示，用户才知道还要填什么");
+  assert.equal(out[1].command, "/compact");
+  assert.doesNotMatch(out[1].desc, /null/, "没有 hint 时不能把 null 渲染进去");
+});
+
+test("有真命令表时用它，不再用兜底表", () => {
+  const host = palette.fromHost([
+    { name: "permission", description: "切换权限预设", hint: "<preset>" },
+    { name: "compact", description: "压缩以上对话内容", hint: null },
+  ]);
+  const all = Array.from(palette.filterCommands("/", host));
+  assert.equal(all.length, 2, "应只列宿主的命令");
+  assert.ok(all.every((c) => c.command !== "/sk"), "兜底表的条目不该混进来");
+});
+
+test("按命令名过滤真命令表：/per 命中 permission", () => {
+  const host = palette.fromHost([
+    { name: "permission", description: "切换权限预设", hint: "<preset>" },
+    { name: "compact", description: "压缩以上对话内容", hint: null },
+  ]);
+  const out = Array.from(palette.filterCommands("/per", host));
+  assert.ok(out.some((c) => c.command === "/permission"), "应命中");
+});
+
+test("按中文描述过滤：搜「权限」也能命中真命令", () => {
+  // 用户常记得「权限」而不是 /permission —— 所以过滤要同时看描述
+  const host = palette.fromHost([
+    { name: "permission", description: "切换权限预设", hint: "<preset>" },
+    { name: "compact", description: "压缩以上对话内容", hint: null },
+  ]);
+  const out = Array.from(palette.filterCommands("/权限", host));
+  assert.ok(out.some((c) => c.command === "/permission"), "应命中含「权限」的那条");
 });
 
 test("空输入：可用命令都列出，且灰项保留（规范要求显示为灰）", () => {

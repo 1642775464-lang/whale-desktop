@@ -142,6 +142,25 @@ try {
   const models = await call("GET", "/whale/models");
   report.phases.push({ phase: "GET /whale/models", status: models.status, total: models.json?.total });
 
+  // ── 切片 7：命令目录 ──
+  // 没给 sessionId 时应给出明确 reason，而不是报错或编造
+  const cmdNoId = await call("GET", "/whale/commands");
+  report.phases.push({
+    phase: "GET /whale/commands（缺 sessionId）",
+    status: cmdNoId.status,
+    reason: cmdNoId.json?.reason,
+    ok: cmdNoId.status === 200 && Array.isArray(cmdNoId.json?.commands),
+  });
+
+  // 给了 sessionId 时走 agent 过滤；假 ctx 里 commands.list 返回空 → 空表 + reason
+  const cmdWithId = await call("GET", "/whale/commands?sessionId=preflight-session");
+  report.phases.push({
+    phase: "GET /whale/commands（带 sessionId）",
+    status: cmdWithId.status,
+    total: cmdWithId.json?.total,
+    ok: cmdWithId.status === 200 && Array.isArray(cmdWithId.json?.commands),
+  });
+
   const send = await call("POST", "/whale/send", { sessionId: "preflight-session", text: "预检消息" });
   report.phases.push({ phase: "POST /whale/send", status: send.status, json: send.json });
 
@@ -199,7 +218,9 @@ report.touchedServices = [...touched].sort();
 report.host = HOST;
 report.checks = {
   appliedOk: report.phases.some((p) => p.phase === "apply" && p.ok === true),
-  allRoutesImplemented: report.phases.find((p) => p.phase === "GET /whale")?.implemented === 22,
+  // 23 = 切片 1–3 的 22 条 + 切片 7 新增 /whale/commands。
+  // 写死总数是有意的：新增路由时必须**显式改这一行**，而不是让预检悄悄放行。
+  allRoutesImplemented: report.phases.find((p) => p.phase === "GET /whale")?.implemented === 23,
   sendLanded: report.phases.find((p) => p.phase === "POST /whale/send")?.json?.ok === true,
   abortGuarded: report.phases.find((p) => p.phase === "POST /whale/abort")?.json?.error?.code === "no-active-turn",
   disposeClean: report.phases.some((p) => p.phase === "port-closed-after-dispose" && p.ok === true),

@@ -289,6 +289,25 @@ body.whale {
 
 .slash-list {
   padding: 5px;
+  /* 命令表可能有二十多条，限高 + 可滚动，别把输入框顶出窗口 */
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* 命令行的「左名右描述」两栏（对齐宿主面板的排版） */
+.mi-name {
+  flex: 0 0 auto;
+  color: var(--ink);
+}
+
+.mi-desc {
+  flex: 1 1 auto;
+  text-align: right;
+  color: var(--ink3);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── 菜单与会话列表（F8/F9）────────────────────────── */

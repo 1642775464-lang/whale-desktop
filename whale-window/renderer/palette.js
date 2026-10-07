@@ -20,33 +20,64 @@
   "use strict";
 
   /**
-   * 命令清单。
+   * 兜底命令清单（**仅当桥拿不到真命令表时**使用）。
    *
-   * `command` 为 null 表示「能力未接通」→ 渲染成灰色、点击无效果。
-   * 这与规范里「灰 = 能力未接通，不假装能用」是同一条纪律。
+   * 切片 7 起，命令表一律问宿主（`GET /whale/commands`）。
+   * 这份本地表只在桥不可用时顶上，避免面板整个空掉。
+   *
+   * `command` 为 null 表示「能力未接通」→ 渲染成灰色、点击无效果，
+   * 与规范里「灰 = 能力未接通，不假装能用」同一条纪律。
    */
-  const COMMANDS = [
+  const FALLBACK_COMMANDS = [
     { icon: "⚡", label: "插件·技能·伙伴", command: "/sk" },
     { icon: "⚡", label: "技能管理", command: "/skills" },
     { icon: "🎤", label: "语音", suffix: "（暂不可用）", command: null },
   ];
 
   /**
-   * 按已输入内容过滤命令。
+   * 把宿主返回的命令条目转成面板条目。
    *
-   * 匹配规则：把已输入（含前导 `/`）与命令名、标签做**不区分大小写的包含**判断。
-   * 用包含而不是前缀：用户常记得「技能」而不是 `/skills`。
+   * 宿主 descriptor 形状：`{name, description, hint, definitionId}`。
+   * - `name` 是**不含斜杠**的命令名（如 `permission`）→ 补上 `/` 才能当命令用
+   * - `hint` 是参数占位（如 `<preset>`）→ 显示在描述里，用户才知道还要填什么
    *
-   * @param {string} typed 已输入内容（含前导 /）
+   * @param {Array<object>} list 宿主命令表
    * @returns {Array<object>}
    */
-  function filterCommands(typed) {
+  function fromHost(list) {
+    return list.map(function (c) {
+      const name = String(c.name);
+      // 描述后面缀上参数提示（若有）：图上「权限 permission / 切换权限预设」那样
+      const desc = c.hint ? `${c.description}  ${c.hint}` : c.description;
+      return {
+        icon: "⌘",
+        label: name,
+        desc: desc || "",
+        command: `/${name}`,
+      };
+    });
+  }
+
+  /**
+   * 按已输入内容过滤命令。
+   *
+   * 匹配规则：把已输入（含前导 `/`）与命令名、描述做**不区分大小写的包含**判断。
+   * 用包含而不是前缀：用户常记得「权限」而不是 `/permission`。
+   *
+   * @param {string} typed 已输入内容（含前导 /）
+   * @param {Array<object>} [commands] 命令表；不传用兜底表
+   * @returns {Array<object>}
+   */
+  function filterCommands(typed, commands) {
+    const source = Array.isArray(commands) && commands.length > 0 ? commands : FALLBACK_COMMANDS;
     const q = String(typed ?? "").replace(/^\//, "").trim().toLowerCase();
-    if (q === "") return COMMANDS.slice();
-    return COMMANDS.filter(function (c) {
+    if (q === "") return source.slice();
+    return source.filter(function (c) {
       return (
         c.command !== null &&
-        (c.command.toLowerCase().includes(q) || c.label.toLowerCase().includes(q))
+        (String(c.command).toLowerCase().includes(q)
+          || String(c.label).toLowerCase().includes(q)
+          || String(c.desc ?? "").toLowerCase().includes(q))
       );
     });
   }
@@ -64,15 +95,20 @@
     const dom = deps.dom;
     const onPick = deps.onPick;
     const onUnavailable = typeof deps.onUnavailable === "function" ? deps.onUnavailable : function () {};
+    const onNeedCommands = typeof deps.onNeedCommands === "function" ? deps.onNeedCommands : null;
 
     /** 面板是否打开。 */
     let open = false;
     /** 当前渲染出来的条目（点选时按下标取）。 */
     let items = [];
+    /** 宿主的真命令表；还没拉到或用兜底表时为 null。 */
+    let hostCommands = null;
+    /** 正在拉命令表（避免连打几个字符触发多次请求）。 */
+    let loading = false;
 
     /** 渲染清单。 */
     function render(typed) {
-      items = filterCommands(typed);
+      items = filterCommands(typed, hostCommands);
       dom.query.textContent = typed;
 
       dom.list.innerHTML = "";
@@ -88,7 +124,17 @@
         const row = global.document.createElement("div");
         // 灰色项用 .grey：规范要求它没有 hover 反馈
         row.className = c.command === null ? "mi grey" : "mi";
-        row.textContent = `${c.icon} ${c.label}${c.suffix ?? ""}`;
+        // 左名右描述（对齐宿主面板的排版）：有描述就分两栏
+        const name = global.document.createElement("span");
+        name.className = "mi-name";
+        name.textContent = `${c.icon ?? "⌘"} ${c.label}${c.suffix ?? ""}`;
+        row.appendChild(name);
+        if (typeof c.desc === "string" && c.desc !== "") {
+          const desc = global.document.createElement("span");
+          desc.className = "mi-desc";
+          desc.textContent = c.desc;
+          row.appendChild(desc);
+        }
         row.addEventListener("click", function () {
           if (c.command === null) {
             // 不假装能用：明确告诉调用方，由它决定怎么如实提示
@@ -100,6 +146,29 @@
         });
         dom.list.appendChild(row);
       });
+    }
+
+    /**
+     * 拉一次宿主的命令表。
+     *
+     * 只在面板首次打开时拉，并缓存——命令表在一次会话里基本不变，
+     * 每次打字都请求会让面板闪烁且白耗带宽。
+     *
+     * @returns {Promise<void>}
+     */
+    function ensureCommands() {
+      if (hostCommands !== null || loading || onNeedCommands === null) return Promise.resolve();
+      loading = true;
+      return Promise.resolve(onNeedCommands())
+        .then(function (list) {
+          loading = false;
+          if (Array.isArray(list) && list.length > 0) {
+            hostCommands = fromHost(list);
+            // 拉到之后立刻重画：用户可能已经打了一半
+            if (open) render(dom.query.textContent);
+          }
+        })
+        .catch(function () { loading = false; });
     }
 
     /**
@@ -120,6 +189,8 @@
       open = true;
       dom.panel.hidden = false;
       render(value.split(" ")[0]);
+      // 首次打开时去拉宿主的真命令表；拉到会自动重画
+      void ensureCommands();
     }
 
     /** 关闭面板。 */
@@ -165,8 +236,9 @@
   }
 
   global.WhalePalette = {
-    COMMANDS,
+    FALLBACK_COMMANDS,
     createPalette,
     filterCommands,
+    fromHost,
   };
 })(typeof window !== "undefined" ? window : globalThis);

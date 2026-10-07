@@ -125,14 +125,14 @@ test("桥骨架端到端冒烟", async (t) => {
     await close(server);
   });
 
-  await t.test("GET /whale 返回概览与 22 条路由", async () => {
+  await t.test("GET /whale 返回概览与全部路由", async () => {
     const { status, json } = await get("/whale");
     assert.equal(status, 200);
     assert.equal(json.ok, true);
     assert.equal(json.name, "whale-bridge");
-    assert.equal(json.routeCount, 22);
+    assert.equal(json.routeCount, 23);
     assert.equal(json.implementedCount, 4, "切片 1 应有 4 条已实现");
-    assert.equal(json.routes.length, 22);
+    assert.equal(json.routes.length, 23);
   });
 
   await t.test("GET /whale/probe 报告宿主服务可用性", async () => {
@@ -258,9 +258,9 @@ test("apply/dispose 生命周期（串行）", async (t) => {
     const res = await fetch(`http://127.0.0.1:${APPLY_PORT}/whale`);
     assert.equal(res.status, 200);
     const json = await res.json();
-    // 切片 3 完成后：22 条路由全部实现，不再有占位
-    assert.equal(json.implementedCount, 22);
-    assert.equal(json.routeCount, 22);
+    // 切片 3 完成后：全部路由已实现，不再有占位（切片 7 又加了 /whale/commands → 23）
+    assert.equal(json.implementedCount, 23);
+    assert.equal(json.routeCount, 23);
   });
 
   await t.test("dispose 后端口释放，可再次 apply", async () => {

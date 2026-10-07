@@ -335,6 +335,28 @@
       return post("/whale/command", { sessionId: state.sessionId, line });
     }
 
+    /**
+     * 拉宿主的斜杠命令目录（切片 7）。
+     *
+     * 为什么要问桥而不是本地写死：宿主有二十多条命令（文件/目标/计划/压缩/
+     * 权限/模型…），硬编码永远追不上，而且不同会话可见集合可能不同。
+     *
+     * 失败返回空数组（面板显示「没有可用命令」），**不退回硬编码列表** ——
+     * 显示一份假的命令表比不显示更糟：用户会照着它去执行不存在的命令。
+     *
+     * @returns {Promise<Array<object>>}
+     */
+    function listCommands() {
+      if (typeof state.sessionId !== "string" || state.sessionId === "") return Promise.resolve([]);
+      return global
+        .fetch(`${base}/whale/commands?sessionId=${encodeURIComponent(state.sessionId)}`)
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (json) {
+          return Array.isArray(json?.commands) ? json.commands : [];
+        })
+        .catch(function () { return []; });
+    }
+
     /** 切到某会话（F9）。 */
     function activate(sessionId) {
       return post("/whale/activate", { sessionId });
@@ -364,6 +386,7 @@
       command,
       connect,
       getState () { return state; },
+      listCommands,
       refresh,
       resume,
       send,

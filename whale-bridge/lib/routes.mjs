@@ -52,6 +52,7 @@ export const ROUTE_DEFS = [
   { method: "GET", path: "/whale/fold", purpose: "增量折叠器状态", slice: 2 },
   { method: "GET", path: "/whale/follow", purpose: "主窗跟随 SSE", slice: 3 },
   { method: "GET", path: "/whale/models", purpose: "模型目录", slice: 3 },
+  { method: "GET", path: "/whale/commands", purpose: "斜杠命令目录（宿主真命令）", slice: 7 },
   { method: "GET", path: "/whale/approval", purpose: "待确认权限请求", slice: 3 },
   { method: "POST", path: "/whale/open", purpose: "唤起小窗或悬浮条（target 可选）", slice: 3 },
   { method: "POST", path: "/whale/close", purpose: "关闭窗口进程", slice: 3 },

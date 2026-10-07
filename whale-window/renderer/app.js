@@ -87,6 +87,8 @@
    * 斜杠命令面板（F7）。
    *
    * 选中可用命令时走 `client.command()` —— 命令**不经模型**，由宿主直接执行。
+   * 命令表问宿主（`GET /whale/commands`），不再用本地硬编码——
+   * 宿主有二十多条命令，硬编码永远追不上。
    */
   const palette = global.WhalePalette.createPalette({
     dom: { panel: dom.slashPanel, query: dom.slashQuery, list: dom.slashList, input: dom.input },
@@ -96,6 +98,7 @@
       });
     },
     onUnavailable: notifyUnavailable,
+    onNeedCommands: () => client.listCommands(),
   });
 
   /** 菜单与会话切换（F8/F9）。 */

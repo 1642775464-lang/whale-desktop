@@ -179,16 +179,32 @@ export function createHostAccess(ctx) {
     }, null);
   }
 
-  /** 列出某 agent 可见的斜杠命令。 */
+  /**
+   * 列出某 agent 可见的斜杠命令。
+   *
+   * 形状对齐宿主 `commands.list()` 的 descriptor（dsh-commands:175）：
+   * `{ definitionId?, name, description, input? }`，其中 `input.hint` 是参数的占位提示
+   * （例如 permission 的 `<preset>`）。
+   *
+   * `input.hint` 必须带上：命令面板要显示「还要填什么」，
+   * 缺了它用户不知道 `/permission` 后面该写什么。
+   *
+   * @param {object} agent
+   * @returns {Array<{name: string, description: string, hint: string|null, definitionId: string|null}>}
+   */
   function listCommands(agent) {
     if (commands === undefined || agent === undefined) return [];
     return safe(() => {
       const raw = commands.list(agent);
       if (!Array.isArray(raw)) return [];
-      return raw.map((c) => ({
-        name: c?.name,
-        description: c?.description,
-      }));
+      return raw
+        .filter((c) => typeof c?.name === "string" && c.name !== "")
+        .map((c) => ({
+          name: c.name,
+          description: typeof c.description === "string" ? c.description : "",
+          hint: typeof c?.input?.hint === "string" ? c.input.hint : null,
+          definitionId: typeof c?.definitionId === "string" ? c.definitionId : null,
+        }));
     }, []);
   }
 
