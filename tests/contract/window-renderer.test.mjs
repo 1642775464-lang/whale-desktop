@@ -253,6 +253,32 @@ test("preload 暴露的通道与主进程注册的通道一一对应", () => {
   );
 });
 
+test("浮层键只能绑一次：btnPerm 不得单独再绑（绑两次会互相抵消）", () => {
+  // 真实踩过：权限键在 OVERLAY_BUTTONS 循环里绑了一次（toggle + render），
+  // 上一行又单独绑了一次（只 toggle）。点一下触发两个处理器：
+  // 第一个打开浮层，第二个又切一次把它关掉，且 isOpen() 为假 → 不渲染
+  // → 也从不发 /whale/presets 请求。
+  // 净效果是「点了没反应」，而所有代码看起来都在。
+  // 这类「同一元素绑两次」的静默失效只能靠机械检查拦。
+  const bindCount = (id) => {
+    const re = new RegExp(`dom\\.${id}\\.addEventListener\\(\\s*"click"`, "g");
+    return (appJs.match(re) ?? []).length;
+  };
+  for (const id of ["btnPerm", "btnModel", "btnUsage", "btnAdd"]) {
+    assert.equal(
+      bindCount(id),
+      0,
+      `#${id} 不该有独立的 click 绑定——它由 OVERLAY_BUTTONS 循环统一接线；` +
+        "额外再绑一次会让两次 toggle 互相抵消（浮层永远打不开）",
+    );
+    assert.ok(
+      new RegExp(`\\["${id}",\\s*"`).test(appJs),
+      `#${id} 必须在 OVERLAY_BUTTONS 表里（否则它没有绑定，点了没反应）`,
+    );
+  }
+  assert.match(appJs, /OVERLAY_BUTTONS\.forEach\(/, "必须有 OVERLAY_BUTTONS 统一接线");
+});
+
 test("overlays.js 必须用取值函数拿 client，不能存成对象", () => {
   // 真实踩过：`const client = deps.getClient;` 把**取值函数本身**当客户端用了，
   // 于是 client.modelCatalog() / client.getState() 全线报

@@ -270,18 +270,19 @@
     dom.btnMenu.addEventListener("click", () => panels.toggleMenu());
     dom.btnGear.addEventListener("click", () => notifyUnavailable("侧边工作台"));
 
-    // 权限键改为开浮层（列出宿主的全部档位，含 auto）——
-    // 原先的循环切换看不到全貌，也选不到 auto（切片 7 第二批）
-    dom.btnPerm.addEventListener("click", () => overlays.toggle("permission"));
-
-    // 模型/思考强度、用量、＋ 三个浮层键
+    // 四个浮层键统一在 OVERLAY_BUTTONS 里接线（含权限键）。
+    //
+    // ⚠️ 权限键**只在这里绑一次**。曾经在上一行又单独绑了一次
+    // `overlays.toggle("permission")`，于是点一下触发两个处理器：
+    // 第一个打开、第二个又切一次把它关掉，且 isOpen() 为假 → 不渲染。
+    // 净效果是浮层永远打不开、也从没发出过 /whale/presets 请求，
+    // 表现为「权限还是不行」。同一元素绑两次是这类静默失效的常见成因。
     OVERLAY_BUTTONS.forEach(([buttonId, name, render]) => {
       dom[buttonId].addEventListener("click", () => {
         overlays.toggle(name);
         if (overlays.isOpen()) render();
       });
     });
-    // 权限键也归入统一渲染（它同样在 OVERLAY_BUTTONS 表里，但上面已单独绑）
     dom.ovClose.addEventListener("click", () => overlays.close());
 
     // 文件选择器：＋ 浮层里点「选择文件」触发

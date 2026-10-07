@@ -45,7 +45,10 @@ app.whenReady().then(async () => {
     screen,
     ipcMain,
     app,
-    log: () => {},
+    // 探针纪律注记：这里传的假 logger 必须带 info/warn/error——
+    // boot.cjs 与 ipc.cjs 都会调 log.info()，传裸函数会在装配期崩掉
+    // （探针自己崩了还表现为「无输出」，之前两轮就是这么浪费掉的）。
+    log: { info: () => {}, warn: () => {}, error: () => {} },
     port: args.port,
     noRestore: true,
     onWindowReady(w) {
@@ -105,6 +108,130 @@ app.whenReady().then(async () => {
         out.panelMessages = Array.isArray(p.messages) ? p.messages.length : -1;
       } catch (e) { out.panelError = String(e && e.message); }
     }
+    return out;
+  })()`);
+
+  /**
+   * 走真实 UI 交互驱动浮层（探针纪律：只模拟用户输入）。
+   *
+   * 这一步回答的是「用户点了之后到底发生了什么」：
+   *   点模型键 → 浮层里有没有内容 → 点一个档位 → 桥回什么。
+   * 之前三轮都卡在「看代码猜」，这里直接把交互结果打出来。
+   */
+  report.interaction = await run(`(async () => {
+    const out = { steps: [] };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const log = (s) => out.steps.push(s);
+
+    // 1) 点权限键，看浮层里出现了什么
+    const btnPerm = document.getElementById("btnPerm");
+    if (!btnPerm) { log("找不到 btnPerm"); return out; }
+    btnPerm.click();
+    await sleep(700);
+    const overlay = document.getElementById("inputOverlay");
+    const body = document.getElementById("ovBody");
+    out.overlayOpened = overlay && !overlay.hidden;
+    out.permRows = body ? [...body.querySelectorAll(".ov-row")].map((r) => r.textContent.trim()) : null;
+    log("点 btnPerm 后浮层 hidden=" + (overlay ? overlay.hidden : "null"));
+
+    // 2) 点最后一个档位（auto），看桥怎么回
+    if (body) {
+      const rows = [...body.querySelectorAll(".ov-row")];
+      const target = rows[rows.length - 1];
+      if (target) {
+        const before = document.querySelectorAll(".ov-row").length;
+        target.click();
+        await sleep(900);
+        out.clickedLastPermRow = true;
+        out.rowsBefore = before;
+        out.overlayStillOpen = overlay && !overlay.hidden;
+      }
+    }
+
+    // 3) 点模型键，看分组与档位
+    const btnModel = document.getElementById("btnModel");
+    if (btnModel) {
+      btnModel.click();
+      await sleep(900);
+      const b2 = document.getElementById("ovBody");
+      out.modelGroups = b2 ? [...b2.querySelectorAll(".ov-group")].map((g) => g.textContent.trim()) : null;
+      out.modelRows = b2 ? [...b2.querySelectorAll(".ov-row")].length : 0;
+      // 点第一个模型 → 应进入 effort 列表
+      const firstRow = b2 ? b2.querySelector(".ov-row") : null;
+      if (firstRow) {
+        firstRow.click();
+        await sleep(900);
+        const b3 = document.getElementById("ovBody");
+        out.ovTitleAfterPick = (document.getElementById("ovTitle") || {}).textContent;
+        out.effortRows = b3 ? [...b3.querySelectorAll(".ov-row")].map((r) => r.textContent.trim()) : null;
+      }
+    }
+    return out;
+  })()`);
+
+  /**
+   * 拦截真实窗口的 fetch，再模拟点击——看产品 client 实际发出的请求体。
+   *
+   * 这是「用户点了之后到底发了什么」的直接证据：
+   * 之前直打桥都是 200，所以差异只能在渲染层发出去的参数上。
+   */
+  report.wire = await run(`(async () => {
+    const out = { captured: [] };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const origFetch = window.fetch;
+    window.fetch = function (url, opts) {
+      const u = String(url);
+      const watched = u.includes("/whale/model") || u.includes("/whale/command") || u.includes("/whale/presets");
+      if (!watched) return origFetch.apply(this, arguments);
+      // 连响应一起抓：只抓请求体只能证明「发得对」，
+      // 要证明「桥收下了」必须看响应的 status 与 body。
+      return origFetch.apply(this, arguments).then(async function (res) {
+        let body = null;
+        try { body = await res.clone().text(); } catch (e) { body = "读取失败:" + String(e && e.message); }
+        out.captured.push({
+          url: u,
+          reqBody: opts && opts.body ? String(opts.body) : null,
+          status: res.status,
+          resBody: body ? body.slice(0, 220) : null,
+        });
+        return res;
+      });
+    };
+
+    // 点权限键 → 等渲染 → 点一个档位
+    const btnPerm = document.getElementById("btnPerm");
+    if (!btnPerm) { out.err = "找不到 btnPerm"; return out; }
+    btnPerm.click();
+    await sleep(900);
+    const body = document.getElementById("ovBody");
+    const overlayEl = document.getElementById("inputOverlay");
+    out.permOverlayOpen = overlayEl ? !overlayEl.hidden : null;
+    out.permTitle = (document.getElementById("ovTitle") || {}).textContent;
+    out.permRows = body ? [...body.querySelectorAll(".ov-row")].map((r) => r.textContent.trim()) : null;
+    const rows = body ? [...body.querySelectorAll(".ov-row")] : [];
+    if (rows.length > 0) {
+      rows[rows.length - 1].click();
+      await sleep(1200);
+    }
+
+    // 点模型键 → 点第一个模型 → 点第一个档位
+    const btnModel = document.getElementById("btnModel");
+    if (btnModel) {
+      btnModel.click();
+      await sleep(900);
+      const b2 = document.getElementById("ovBody");
+      const mrows = b2 ? [...b2.querySelectorAll(".ov-row")] : [];
+      out.modelRowCount = mrows.length;
+      if (mrows.length > 1) { mrows[1].click(); await sleep(800); }
+      const b3 = document.getElementById("ovBody");
+      const erows = b3 ? [...b3.querySelectorAll(".ov-row")] : [];
+      out.effortTitles = erows.map((r) => r.textContent.trim());
+      if (erows.length > 1) { erows[erows.length - 1].click(); await sleep(1500); }
+      // 切换后浮层该关掉；没关就是没成功
+      const ov3 = document.getElementById("inputOverlay");
+      out.overlayOpenAfterModelPick = ov3 ? !ov3.hidden : null;
+    }
+    window.fetch = origFetch;
     return out;
   })()`);
 
