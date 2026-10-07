@@ -238,6 +238,44 @@ function createGettableCtx(services, injected = []) {
   };
 }
 
+// ── 可选服务必须在**调用时**解析，不能在 apply 时定死 ──────
+
+test("可选服务要延迟解析：apply 时还没就绪、之后就绪了要能取到", async () => {
+  // 真实踩过：把 `optionalServiceOf(ctx, "sessionController")` 的结果
+  // 在 createHostAccess 里存进 const，之后一直用它。
+  // 而 sessionController 由 dsh-api-session-controller 提供，
+  // **启动顺序在桥之后**——apply 那一刻它还没就绪，于是 const 永远是 undefined，
+  // /whale/probe 永远报 false、/whale/models 永远返回 0。
+  // 表现极具迷惑性：路由都在、其他服务都正常，只有这两项恒空。
+  const ready = { value: false };
+  const ctx = {
+    on: () => () => {},
+    get: (name) => (name === "sessionController" && ready.value ? { modelCatalog: async () => ({}) } : undefined),
+  };
+
+  const host = createHostAccess(ctx);
+  assert.equal(await host.modelCatalog(), null, "apply 时未就绪 → null");
+
+  // 宿主的启动顺序走完，服务就绪
+  ready.value = true;
+
+  const out = await host.modelCatalog();
+  assert.notEqual(out, null, "服务就绪后必须能取到——服务要延迟解析，不能 apply 时定死");
+});
+
+test("可选服务的可用性也要实时反映（probe 不能缓存旧结论）", () => {
+  const ready = { value: false };
+  const ctx = {
+    on: () => () => {},
+    get: (name) => (name === "permissionPresets" && ready.value ? { names: ["auto"] } : undefined),
+  };
+  const host = createHostAccess(ctx);
+
+  assert.equal(host.available.permissionPresets, false, "初始未就绪");
+  ready.value = true;
+  assert.equal(host.available.permissionPresets, true, "就绪后 available 也要跟着变");
+});
+
 // ── 模型目录：必须走宿主的 sessionController ──────────────
 
 test("modelCatalog：走宿主 sessionController，原样给出目录", async () => {

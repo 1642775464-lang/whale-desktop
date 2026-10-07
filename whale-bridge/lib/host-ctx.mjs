@@ -114,9 +114,17 @@ export function createHostAccess(ctx) {
    *   - `permissionPresets` 由 dsh-permission-presets 提供，
    *     档位清单以它为准（内含配置项 + 运行期注册的 auto）
    * 取不到时降级并如实说明原因，而不是让插件不启动。
+   *
+   * ⚠️ **必须是延迟解析（函数），不能在 apply 时取一次存进 const。**
+   *
+   * 真实踩过：这两个服务由**启动顺序在桥之后**的插件提供，apply 那一刻
+   * 它们还没就绪。存进 const 就永远是 undefined —— 表现是
+   * `/whale/probe` 恒报 false、`/whale/models` 恒返回 0，
+   * 而路由都在、其它服务（attachments 等更早就绪的）都正常，极具迷惑性。
+   * 每次调用现取，宿主的启动顺序走完后自然就能取到。
    */
-  const sessionController = optionalServiceOf(ctx, "sessionController");
-  const permissionPresetsService = optionalServiceOf(ctx, "permissionPresets");
+  const sessionControllerOf = () => optionalServiceOf(ctx, "sessionController");
+  const permissionPresetsOf = () => optionalServiceOf(ctx, "permissionPresets");
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */
   function safe(fn, fallback) {
@@ -332,6 +340,7 @@ export function createHostAccess(ctx) {
    * @returns {Promise<object | null>}
    */
   async function modelCatalog() {
+    const sessionController = sessionControllerOf();
     if (sessionController === undefined) return null;
     if (typeof sessionController.modelCatalog !== "function") return null;
     try {
@@ -365,6 +374,7 @@ export function createHostAccess(ctx) {
     if (typeof provider !== "string" || provider === "" || typeof model !== "string" || model === "") {
       return { ok: false, code: "bad-request", message: "缺少 provider 或 model" };
     }
+    const sessionController = sessionControllerOf();
     if (sessionController === undefined || typeof sessionController.selectModel !== "function") {
       return {
         ok: false,
@@ -408,16 +418,17 @@ export function createHostAccess(ctx) {
    * @returns {{options: Array<string>, current: string | null} | null}
    */
   function permissionPresets(sessionId) {
-    if (permissionPresetsService === undefined) return null;
+    const service = permissionPresetsOf();
+    if (service === undefined) return null;
     try {
-      const names = permissionPresetsService.names;
+      const names = service.names;
       if (!Array.isArray(names) || names.length === 0) return null;
 
       let current = null;
-      if (typeof permissionPresetsService.current === "function") {
+      if (typeof service.current === "function") {
         const session = getSession(sessionId);
         if (session !== undefined) {
-          current = safe(() => permissionPresetsService.current(session), null);
+          current = safe(() => service.current(session), null);
         }
       }
       return { options: names.map(String), current: typeof current === "string" ? current : null };
@@ -439,9 +450,11 @@ export function createHostAccess(ctx) {
       commands: commands !== undefined,
       projections: projections !== undefined,
       attachments: attachments !== undefined,
-      // 切片 7 第二批新增的两个可选服务：模型目录/切换、权限档位清单
-      sessionController: sessionController !== undefined,
-      permissionPresets: permissionPresetsService !== undefined,
+      // 切片 7 第二批新增的两个可选服务：模型目录/切换、权限档位清单。
+      // 现取（延迟解析）——它们由启动顺序在桥之后的插件提供，
+      // 缓存 apply 时刻的结论会永远报 false。
+      sessionController: sessionControllerOf() !== undefined,
+      permissionPresets: permissionPresetsOf() !== undefined,
       sessionCount: listSessions().length,
       // 把「为什么取不到」一并报出来：这是区分「宿主没这个服务」
       // 与「插件没声明依赖」的唯一线索（两者表现完全一样）
@@ -456,15 +469,20 @@ export function createHostAccess(ctx) {
     commands,
     projections,
     attachments,
-    sessionController,
-    available: {
-      sessions: sessions !== undefined,
-      agents: agents !== undefined,
-      commands: commands !== undefined,
-      projections: projections !== undefined,
-      attachments: attachments !== undefined,
-      sessionController: sessionController !== undefined,
-      permissionPresets: permissionPresetsService !== undefined,
+    // 用 getter：调用方每次拿到的都是当前状态，不是 apply 时刻的快照
+    get sessionController() { return sessionControllerOf(); },
+    // available 也必须是 getter：否则「启动顺序靠后的服务后来就绪了」
+    // 这个结论会被冻在 apply 时刻，调用方永远看到旧值。
+    get available() {
+      return {
+        sessions: sessions !== undefined,
+        agents: agents !== undefined,
+        commands: commands !== undefined,
+        projections: projections !== undefined,
+        attachments: attachments !== undefined,
+        sessionController: sessionControllerOf() !== undefined,
+        permissionPresets: permissionPresetsOf() !== undefined,
+      };
     },
     listSessions,
     getSession,
