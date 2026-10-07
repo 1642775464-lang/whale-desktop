@@ -47,10 +47,14 @@
 
 ### F2 22 条路由（P0，用户决策 D3 = 全量实现）
 
-> **切片 7 补充**：新增第 23 条 `GET /whale/commands`（斜杠命令目录）。
-> 原因：命令面板原先只能显示桥里硬编码的三条，而宿主实际有二十多条命令
-> （文件 / 目标 / 计划 / 压缩 / 权限 / 模型…），硬编码永远追不上。
-> 用户 2026-10-07 明确同意新增此路由（打破 D3 的「22 条」数字，非偷偷加）。
+> **切片 7 补充**：新增两条 GET 路由，总数 22 → 24。
+>   - 第 23 条 `GET /whale/commands`（斜杠命令目录）
+>   - 第 24 条 `GET /whale/presets`（权限档位清单与当前档位）
+>
+> 原因：命令面板原先只能显示桥里硬编码的三条，而宿主实际有二十多条命令；
+> 权限档位原先硬编码三档，而宿主实际还有运行期才注册的 `auto`——
+> 两者靠硬编码都追不上宿主，必须问宿主。
+> 用户 2026-10-07 明确同意新增（打破 D3 的「22 条」数字，非偷偷加）。
 
 | 方法 | 路径 | 用途 | 关键行为 |
 |---|---|---|---|
@@ -62,8 +66,9 @@
 | GET | `/whale/windows` | 已拉起的小窗进程 | 返回 pid、可执行路径、存活判定 |
 | GET | `/whale/fold` | 增量折叠器状态 | 返回每个会话的折叠水位、事件计数、tail 长度 |
 | GET | `/whale/follow` | 主窗跟随 SSE | 客户端半侧消费；返回当前活跃会话 id 与订阅水位 |
-| GET | `/whale/models` | 模型目录 | 从宿主 agent-default-model / pi-ai provider 读取 |
+| GET | `/whale/models` | 模型目录 | 走宿主 `sessionController.modelCatalog()`：provider 分组 + 各模型推理档位 + 默认选择 |
 | GET | `/whale/commands` | 斜杠命令目录 | 从宿主 `commands.list(agent)` 读真命令表（含 `hint`）；需 `sessionId` |
+| GET | `/whale/presets` | 权限档位清单 | 从宿主 `permissionPresets.names` 读（含 `auto`）+ `current(session)`；需 `sessionId` |
 | GET | `/whale/approval` | 待确认权限请求 | 返回挂起的 `approval/asked` 列表 |
 | POST | `/whale/open` | 唤起小窗 | 已存活则复用，不重复拉起；返回 `{pid, reused}` |
 | POST | `/whale/close` | 关闭小窗 | 按 pid 关闭自己拉起的窗口 |
@@ -228,3 +233,4 @@ whale-bridge/
 | 2026-10-05 | 桥版本 0.3.0 |
 | **2026-10-05** | **v2.0 定稿：按本仓库重新实施；token 口径改为 token-meter 投影（D1 决策 C）；22 条全量实现（D3）；新增验收 C1–C13** |
 | **2026-10-07** | **v2.1：新增第 23 条路由 `GET /whale/commands`（斜杠命令目录），用户明确同意**。同批修掉 `/whale/command` 的 signal 缺失缺陷（传 `undefined` 违反宿主约定，导致权限切换必 500） |
+| **2026-10-07** | **v2.2（切片 7 第二批）：新增第 24 条路由 `GET /whale/presets`（权限档位清单），用户明确同意**。`GET /whale/models` 改走 `sessionController.modelCatalog()`——原先找的 `models` 服务宿主根本没注册，所以一直返回 0；`POST /whale/model` 改走 `sessionController.selectModel()`（宿主 UI 的正规通路），新增 `session/model-unavailable` → 400 的状态码口径 |

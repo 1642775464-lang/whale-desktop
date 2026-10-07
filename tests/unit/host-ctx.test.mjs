@@ -214,3 +214,153 @@ test("可选服务走 ctx.get，取不到也不抛（不经过 inject 守卫）"
   assert.equal(host.available.attachments, false);
   assert.deepEqual(host.probe().missingInject, []);
 });
+
+/**
+ * 造一个实现了 ctx.get 的假宿主 ctx。
+ *
+ * 真 Cordis 的 `ctx.get(name)` **不经过 inject 守卫**，取不到返回 undefined
+ * （dsh-acp 就是这么读的：`ctx.get("attachments")`）。
+ * 之所以要单独造一个：上面那个 Proxy 模拟的是「属性访问」的守卫语义，
+ * 它没有 get 方法，测不到可选服务这条路。
+ *
+ * @param {object} services 已注册的服务
+ * @param {string[]} [injected] 已声明 inject 的名字（属性访问要放行）
+ * @returns {object}
+ */
+function createGettableCtx(services, injected = []) {
+  const declared = new Set(injected);
+  return {
+    on: () => () => {},
+    get: (name) => (Object.hasOwn(services, name) ? services[name] : undefined),
+    ...Object.fromEntries(
+      Object.entries(services).filter(([name]) => declared.has(name)),
+    ),
+  };
+}
+
+// ── 模型目录：必须走宿主的 sessionController ──────────────
+
+test("modelCatalog：走宿主 sessionController，原样给出目录", async () => {
+  // 为什么必须是 sessionController 而不是桥自己拼：
+  // 宿主 UI 的模型选择器就是读它（buildModelCatalog 包在里面），
+  // 桥复刻一遍等于维护第二份逻辑——宿主改了桥就悄悄不一致。
+  let called = 0;
+  const catalog = {
+    default: { provider: "workbuddy-ai", model: "glm-5.3-flash" },
+    routableProviders: ["workbuddy-ai"],
+    groups: [
+      {
+        id: "workbuddy-ai",
+        name: "WorkBuddy AI",
+        models: [
+          {
+            id: "glm-5.3-flash",
+            name: "GLM-5.3-Flash",
+            reasoning: { efforts: [{ id: "high", name: "高" }], defaultEffort: "high" },
+          },
+        ],
+      },
+    ],
+    failures: [],
+  };
+  const host = createHostAccess(createGettableCtx({
+    sessionController: {
+      modelCatalog: async () => { called += 1; return catalog; },
+    },
+  }));
+
+  const out = await host.modelCatalog();
+  assert.equal(called, 1, "必须真的问了 sessionController");
+  assert.equal(out, catalog, "目录应原样透传（宿主已 detach，形状就是 UI 用的那份）");
+});
+
+test("modelCatalog：宿主没有 sessionController 时给 null，不抛", async () => {
+  // 这是降级路径：桥要能如实说「读不到目录」，而不是整个接口 500。
+  const host = createHostAccess(createGettableCtx({}));
+  assert.equal(await host.modelCatalog(), null);
+});
+
+test("modelCatalog：宿主抛错时给 null 并留下原因", async () => {
+  const host = createHostAccess(createGettableCtx({
+    sessionController: {
+      modelCatalog: async () => { throw new Error("provider 全挂了"); },
+    },
+  }));
+  const out = await host.modelCatalog();
+  assert.equal(out, null, "抛错不能冒到 HTTP 层");
+});
+
+test("selectModel：把 provider/model/effort 交给宿主，不自己改状态", async () => {
+  let seen = null;
+  const host = createHostAccess(createGettableCtx({
+    sessionController: {
+      selectModel: async (request) => { seen = request; return { selected: request }; },
+    },
+  }));
+
+  const out = await host.selectModel({
+    sessionId: "s1", provider: "magpie", model: "group/auto-qfmodel", reasoningEffort: "xhigh",
+  });
+  assert.deepEqual(seen, {
+    sessionId: "s1", provider: "magpie", model: "group/auto-qfmodel", reasoningEffort: "xhigh",
+  }, "请求形状必须是宿主要求的 {sessionId, provider, model, reasoningEffort}");
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.selected, seen);
+});
+
+test("selectModel：不传 effort 时不能塞一个 undefined 字段进去", async () => {
+  // 宿主用 `...request.reasoningEffort === void 0 ? {} : {...}` 的口径，
+  // 桥多塞一个 undefined 键会让形状与宿主不一致。
+  let seen = null;
+  const host = createHostAccess(createGettableCtx({
+    sessionController: {
+      selectModel: async (request) => { seen = request; return { selected: request }; },
+    },
+  }));
+  await host.selectModel({ sessionId: "s1", provider: "p", model: "m" });
+  assert.equal(Object.hasOwn(seen, "reasoningEffort"), false, "没给 effort 就不该有这个键");
+});
+
+test("selectModel：宿主报错时转成可读结果，不抛", async () => {
+  const host = createHostAccess(createGettableCtx({
+    sessionController: {
+      selectModel: async () => {
+        const err = new Error("model not advertised");
+        err.code = "session/model-unavailable";
+        throw err;
+      },
+    },
+  }));
+  const out = await host.selectModel({ sessionId: "s1", provider: "p", model: "m" });
+  assert.equal(out.ok, false);
+  assert.equal(out.code, "session/model-unavailable", "要把宿主的错误码带出来");
+});
+
+test("selectModel：没有 sessionController 时明确拒绝，不假装成功", async () => {
+  const host = createHostAccess(createGettableCtx({}));
+  const out = await host.selectModel({ sessionId: "s1", provider: "p", model: "m" });
+  assert.equal(out.ok, false);
+  assert.equal(out.code, "model-switch-unavailable");
+});
+
+// ── 权限档位：读宿主的 permissionPresets ──────────────────
+
+test("permissionPresets：读 names 与 current", async () => {
+  // 小窗原先硬编码 3 档，而宿主还有 auto —— 硬编码就会漏档位。
+  const host = createHostAccess(createGettableCtx({
+    permissionPresets: {
+      get names() { return ["read-only", "workspace-write", "danger-full-access", "auto"]; },
+      current: () => "workspace-write",
+    },
+    sessions: { get: (id) => ({ id }) },
+  }, ["sessions"]));
+
+  const out = await host.permissionPresets("s1");
+  assert.deepEqual(out.options, ["read-only", "workspace-write", "danger-full-access", "auto"]);
+  assert.equal(out.current, "workspace-write");
+});
+
+test("permissionPresets：宿主没有该服务时给 null（不编造档位）", async () => {
+  const host = createHostAccess(createGettableCtx({}));
+  assert.equal(await host.permissionPresets("s1"), null);
+});

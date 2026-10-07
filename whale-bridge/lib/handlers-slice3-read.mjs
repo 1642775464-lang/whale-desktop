@@ -153,20 +153,84 @@ function windows({ bridge }) {
 /**
  * GET /whale/models —— 模型目录。
  *
- * 探测不到就返回空数组 + 明确 `reason`。
- * **不猜、不硬编码模型名**：错的模型列表比没有列表更糟（用户会照着它切换）。
+ * 两种形状都返回，各有用途：
+ *   - `groups` / `default` / `failures`：**宿主的原目录**，含各模型的推理档位
+ *     （小窗的模型 + 思考强度选择器读它）
+ *   - `models`：扁平的 `{provider, model}` 列表，兼容既有客户端
+ *
+ * 真因记录：原先只找 `models` 服务，而宿主根本没有这个服务 → 一直返回 0。
+ * 真正的目录在 `sessionController.modelCatalog()` 上（宿主 UI 也读它）。
+ *
+ * 拿不到就返回空 + 明确 `reason`。**不猜、不硬编码模型名**：
+ * 错的模型列表比没有列表更糟（用户会照着它切换）。
+ *
+ * @returns {Promise<object>}
  */
-function models({ host }) {
-  const list = host.listModels();
-  if (!Array.isArray(list) || list.length === 0) {
+async function models({ host }) {
+  const catalog = await host.modelCatalog();
+  const groups = Array.isArray(catalog?.groups) ? catalog.groups : [];
+
+  if (groups.length === 0) {
+    // 退回旧的会话扫描（有些部署没有 sessionController）
+    const fallback = host.listModels();
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      return { ok: true, models: fallback, total: fallback.length, groups: [], default: null, failures: [] };
+    }
     return {
       ok: true,
       models: [],
+      groups: [],
+      default: null,
+      failures: [],
       total: 0,
-      reason: "宿主未暴露模型目录服务，或尚未选择模型",
+      reason: catalog === null
+        ? "宿主未提供 sessionController，读不到模型目录"
+        : "宿主模型目录为空（可能没有任何 provider 可用）",
     };
   }
-  return { ok: true, models: list, total: list.length };
+
+  // 扁平化给旧客户端用
+  const flat = [];
+  for (const group of groups) {
+    for (const model of Array.isArray(group?.models) ? group.models : []) {
+      flat.push({ provider: group.id, model: model.id });
+    }
+  }
+
+  return {
+    ok: true,
+    groups,
+    default: catalog.default ?? null,
+    failures: Array.isArray(catalog.failures) ? catalog.failures : [],
+    routableProviders: Array.isArray(catalog.routableProviders) ? catalog.routableProviders : [],
+    models: flat,
+    total: flat.length,
+  };
+}
+
+/**
+ * GET /whale/presets —— 权限档位清单与当前档位。
+ *
+ * 档位**以宿主的 permissionPresets 为准**，不硬编码：
+ * 小窗原先写死三档（read-only / workspace-write / danger-full-access），
+ * 而宿主实际还有 `auto`（且 `auto` 是运行期注册的，预先写死必然漏）。
+ *
+ * 取不到就返回空 + `reason`，不编造档位。
+ */
+function presets({ host, query }) {
+  const sessionId = query?.get?.("sessionId");
+  const info = host.permissionPresets(
+    typeof sessionId === "string" ? sessionId : "",
+  );
+  if (info === null) {
+    return {
+      ok: true,
+      options: [],
+      current: null,
+      reason: "宿主未提供 permissionPresets 服务，读不到档位清单",
+    };
+  }
+  return { ok: true, options: info.options, current: info.current };
 }
 
 /**
@@ -247,6 +311,8 @@ export function registerSliceThreeReadRoutes(deps) {
   // 切片 7 新增：命令目录。取名字不同（commands 而非 slice3 前缀），
   // 因为它是二期第一条路由，切片归属写在路由表的 slice 字段里。
   register("GET", "/whale/commands", commands);
+  // 切片 7 第二批：权限档位清单（以宿主的 permissionPresets 为准）
+  register("GET", "/whale/presets", presets);
 
   // deps 目前只用来自检装配是否完整；保留参数便于后续扩展
   void deps;
@@ -256,4 +322,4 @@ export function registerSliceThreeReadRoutes(deps) {
 export const SLICE_THREE_READ_ROUTES = 7;
 
 /** 切片 7 新增的只读路由条数（单测核对用；与 slice3 分开计数，便于追溯）。 */
-export const SLICE_SEVEN_READ_ROUTES = 1;
+export const SLICE_SEVEN_READ_ROUTES = 2;

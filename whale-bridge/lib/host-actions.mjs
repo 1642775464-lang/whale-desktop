@@ -306,26 +306,20 @@ export function createHostActions({ host }) {
   /**
    * 切换模型 / 推理等级。
    *
-   * 宿主未暴露可用的模型切换通路时**明确拒绝**，不假装成功
-   * （降级原则：宁可静止不假装能动）。
+   * 交给宿主的 `sessionController.selectModel`（宿主 UI 切模型的正规通路）：
+   * 它自己会 resolveAgent 恢复冷会话、用 resolveCallConfig 校验模型能力、
+   * 并把选择存成默认。**桥不自己改 agent 状态**——那会绕过校验与持久化。
    *
-   * @param {{sessionId?: string, model?: string}} input
-   * @returns {{ok: boolean, code?: string, message?: string}}
+   * 注意：**不要求会话当前有活 agent**。原先这里先查 `getAgent`，
+   * 但宿主那条路支持冷会话（自己恢复），先查 agent 会把可用的场景误判成不可用。
+   *
+   * 宿主未暴露该服务时明确拒绝，不假装成功（降级原则：宁可静止不假装能动）。
+   *
+   * @param {{sessionId?: string, provider?: string, model?: string, reasoningEffort?: string}} input
+   * @returns {Promise<{ok: boolean, code?: string, message?: string, selected?: object}>}
    */
   function setModel(input) {
-    const sessionId = input?.sessionId;
-    if (typeof sessionId !== "string" || sessionId === "") {
-      return { ok: false, code: "bad-request", message: "缺少 sessionId" };
-    }
-    const agent = host.getAgent(sessionId);
-    if (agent === undefined) {
-      return { ok: false, code: "session-not-found", message: `会话 ${sessionId} 的 agent 不可用` };
-    }
-    return {
-      ok: false,
-      code: "model-switch-unavailable",
-      message: "宿主未暴露模型切换通路，桥不代为修改",
-    };
+    return host.selectModel(input ?? {});
   }
 
   /**

@@ -352,11 +352,24 @@ test("activate：会话存在时返回 sessionId", () => {
   assert.equal(out.sessionId, "s1");
 });
 
-test("setModel：宿主没有通路时明确拒绝，不假装成功", () => {
-  const actions = createHostActions({ host: fakeHost({ agent: fakeAgent() }) });
-  const out = actions.setModel({ sessionId: "s1", model: "x" });
-  assert.equal(out.ok, false);
-  assert.equal(out.code, "model-switch-unavailable");
+test("setModel：原样转交给 host.selectModel（不在这一层自己判）", async () => {
+  // 切片 7 第二批起，setModel 是**薄转交**：真正的事（恢复冷会话、
+  // resolveCallConfig 校验、存默认）都在宿主的 sessionController.selectModel 里。
+  // 「宿主没通路时拒绝」的判定也随之挪到 host-ctx.selectModel（那里有测试）。
+  let seen = null;
+  const host = {
+    ...fakeHost({ agent: fakeAgent() }),
+    selectModel: async (request) => {
+      seen = request;
+      return { ok: true, selected: { provider: "p", model: "m" } };
+    },
+  };
+  const actions = createHostActions({ host });
+  const out = await actions.setModel({ sessionId: "s1", provider: "p", model: "m" });
+
+  assert.deepEqual(seen, { sessionId: "s1", provider: "p", model: "m" }, "参数要原样传下去");
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.selected, { provider: "p", model: "m" });
 });
 
 test("resume：已加载的会话直接返回 loaded", () => {

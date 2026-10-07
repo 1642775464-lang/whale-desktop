@@ -54,16 +54,16 @@ test("切片 3 SSE 与全路由端到端", async (t) => {
   await t.test("路由表全部已实现（无 not-implemented）", async () => {
     const { status, json } = await getJson("/whale");
     assert.equal(status, 200);
-    // 22 = 切片 1–3 的原始 22 条；切片 7 新增 /whale/commands 一条 → 23。
+    // 22 = 切片 1–3 的原始 22 条；切片 7 新增 /whale/commands 与 /whale/presets → 24。
     // 这里写总数而不是写死 22：新增路由时应当**显式改这一行**，
     // 而不是让断言悄悄过期（D3 的「22 条」是当时的裁剪决定，不是上限）。
-    assert.equal(json.routes.length, 23, "路由总数变了就改这里，别让它悄悄漂");
+    assert.equal(json.routes.length, 24, "路由总数变了就改这里，别让它悄悄漂");
     const pending = json.routes.filter((r) => r.implemented !== true);
     assert.deepEqual(pending.map((r) => `${r.method} ${r.path}`), [], "不应有未实现路由");
     // 分片计数自检：切片 3 的两条常量加起来必须等于该片新增数
     assert.equal(SLICE_THREE_READ_ROUTES + SLICE_THREE_WRITE_ROUTES, 17);
     // 切片 7 新增的单独计数（与 slice3 分开，便于追溯是哪一片加的）
-    assert.equal(SLICE_SEVEN_READ_ROUTES, 1);
+    assert.equal(SLICE_SEVEN_READ_ROUTES, 2, "切片 7：命令目录 + 权限档位清单");
   });
 
   await t.test("SSE：响应头是 text/event-stream", async () => {
@@ -300,7 +300,12 @@ test("切片 3 SSE 与全路由端到端", async (t) => {
   });
 
   await t.test("POST /whale/model：宿主无通路时 503，不假装成功", async () => {
-    const { status, json } = await postJson("/whale/model", { sessionId: "s-live", model: "x" });
+    // 这一组用的假 ctx 没有提供 sessionController，走的是
+    // 「宿主没这条通路」的降级分支 → 503。
+    // 参数要给全，否则会先被 400 拦下（那是另一种更精确的失败）。
+    const { status, json } = await postJson("/whale/model", {
+      sessionId: "s-live", provider: "p", model: "x",
+    });
     assert.equal(status, 503);
     assert.equal(json.error.code, "model-switch-unavailable");
   });

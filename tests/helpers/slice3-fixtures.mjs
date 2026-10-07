@@ -18,7 +18,7 @@ import { request as httpRequest } from "node:http";
  * @param {{port: number, liveSessionId?: string}} config
  * @returns {object}
  */
-export function createFakeCtx({ liveSessionId = "s-live" } = {}) {
+export function createFakeCtx({ liveSessionId = "s-live", services = {} } = {}) {
   const listeners = new Map();
   const agents = new Map();
 
@@ -27,6 +27,25 @@ export function createFakeCtx({ liveSessionId = "s-live" } = {}) {
     agents: { get: (id) => agents.get(id) },
     commands: { list: () => [] },
     logger: { info: () => {} },
+
+    /**
+     * 模拟 Cordis 的 `ctx.get(name)`：**不经过 inject 守卫**，取不到给 undefined。
+     *
+     * 桥用这条路读可选服务（sessionController / permissionPresets / attachments）。
+     * 造这个方法才能测到「可选服务在」的那条真实路径——
+     * 没有它时 optionalServiceOf 一律返回 undefined，只会测到降级分支。
+     *
+     * @param {string} name
+     * @returns {unknown}
+     */
+    get(name) {
+      return Object.hasOwn(services, name) ? services[name] : undefined;
+    },
+
+    /** 测试用：运行时塞一个可选服务进去（在 apply 之前调用）。 */
+    __provide(name, value) {
+      services[name] = value;
+    },
 
     /** 测试用：塞一个 agent 进去 */
     __setAgent(id, agent) {

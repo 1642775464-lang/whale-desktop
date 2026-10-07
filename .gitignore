@@ -45,3 +45,6 @@ tools/gate-log.ndjson
 *.log
 *.tmp
 _notes/
+
+# SDD 执行工作区（本地留痕，不入库）
+.superpowers/

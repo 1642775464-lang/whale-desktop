@@ -63,6 +63,9 @@ export function statusOf(code) {
   if (code === "session-not-found" || code === "approval-not-found") return 404;
   if (code === "no-active-turn" || code === "session/steer-unavailable") return 409;
   if (code === "approval-not-pending") return 409;
+  // 宿主拒绝这次模型选择（模型不存在/该 provider 不接受这个 effort）——
+  // 这是**调用方的输入问题**，不是桥或宿主的故障，所以 400 而不是 500。
+  if (code === "session/model-unavailable") return 400;
   if (
     code === "commands-unavailable" ||
     code === "sessions-unavailable" ||
@@ -119,7 +122,9 @@ async function activate({ body, bridge }) {
 
 /** POST /whale/model —— 切换模型 / 推理等级。 */
 async function setModel({ body, bridge }) {
-  return toResponse(bridge.hostActions.setModel(body));
+  // 必须 await：hostActions.setModel 现在是异步的（走宿主 sessionController），
+  // 漏了 await 会把 Promise 当结果交给 toResponse，退化成 500。
+  return toResponse(await bridge.hostActions.setModel(body));
 }
 
 /** POST /whale/resume —— 唤醒历史会话。 */
