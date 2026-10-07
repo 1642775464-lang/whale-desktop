@@ -43,7 +43,24 @@
    */
   function createOverlays(deps) {
     const dom = deps.dom;
-    const client = deps.getClient;
+    /**
+     * 取当前的桥客户端。
+     *
+     * ⚠️ `deps.getClient` 是**取值函数**，不是客户端本身。
+     * 真实踩过：曾经把取值函数直接存成一个变量就当成客户端用了，
+     * 于是 `deps.getClient().modelCatalog()` 被写成对函数取属性，
+     * 报 "client.modelCatalog is not a function"——函数也是对象，
+     * 所以报「不是函数」而不是「undefined」，看着像 client 缺方法，
+     * 其实 client 本身就是那个函数。极具迷惑性。
+     * 每次调用现取，顺带保证拿到最新引用。
+     *
+     * 契约测试（window-renderer）会检查这里：漏一处就是那个浮层点不动。
+     *
+     * @returns {object} 桥客户端
+     */
+    function clientOf() {
+      return deps.getClient();
+    }
     const onNotify = typeof deps.onNotify === "function" ? deps.onNotify : function () {};
 
     /** 当前打开的浮层名：null = 全关。 */
@@ -111,7 +128,7 @@
       dom.ovBody.innerHTML = "";
       dom.ovBody.appendChild(note("读取中…"));
 
-      client.permissionPresets().then(function (info) {
+      clientOf().permissionPresets().then(function (info) {
         if (current !== "permission") return; // 用户已切到别的浮层
         dom.ovBody.innerHTML = "";
         if (info === null || !Array.isArray(info.options) || info.options.length === 0) {
@@ -129,7 +146,7 @@
               className: `ov-row${  isCurrent ? " on" : ""}`,
               onClick () {
                 if (isCurrent) { close(); return; }
-                client.command(`/permission ${  name}`).then(function (out) {
+                clientOf().command(`/permission ${  name}`).then(function (out) {
                   if (out.ok) { close(); return; }
                   onNotify(`切换权限失败：${  out.code}`);
                   global.console.warn(`切权限失败：${  out.code}`);
@@ -149,7 +166,7 @@
       dom.ovBody.innerHTML = "";
       dom.ovBody.appendChild(note("读取中…"));
 
-      client.modelCatalog().then(function (catalog) {
+      clientOf().modelCatalog().then(function (catalog) {
         if (current !== "model") return;
         dom.ovBody.innerHTML = "";
 
@@ -209,7 +226,7 @@
 
       // 无可选档位：直接切模型，让宿主补默认 effort
       if (efforts.length === 0) {
-        client.setModel({ provider, model: modelId }).then(function (out) {
+        clientOf().setModel({ provider, model: modelId }).then(function (out) {
           if (out.ok) { close(); return; }
           onNotify(`切换模型失败：${  out.code}`);
           global.console.warn(`切模型失败：${  out.code}`);
@@ -235,7 +252,7 @@
           {
             className: `ov-row${  isDef ? " on" : ""}`,
             onClick () {
-              client.setModel({ provider, model: modelId, reasoningEffort: e.id })
+              clientOf().setModel({ provider, model: modelId, reasoningEffort: e.id })
                 .then(function (out) {
                   if (out.ok) { close(); return; }
                   onNotify(`切换失败：${  out.code}`);
@@ -253,7 +270,7 @@
     function renderUsage() {
       dom.ovTitle.textContent = "用量";
       dom.ovBody.innerHTML = "";
-      const state = client.getState();
+      const state = clientOf().getState();
 
       const kv = global.document.createElement("div");
       kv.className = "usage-kv";
@@ -385,7 +402,7 @@
       const files = pending.filter(function (p) { return p.kind !== "image"; });
       const calls = [];
       if (files.length > 0) {
-        calls.push(client.uploadFiles(files.map(function (f) {
+        calls.push(clientOf().uploadFiles(files.map(function (f) {
           return { name: f.name, dataBase64: f.dataBase64 };
         })).then(function (out) {
           if (!out.ok) { onNotify(`上传失败：${  out.code}`); return []; }
@@ -393,7 +410,7 @@
         }));
       }
       if (images.length > 0) {
-        calls.push(client.uploadImages(images.map(function (f) {
+        calls.push(clientOf().uploadImages(images.map(function (f) {
           return { name: f.name, dataBase64: f.dataBase64, mediaType: f.mediaType };
         })).then(function (out) {
           if (!out.ok) { onNotify(`图片上传失败：${  out.code}`); return []; }

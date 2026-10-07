@@ -37,6 +37,10 @@
     input: $("input"),
     btnPerm: $("btnPerm"),
     btnSend: $("btnSend"),
+    // 输入区其余按钮（切片 7 第二批的浮层接线要用）
+    btnAdd: $("btnAdd"),
+    btnUsage: $("btnUsage"),
+    btnModel: $("btnModel"),
     urFg: $("urFg"),
     usagePct: $("usagePct"),
     btnInfo: $("btnInfo"),

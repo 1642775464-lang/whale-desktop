@@ -1,6 +1,6 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v2.0
+- 文档版本：v2.1
 - 日期：2026-10-07
 - 状态：**全部完成——一期六片 + 切片 7 第一批已交付并验收通过；插件装在宿主里日用中**
 - 项目根：`D:\DEEPSEEK\悬浮窗`
@@ -146,6 +146,7 @@
 | 28 | HTTP 处理器与底层实现**要一起改** | 只在 `windows.close` 里实现了按 `target` 关，处理器却只读 `pid`/`all` → 参数被静默丢掉 → 返回 `{ok:true, closed:0}`：**看着成功、一个都没关**。这类返回比报错难查得多 |
 | 29 | 源 svg 的 `fill="none"` 靠 CSS 补色，**换个宿主就没有那条 CSS** | 悬浮条有 `.whale svg path{fill:var(--ink)}`；客户端插件没有样式表，照抄 `fill="none"` 会画成空心 = 看着透明。跨宿主复用图标时**填充要显式给** |
 | 30 | `align-items: baseline` 的行盒**贴着容器顶**排 | flex 行高 = 内容高，容器高出来的部分全在下方。`.seg.mono` 是 `height:36px` + 内容高 24.75px → 文字中心偏上 **6px**。修法：行盒 `line-height` 撑满容器高 |
+| 35 | **可选服务被 apply 时刻的快照定死** | sessionController 的注册时机在桥之后；在 createHostAccess 里 `ctx.get` 一次存进 const 就永远是 undefined（`/whale/models` 恒 0、probe 恒 false），而稳态下服务确实存在。修法：**每次调用现取**，`available` 等结论也要 getter |
 | 31 | **重启宿主不会重建已存在的小窗/悬浮条** | 它们是独立 Electron 进程。改了渲染层代码后，只重启宿主 → 老窗口进程仍带着旧状态在跑，表现是「改了没生效」。**必须关掉窗口重新拉起**（`POST /whale/close {all:true}` 再 `open`）。现场为此排查了很久 |
 | 32 | `URLSearchParams` 只能用 `.get()` 取 | 写成 `query?.sessionId`（属性访问）恒为 `undefined`，接口永远回「缺少 sessionId」而调用方明明传了。桥的既有约定，slice1/slice2 都标了这条注释 |
 | 33 | 宿主 `commands.execute` 的**第 3、4 参都没有空值保护** | 第 3 参 `submittedAttachments` 会被读 `.length`，第 4 参 `signal` 会被读 `.aborted`。传 `undefined` 分别抛 `reading 'length'` / `reading 'aborted'`。**修一个会立刻撞上另一个**，必须一起给（空数组 + 真 AbortSignal） |
@@ -404,6 +405,72 @@ permission / plan。
 测试: 527 全绿
 闸门: 7 道全过
 验收: 命令面板 8 条真命令 + 权限切换，用户验收通过
+```
+
+---
+
+## 六·六补、切片 7 第二批：模型目录与档位、四个浮层、真上传
+
+**起因**：用户拿宿主输入框的截图提出四条（权限切换没用 / 上下文不显示 /
+不能切模型与思考强度 / ＋不能展开），要求全量复刻宿主交互。
+经范围声明确认，拆成三批落地（A 桥侧数据 → B 上传通路 → C 渲染层浮层）。
+
+### 三个真因（每个都实证过）
+
+| # | 现象 | 真因 |
+|---|---|---|
+| 1 | 模型目录恒为 0 | 桥找的是 `models` 服务，**宿主根本没有它**——真目录在 `sessionController.modelCatalog()`（宿主 UI 也走它）。不是「宿主没暴露」，是找错了地方 |
+| 2 | 权限只有三档 | 硬编码三档，而宿主是**配置项 + 运行期注册的 auto**，硬编码必然漏 |
+| 3 | 改了数据源仍返回 0 | `ctx.get("sessionController")` 的结果**在 apply 时存进 const**——而该服务注册时机在桥之后，快照把「还没就绪」永久定死 |
+
+第 3 个的对照证据：inspect 能给出 sessionController 的**完整契约**
+（稳态下确实存在），但桥的 probe 报 false——**服务在，只是桥问得太早**。
+修法是延迟解析（每次调用现取），`available` 也改成 getter
+（对象字面量同样是一次性求值，测试抓到了这点）。
+
+### 真宿主验收（A 部分，机器可判）
+
+```kv
+/whale/models:  total=30 groups=5（原先是 0）
+推理档位:       30 个模型全部带（low/medium/high/xhigh/max 等）
+/whale/presets: read-only/workspace-write/danger-full-access/auto，current 正确
+切换模型:       200 且宿主实际切了过去（当前会话已在新模型上运行）
+切换 effort:    200（high→max 均成功）
+命令目录:       8 条（第一批），权限切回默认档 200
+```
+
+### 渲染层（B/C 部分，待重启宿主后由用户验收）
+
+| 浮层 | 内容 |
+|---|---|
+| 权限 | 列宿主全部档位（4 个），当前高亮，点击切换 |
+| 模型与思考强度 | 按 provider 分组、右侧显示档位；点模型展开 effort 列表 |
+| 用量 | 五行走 kv：上下文占用 / 累计输出 / 输入 / 缓存读 / 步数·回合 |
+| ＋ 上传 | **三种入口**：点＋选文件、拖文件进小窗任意位置、输入框粘贴图片 |
+
+上传按宿主 admission 层的两条浏览器入口走
+（`saveFile` / `saveImages`，base64 原样透传）；
+发送时**先上传后发消息**，失败如实提示并中止（内容与附件保留）。
+
+### 新增模块与路由
+
+```kv
+whale-bridge/lib/host-catalog.mjs: 模型目录/切换、权限档位、上传（按业务域拆出）
+GET  /whale/presets:              档位清单 + 当前档位（第 24 条）
+POST /whale/upload/file:          单文件（第 25 条）
+POST /whale/upload/images:        批量图片（第 26 条）
+whale-window/renderer/overlays.js: 四个浮层 + 待上传清单状态机（438 行）
+```
+
+host-ctx 涨破 500 行 → 按职责拆出 host-catalog（247 行），不放宽限制。
+
+### 测试
+
+```kv
+总数: 552 全绿
+分层: smoke-slice7 提供服务测真路径 / smoke-slice3 不提供测降级——两层都要
+独立端口: 上传的拒绝与缺失用例各用 19396/19397——
+  同端口 dispose→apply 有竞态，会拖垮后面的兄弟用例（真实踩过）
 ```
 
 ---

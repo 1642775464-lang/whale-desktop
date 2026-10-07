@@ -56,6 +56,33 @@ test("顶栏六元素齐全（F2）", () => {
   assert.match(html, /class="brand-dot"/, "工作区色块必须存在");
 });
 
+test("app.js 绑定的每个按钮都必须真的存在于 HTML", () => {
+  // 真实踩过：重写 app.js 时 dom 表漏了 btnAdd/btnUsage/btnModel 三个引用，
+  // 结果 `dom.btnModel.addEventListener` 在 undefined 上调用 →
+  // 脚本顶层抛 TypeError → **后面所有绑定一行都不执行** →
+  // 界面全哑、显示「未连接」，而桥完全正常。极难归因。
+  //
+  // 修法不是补引用了事：这里把「app.js 里 dom.* 引用的每个 id」
+  // 与「HTML 里实际存在的 id」做机械比对，漏一个就红。
+  const domRefs = new Set();
+  for (const m of appJs.matchAll(/\$\("([A-Za-z][\w]*)"\)/g)) domRefs.add(m[1]);
+  // app.js 里的动态引用（OVERLAY_BUTTONS 用字符串键）单独列出
+  for (const m of appJs.matchAll(/\["(btn\w+)",\s*"/g)) domRefs.add(m[1]);
+
+  const missing = [...domRefs].filter((id) => !hasId(id) && !["win", "bar"].includes(id));
+  assert.deepEqual(
+    missing,
+    [],
+    `这些元素在 app.js 里被引用但 HTML 里不存在（undefined 上调 addEventListener ` +
+      `会让整个脚本崩掉）：\n${missing.map((x) => `#${x}`).join("\n")}`,
+  );
+
+  // 委托给 OVERLAY_BUTTONS 的三个按钮也要单独锁（那条正则只覆盖一种写法）
+  for (const id of ["btnAdd", "btnUsage", "btnModel", "inputOverlay", "ovClose", "uplList"]) {
+    assert.ok(hasId(id), `切片 7 的 #${id} 必须在 HTML 里`);
+  }
+});
+
 test("F2：三个占位按钮不得加回", () => {
   // 2026-10-04 用户裁定删掉「语音通话 / 麦克风 / 屏幕共享」
   const banned = ["btnCall", "btnMic", "btnShare", "语音通话", "屏幕共享"];
@@ -224,6 +251,50 @@ test("preload 暴露的通道与主进程注册的通道一一对应", () => {
     registered,
     "preload 与主进程的通道必须完全一致：多暴露一个就是永远挂起的 Promise",
   );
+});
+
+test("overlays.js 必须用取值函数拿 client，不能存成对象", () => {
+  // 真实踩过：`const client = deps.getClient;` 把**取值函数本身**当客户端用了，
+  // 于是 client.modelCatalog() / client.getState() 全线报
+  // "client.xxx is not a function"——函数也是对象，所以报「不是函数」
+  // 而不是「undefined」，看着像 client 缺方法，其实 client 本身就是那个函数。
+  // 三个浮层因此全部点不动（这是用户报的「除了＋其他都没实现」的真因）。
+  const overlaysJs = read(join("renderer", "overlays.js"));
+  const lines = overlaysJs.split("\n");
+  // 只看真正会执行的代码行（注释里为了讲清这个坑必然会提到错误写法）
+  const codeLines = lines.filter((t) => {
+    const s = t.trim();
+    return !s.startsWith("*") && !s.startsWith("//") && !s.startsWith("/*");
+  });
+  const code = codeLines.join("\n");
+
+  // 1) 不得出现把取值函数存成变量的写法
+  assert.ok(
+    !/const\s+client\s*=\s*deps\.getClient\s*;/.test(code),
+    "不得把 deps.getClient 存成 client——它是取值函数，不是客户端",
+  );
+
+  // 2) 必须有一个取值访问器
+  assert.match(code, /function\s+clientOf\s*\(\)\s*\{\s*return\s+deps\.getClient\(\)/,
+    "必须定义 clientOf() 每次现取");
+
+  // 3) 所有 client 调用都必须经由 clientOf()——漏一处就是那个浮层点不动
+  const bare = [];
+  let inBlockComment = false;
+  lines.forEach((text, index) => {
+    const trimmed = text.trim();
+    if (inBlockComment) {
+      if (trimmed.includes("*/")) inBlockComment = false;
+      return;
+    }
+    if (trimmed.startsWith("/*")) {
+      if (!trimmed.includes("*/")) inBlockComment = true;
+      return;
+    }
+    if (trimmed.startsWith("*") || trimmed.startsWith("//")) return;
+    if (/(?<!clientOf\(\)\.)\bclient\./.test(text)) bare.push(`${index + 1}: ${trimmed}`);
+  });
+  assert.deepEqual(bare, [], `这些地方直接用了 client 而不是 clientOf()：\n${bare.join("\n")}`);
 });
 
 test("preload 不暴露 ipcRenderer 本体，也不开放任意 channel", () => {
