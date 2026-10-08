@@ -94,24 +94,38 @@
     }
 
     /**
-     * 拉一次面板全量。
+     * 拉一次面板全量，并**跟随桥的活跃会话**。
      *
-     * **先确保有 sessionId**：`/whale/panel` 必须带 `sessionId`，
-     * 缺了会 400。而小窗启动时并不知道自己是哪个会话——这个鸡生蛋问题
-     * 靠先问 `/whale/hud`（它不需要参数，且带 `activeSessionId`）解决。
-     * 没有这一步，小窗会永远停在「未连接」，而桥其实是通的。
+     * 每一步都要问桥「现在活跃的是哪个」——不能只在 sessionId 为空时问一次。
+     *
+     * 为什么（用户裁定的行为）：小窗启动时默认绑上「最近一次会话」，
+     * 之后用户在宿主里开新会话时**小窗要跟着过去**。
+     * 原先只在 sessionId 为空时才问桥，拿到 id 就绑死，
+     * 结果是桥那边的指针换了、小窗纹丝不动 —— 表现是「窗口一直停在旧会话」，
+     * 而所有代码看起来都在。真实踩过。
+     *
+     * 三步固定顺序：问活跃 → 按需切换 → 拉面板。
      */
     function refresh() {
-      if (typeof state.sessionId !== "string" || state.sessionId === "") {
-        return fetchActiveSessionId().then(function (ok) {
-          if (!ok) return false;
-          return refreshPanel();
-        });
-      }
-      return refreshPanel();
+      return fetchActiveSessionId().then(function (ok) {
+        if (!ok) return false;
+        return refreshPanel();
+      });
     }
 
-    /** 问桥「当前活跃会话是哪个」。 */
+    /**
+     * 问桥「当前活跃会话是哪个」，并按需把本地会话切过去。
+     *
+     * 三种要区分的情况（各有测试）：
+     *   1. 活跃指针变了、且新会话在清单里 → **跟过去**（用户要的行为）
+     *   2. 活跃指针为空（待机）→ **保持当前会话**，不清空。
+     *      待机是**会过去**的状态（用户随后就开了会话），清空会让消息流闪白、
+     *      用户以为自己点坏了。
+     *   3. 活跃指针指向清单里没有的会话 → **不盲从**。
+     *      盲从会切到一个拉不到面板的会话上，表现是「窗口突然空了」。
+     *
+     * @returns {Promise<boolean>} 是否拿到了可用会话
+     */
     function fetchActiveSessionId() {
       return global
         .fetch(`${base  }/whale/hud`)
@@ -120,27 +134,35 @@
           return res.json();
         })
         .then(function (json) {
-          const list = Array.isArray(json.sessions) ? json.sessions : [];
-          const active = typeof json.activeSessionId === "string" && json.activeSessionId !== ""
-            ? json.activeSessionId
-            : (list.length > 0 ? list[0].sessionId : null);
-          if (active === null) {
-            // 桥通了但一个会话都没有：这是「待机」，不是「断连」
+          // 判定「该用哪个会话」交给纯函数（见 follow.js）：
+          // 三种情况（跟过去 / 待机保持 / 清单里没有就不盲从）各有单测，
+          // 规则只有一处实现，不必在网络流程里重复那套 if。
+          const decision = global.WhaleFollow.decideFollow({
+            sessions: json.sessions,
+            activeSessionId: json.activeSessionId,
+            currentSessionId: state.sessionId,
+          });
+
+          if (decision.idle === true) {
+            // 待机：桥通了但暂时没有会话——不是断连，也不清空本地绑定
             state.offline = false;
             state.renderedOffline = false;
-            state.title = null;
             onChange(state);
-            return false;
+            return decision.sessionId !== null && decision.sessionId !== "";
           }
-          state.sessionId = active;
-          if (list.length > 0) {
-            const found = list.filter(function (s) { return s.sessionId === active; })[0];
-            if (found !== undefined) {
-              state.title = found.title ?? null;
-              state.workspace = found.workspace ?? null;
-              state.contextUsed = found.contextUsed ?? null;
-              state.contextWindow = found.contextWindow ?? null;
-            }
+          if (decision.sessionId === null) return false;
+
+          // 切过去（id 没变时这里是空操作，不会引起无谓重建）
+          state.sessionId = decision.sessionId;
+          const list = Array.isArray(json.sessions) ? json.sessions : [];
+          const found = list.filter(function (s) {
+            return s.sessionId === decision.sessionId;
+          })[0];
+          if (found !== undefined) {
+            state.title = found.title ?? null;
+            state.workspace = found.workspace ?? null;
+            state.contextUsed = found.contextUsed ?? null;
+            state.contextWindow = found.contextWindow ?? null;
           }
           return true;
         })
@@ -217,7 +239,8 @@
         }
         if (payload === null || typeof payload !== "object") return;
         state.eventsSeen += 1;
-        applyEvent(payload);
+        // 折事件是纯规则，放在 stream.js（可单测，不必搭假 EventSource）
+        global.WhaleStream.applyEventTo(state, payload);
         state.offline = false;
         state.renderedOffline = false;
         onChange(state);
@@ -228,70 +251,6 @@
         // EventSource 自己会重连，这里只把退避间隔记下来供界面显示
         if (reconnectDelay < RECONNECT_MAX_MS) reconnectDelay *= 2;
       };
-    }
-
-    /**
-     * 把一条宿主事件并进快照。
-     *
-     * **事件字段与面板字段不同**，必须归一到同一个内部形状：
-     *   - 增量流给的是宿主原样事件：`{type, data:{message:{content:[...]}}}`
-     *   - 面板给的是桥投影过的：`{kind:"user"|"assistant"|"tool", text, seq}`
-     * 统一成 `{kind, text}` 之后，渲染层只认一种形状。
-     * 曾经渲染层按 `role` 读，而桥给的是 `kind` —— 结果每条消息都渲染成「DSH」，
-     * 用户的发言完全看不出来。
-     */
-    function applyEvent(event) {
-      const type = event.type;
-      if (type === "user/message") {
-        pushMessage({ kind: "user", text: textOf(event), seq: event.seq ?? null });
-      } else if (type === "assistant/message") {
-        pushMessage({ kind: "assistant", text: textOf(event), seq: event.seq ?? null });
-      } else if (type === "turn/start") {
-        state.running = true;
-        state.turns += 1;
-      } else if (type === "turn/end") {
-        state.running = false;
-        state.toolName = null;
-      } else if (type === "step/start") {
-        state.steps += 1;
-      } else if (type === "tool/call") {
-        const name = event.data && event.data.name ? event.data.name : null;
-        state.toolName = name;
-        pushMessage({ kind: "tool", name, text: "", seq: event.seq ?? null });
-      } else if (type === "request/context") {
-        if (event.data && typeof event.data.contextWindow === "number") {
-          state.contextWindow = event.data.contextWindow;
-        }
-      }
-    }
-
-    /**
-     * 取事件里的文本。
-     *
-     * **两种封套都要兜住**（references/session-events.md 实测）：
-     *   - `assistant/message` / `tool/result`：内容在 `data.message.content`
-     *   - `user/message`：内容直接在 `data.content`，**没有 message 包裹**
-     * 只认一种的话，另一种类型的消息会静默变成空文本被丢掉——
-     * 表现是「用户发的消息在小窗里根本不出现」。
-     */
-    function textOf(event) {
-      const data = event.data;
-      if (data === null || typeof data === "undefined") return "";
-      const container = data.message ?? data;
-      const content = container.content;
-      if (Array.isArray(content)) {
-        return content
-          .filter(function (c) { return c && c.type === "text"; })
-          .map(function (c) { return c.text; })
-          .join("");
-      }
-      return "";
-    }
-
-    /** 推一条消息，超出 40 条丢最旧。 */
-    function pushMessage(msg) {
-      state.messages.push(msg);
-      while (state.messages.length > 40) state.messages.shift();
     }
 
     /** 起轮询兜底。 */

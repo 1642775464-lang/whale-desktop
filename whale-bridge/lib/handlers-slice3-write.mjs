@@ -122,6 +122,11 @@ async function activate({ body, bridge }) {
   if (result.ok === true) {
     // 活跃会话指针挪过去：SSE 与快照都以它为准
     bridge.foldSet.activeSessionId = result.sessionId;
+    // ⚠️ 必须清掉「种子默认值」标记。
+    // 这是**用户显式**的选择，要压过自动规则；不清的话，
+    // 下一个产生事件的其他会话会把用户刚切过去的选择顶掉
+    // —— 表现是「我明明切了它又跳回去」。
+    bridge.foldSet.activeIsSeed = false;
   }
   return toResponse(result);
 }

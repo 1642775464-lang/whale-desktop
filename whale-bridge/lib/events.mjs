@@ -66,8 +66,29 @@ export function createEventPipeline(deps) {
       if (result.accepted) stats.eventsAccepted += 1;
       else stats.eventsSkipped += 1;
 
-      // 首个出现的会话视为活跃（宿主尚未提供显式活跃标记）
-      if (foldSet.activeSessionId === null) foldSet.activeSessionId = sessionId;
+      /**
+       * 活跃指针的认领规则（用户裁定「小窗要跟」之后定下的）。
+       *
+       * 三种情况：
+       *   1. 指针为空 → 认第一个出现的会话（原规则）
+       *   2. 指针是**冷种子**设的默认值 → 让位给真实活动
+       *      （种子把指针填上之后它不再为空，新会话就永远认领不了，
+       *        小窗也就没有可跟的目标 —— 两处必须一起改）
+       *   3. 已被真实活动接管 → 不再改，由用户显式切会话（/whale/activate）说了算
+       *      否则多个会话交替产生事件时指针会来回跳、小窗跟着闪
+       *
+       * ⚠️ 「是不是种子设的」必须用**显式标记** `activeIsSeed`，
+       * 不能拿 `fold.eventsSeen === 0` 推断：种子折历史事件时也会让
+       * eventsSeen 加一，于是「折过历史的冷会话」会被误判成真实活动、
+       * 让位规则直接失效（真实踩过，测试当场抓住）。
+       */
+      if (foldSet.activeSessionId === null) {
+        foldSet.activeSessionId = sessionId;
+        foldSet.activeIsSeed = false;
+      } else if (foldSet.activeSessionId !== sessionId && foldSet.activeIsSeed === true) {
+        foldSet.activeSessionId = sessionId;
+        foldSet.activeIsSeed = false;
+      }
 
       // 立即分发，不等心跳（P-5）
       for (const listener of listeners) {

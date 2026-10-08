@@ -54,6 +54,14 @@ export function createFoldSet() {
   return {
     sessions: new Map(),
     activeSessionId: null,
+    /**
+     * 活跃指针是不是**冷种子**设的默认值。
+     *
+     * 用途：用户裁定「小窗要跟着活跃会话走」之后，种子设的默认值必须
+     * **让位给真实活动**（见 events.mjs 的认领规则）。靠 `eventsSeen === 0`
+     * 推断不行——种子折历史时也会加一，冷会话会被误判成真实活动。
+     */
+    activeIsSeed: false,
     unknownTypes: 0,
   };
 }

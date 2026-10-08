@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 
 import { createColdSeed } from "../../whale-bridge/lib/seed.mjs";
 import { createFoldSet, applyEvent } from "../../whale-bridge/lib/fold.mjs";
+import { createEventPipeline } from "../../whale-bridge/lib/events.mjs";
 test("seedRecent：折叠器为空时绑上最近一次会话，历史消息可回显", async () => {
   const foldSet = createFoldSet();
   const host = {
@@ -319,6 +320,109 @@ test("宿主没这个服务时不去读清单（不白敲一次）", async () =>
   });
   await seed.seedRecent();
   assert.equal(reads, 0);
+});
+
+test("冷种子让位给真实活动：新会话的第一条事件要把活跃指针顶掉", async () => {
+  // 这是「要跟」在**桥侧**的一半（另一半在小窗的 refresh，见 window-follow.test.mjs）。
+  //
+  // events.mjs 原先的规则是「活跃指针为空才认第一个会话」。
+  // 冷种子把指针填上之后它就不再为空了 → **新会话永远认领不了**，
+  // 小窗也就没有可跟的目标。两处必须一起改，否则出现
+  // 「桥没跟、窗也没得跟」，或者反过来「窗想跟、桥不给」。
+  const foldSet = createFoldSet();
+  const seed = createColdSeed({
+    foldSet,
+    log: () => {},
+    host: {
+      recentSessions: async () => [{ sessionId: "s-old", title: "旧会话" }],
+      sessionEvents: async () => [{ seq: 1, type: "user/message", data: { content: [{ type: "text", text: "旧话" }] } }],
+    },
+  });
+  await seed.seedRecent();
+  assert.equal(foldSet.activeSessionId, "s-old", "前置：种子先绑上旧会话");
+
+  // 接上事件管线（与 host.js 装配同一份）
+  const pipeline = createEventPipeline({ foldSet, log: () => {} });
+  const ctx = {
+    on(event, fn) {
+      if (event === "session/event") ctx.__onSessionEvent = fn;
+      return () => {};
+    },
+  };
+  pipeline.attach(ctx);
+
+  // 用户在宿主里开了新会话，产生第一条事件
+  ctx.__onSessionEvent(
+    { id: "s-new", header: { id: "s-new" } },
+    { seq: 1, type: "user/message", data: { content: [{ type: "text", text: "新话" }] } },
+  );
+
+  assert.equal(
+    foldSet.activeSessionId,
+    "s-new",
+    "真实活动必须顶掉冷种子的默认值——否则小窗没有可跟的目标",
+  );
+});
+
+test("用户手动切会话后，让位规则不得反噬（activate 要清掉种子标记）", async () => {
+  // /whale/activate 是**用户显式**的选择，必须压过一切自动规则。
+  // 不清 activeIsSeed 的后果：用户手动切到某会话后，
+  // 下一个产生事件的其他会话会把他的选择顶掉——表现是「我明明切了它又跳回去」。
+  const foldSet = createFoldSet();
+  const seed = createColdSeed({
+    foldSet,
+    log: () => {},
+    host: {
+      recentSessions: async () => [{ sessionId: "s-old" }],
+      sessionEvents: async () => [],
+    },
+  });
+  await seed.seedRecent();
+  assert.equal(foldSet.activeIsSeed, true, "前置：种子设的指针要有标记");
+
+  // 用户手动切到 s-manual（走 /whale/activate 同一行代码）
+  foldSet.activeSessionId = "s-manual";
+  foldSet.activeIsSeed = false;
+
+  // 之后别的会话产生事件
+  const pipeline = createEventPipeline({ foldSet, log: () => {} });
+  const ctx = {
+    on(event, fn) {
+      if (event === "session/event") ctx.__onSessionEvent = fn;
+      return () => {};
+    },
+  };
+  pipeline.attach(ctx);
+  ctx.__onSessionEvent(
+    { id: "s-other", header: {} },
+    { seq: 1, type: "user/message", data: { content: [{ type: "text", text: "别处的活动" }] } },
+  );
+
+  assert.equal(
+    foldSet.activeSessionId,
+    "s-manual",
+    "用户手动选的会话不能被自动规则顶掉",
+  );
+});
+
+test("真实活动接管之后，后续事件不再乱改活跃指针", async () => {
+  // 「让位」只发生一次：接管之后活跃指针就由它自己（与 /whale/activate）说了算，
+  // 否则多个会话交替产生事件时指针会来回跳，小窗跟着闪。
+  const foldSet = createFoldSet();
+  const pipeline = createEventPipeline({ foldSet, log: () => {} });
+  const ctx = {
+    on(event, fn) {
+      if (event === "session/event") ctx.__onSessionEvent = fn;
+      return () => {};
+    },
+  };
+  pipeline.attach(ctx);
+
+  ctx.__onSessionEvent({ id: "a", header: {} }, { seq: 1, type: "user/message", data: { content: [{ type: "text", text: "1" }] } });
+  assert.equal(foldSet.activeSessionId, "a", "第一条真实事件接管");
+
+  ctx.__onSessionEvent({ id: "b", header: {} }, { seq: 1, type: "user/message", data: { content: [{ type: "text", text: "2" }] } });
+  assert.equal(foldSet.activeSessionId, "a", "接管之后不该被别的事件顶掉，否则小窗会来回跳");
 });
 
 test("持久层一条会话都没有时，短时间内不反复读（小窗每 5 秒轮询 hud）", async () => {

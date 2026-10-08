@@ -147,6 +147,9 @@ export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date
     // 只在没有指针时才设——不抢已有会话的位置。
     if (foldSet.activeSessionId === null || foldSet.activeSessionId === undefined) {
       foldSet.activeSessionId = sessionId;
+      // 标记这是**默认值**：用户裁定「小窗要跟着活跃会话走」，
+      // 所以真实活动一来就让位（见 events.mjs 的认领规则）。
+      foldSet.activeIsSeed = true;
     }
     log(`[桥] 已从持久层种上会话 ${sessionId}`);
     return sessionId;
