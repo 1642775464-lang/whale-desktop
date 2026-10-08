@@ -127,6 +127,20 @@
   fileInput.hidden = true;
   global.document.body.appendChild(fileInput);
 
+  /**
+   * 把文本插进输入框（**不发送**）。
+   *
+   * ＋菜单里的「文件」与「指令」都走这条：与主窗口的 `@` / `/` 语义一致
+   * ——插入引用待用户补完再发，而不是替他发出去。
+   */
+  function insertIntoInput(text) {
+    if (typeof text !== "string" || text === "") return;
+    const cur = dom.input.value;
+    // 已有内容且不以空白结尾时补一个空格，避免与上一个词粘在一起
+    dom.input.value = cur === "" || /\s$/.test(cur) ? `${cur}${text}` : `${cur} ${text}`;
+    dom.input.focus();
+  }
+
   const overlays = global.WhaleOverlays.createOverlays({
     dom: {
       overlay: dom.inputOverlay,
@@ -139,6 +153,35 @@
     onNotify: notifyUnavailable,
     onPickFiles: () => fileInput.click(),
     onFiles: (files) => overlays.addFiles(files),
+    onInsertText: insertIntoInput,
+    /**
+     * ＋ 菜单（切片 7 第四批）：文件引用 + 宿主指令列表。
+     *
+     * 单独一个模块（add-menu.js）：它是独立的业务域（用户报
+     * 「＋号交互内容和主窗口没有对齐」），而且 overlays.js 装不下它了。
+     * 内容全部来自宿主：指令走 `/whale/commands`、文件走 `/whale/files`。
+     *
+     * 这里**延迟注入**（函数形式）：addMenu 需要 overlays 的 row/note/close，
+     * 而 overlays 又需要 addMenu —— 直接互相引用会踩「一个还没定义」。
+     */
+    getAddMenu: () => addMenu,
+  });
+
+  /**
+   * ＋ 菜单：在 overlays 之后建（要用它的 row / note / close），
+   * 并通过上面的 `getAddMenu` 延迟注入回去 —— 避免两者互相引用时
+   * 踩「拿到的还是 undefined」。
+   */
+  const addMenu = global.WhaleAddMenu.createAddMenu({
+    dom: { ovTitle: dom.ovTitle, ovBody: dom.ovBody },
+    clientOf: () => client,
+    currentOf: () => overlays.current(),
+    insertIntoInput,
+    onPickFiles: () => fileInput.click(),
+    onFiles: (files) => overlays.addFiles(files),
+    close: () => overlays.close(),
+    row: (label, desc, value, opts) => overlays.sharedRow(label, desc, value, opts),
+    note: (text) => overlays.sharedNote(text),
   });
 
   /** 四个浮层键的统一接线：toggle + 渲染各自内容。 */

@@ -35,6 +35,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CLIENT_FILE = join(ROOT, "whale-window", "renderer", "bridge-client.js");
 const FOLLOW_FILE = join(ROOT, "whale-window", "renderer", "follow.js");
 const STREAM_FILE = join(ROOT, "whale-window", "renderer", "stream.js");
+// client 现在把能力请求委托给这个模块（沙箱必须与真实页面同一份清单，环境坑 41）
+const CAP_FILE = join(ROOT, "whale-window", "renderer", "bridge-capabilities.js");
 
 /**
  * 在沙箱里加载小窗的 bridge-client.js。
@@ -82,6 +84,7 @@ function loadClient(env) {
 
   createContext(sandbox);
   // 与真实页面同一套依赖：client 会用到这两个命名空间
+  runInContext(readFileSync(CAP_FILE, "utf8"), sandbox, { filename: CAP_FILE });
   runInContext(readFileSync(FOLLOW_FILE, "utf8"), sandbox, { filename: FOLLOW_FILE });
   runInContext(readFileSync(STREAM_FILE, "utf8"), sandbox, { filename: STREAM_FILE });
   runInContext(readFileSync(CLIENT_FILE, "utf8"), sandbox, { filename: CLIENT_FILE });

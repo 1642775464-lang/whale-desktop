@@ -300,40 +300,6 @@
       dom.ovBody.appendChild(kv);
     }
 
-    // ── ＋ 上传 ───────────────────────────────────────
-
-    /** ＋ 浮层：拖拽区 + 说明（选文件走 input[type=file]）。 */
-    function renderAdd() {
-      dom.ovTitle.textContent = "添加附件";
-      dom.ovBody.innerHTML = "";
-
-      const drop = global.document.createElement("div");
-      drop.className = "upl-drop";
-      drop.textContent = "把文件拖到这里，或点击选择";
-      drop.addEventListener("click", function () {
-        // 触发隐藏的文件选择器（input 在 bindFileInput 里由调用方挂）
-        if (typeof deps.onPickFiles === "function") deps.onPickFiles();
-      });
-      drop.addEventListener("dragover", function (ev) {
-        ev.preventDefault();
-        drop.classList.add("over");
-      });
-      drop.addEventListener("dragleave", function () {
-        drop.classList.remove("over");
-      });
-      drop.addEventListener("drop", function (ev) {
-        ev.preventDefault();
-        drop.classList.remove("over");
-        const files = ev.dataTransfer && ev.dataTransfer.files;
-        if (files && files.length > 0) deps.onFiles(Array.from(files));
-      });
-      dom.ovBody.appendChild(drop);
-
-      dom.ovBody.appendChild(note(
-        "上传后随下一条消息一起发送。粘贴图片同样支持（直接在输入框按 Ctrl+V）。",
-      ));
-    }
-
     // ── 待上传清单 ────────────────────────────────────
 
     /** 渲染待上传清单。 */
@@ -438,18 +404,47 @@
       return pending.length > 0;
     }
 
+    /**
+     * ＋ 菜单与文件搜索交给 add-menu.js（按业务域拆出去，500 行上限）。
+     *
+     * 这里保留同名入口，调用方（app.js 的浮层接线）不用改：
+     * 装配时通过 `deps.getAddMenu()` 延迟取（两者互相依赖）。
+     */
+    function renderAdd() {
+      const menu = typeof deps.getAddMenu === "function" ? deps.getAddMenu() : undefined;
+      if (menu === undefined) {
+        dom.ovTitle.textContent = "添加";
+        dom.ovBody.innerHTML = "";
+        dom.ovBody.appendChild(note("＋菜单未装配"));
+        return Promise.resolve();
+      }
+      return menu.renderAdd();
+    }
+
+    function renderFileSearch(query) {
+      const menu = typeof deps.getAddMenu === "function" ? deps.getAddMenu() : undefined;
+      if (menu === undefined) return Promise.resolve();
+      return menu.renderFileSearch(query);
+    }
+
     return {
       addFiles,
       close,
+      /** 当前打开的浮层名（add-menu 用来判断「用户是否切走了」）。 */
+      current () { return current; },
       flushUploads,
       hasPending,
       isOpen () { return current !== null; },
       pendingCount () { return pending.length; },
       renderAdd,
+      renderFileSearch,
       renderModel,
       renderPending,
       renderPermission,
       renderUsage,
+      /** 把共享的两栏行 / 空态行借给 add-menu（同一套渲染，视觉才一致）。 */
+      sharedNote: note,
+      sharedRow: row,
       toggle,
     };
   }

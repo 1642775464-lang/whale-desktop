@@ -45,7 +45,9 @@ function loadClient(fetchImpl) {
   w.EventSource = function FakeEventSource() { this.close = () => {}; };
 
   createContext(sandbox);
-  for (const f of ["follow.js", "stream.js", "bridge-client.js"]) {
+  // 沙箱必须与真实页面同一份清单（环境坑 41）：
+  // client 把能力请求委托给了 bridge-capabilities.js
+  for (const f of ["bridge-capabilities.js", "follow.js", "stream.js", "bridge-client.js"]) {
     runInContext(readFileSync(join(RENDERER, f), "utf8"), sandbox, { filename: f });
   }
   return sandbox.window.WhaleBridge;
