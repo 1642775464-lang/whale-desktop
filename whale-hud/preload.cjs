@@ -28,6 +28,8 @@ const CHANNELS = {
   DRAG_START: "hud:drag-start",
   DRAG_MOVE: "hud:drag-move",
   DRAG_END: "hud:drag-end",
+  /** 唤起：显示 + 展开成条 + 聚焦（桥留标记、渲染层轮询来取） */
+  SUMMON: "hud:summon",
 };
 
 contextBridge.exposeInMainWorld("hud", {
@@ -51,6 +53,14 @@ contextBridge.exposeInMainWorld("hud", {
 
   /** F7 右键菜单。 */
   showMenu: () => ipcRenderer.invoke(CHANNELS.MENU),
+
+  /**
+   * 唤起：显示 + 展开成条 + 聚焦。
+   *
+   * 由渲染层在轮询发现「桥留了唤起请求」时调用
+   * （桥无法主动推给窗口，所以走「桥留标记、窗口来取」）。
+   */
+  summon: () => ipcRenderer.invoke(CHANNELS.SUMMON),
 
   /** 隐藏 / 退出 / 重载界面。 */
   hide: () => ipcRenderer.invoke(CHANNELS.HIDE),

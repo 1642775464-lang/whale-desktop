@@ -226,6 +226,28 @@ async function models({ host }) {
 }
 
 /**
+ * GET /whale/summon —— 取走该目标的「唤起请求」（切片 7 第三批）。
+ *
+ * 为什么需要这条：用户报「已重启，但是点击无法唤起」。真因是**复用 ≠ 唤起**——
+ * 点鲸鱼时桥走复用分支只回 `{reused:true}`，从不把已存在的窗口显示出来，
+ * 于是悬浮条收成球之后、或小窗被压住之后再点就是「点了没反应」。
+ *
+ * 桥**无法主动推**给窗口（窗口是独立进程，靠环境变量拿到桥端口后自己来连），
+ * 所以做成「桥留标记、窗口用已有轮询来取」。**取走即消费**，
+ * 否则窗口每轮都会看到旧标记、反复把自己弹出来。
+ *
+ * target 缺省为 window（与 /whale/open 同口径）。
+ */
+function summon({ bridge, query }) {
+  const target = query?.get?.("target") || "window";
+  const windows = bridge?.windows;
+  if (windows === undefined || typeof windows.takeSummon !== "function") {
+    return { ok: true, summon: false };
+  }
+  return { ok: true, ...windows.takeSummon(target) };
+}
+
+/**
  * GET /whale/presets —— 权限档位清单与当前档位。
  *
  * 档位**以宿主的 permissionPresets 为准**，不硬编码：
@@ -330,6 +352,8 @@ export function registerSliceThreeReadRoutes(deps) {
   register("GET", "/whale/commands", commands);
   // 切片 7 第二批：权限档位清单（以宿主的 permissionPresets 为准）
   register("GET", "/whale/presets", presets);
+  // 切片 7 第三批：唤起请求（复用 ≠ 唤起）
+  register("GET", "/whale/summon", summon);
 
   // deps 目前只用来自检装配是否完整；保留参数便于后续扩展
   void deps;
@@ -339,4 +363,4 @@ export function registerSliceThreeReadRoutes(deps) {
 export const SLICE_THREE_READ_ROUTES = 7;
 
 /** 切片 7 新增的只读路由条数（单测核对用；与 slice3 分开计数，便于追溯）。 */
-export const SLICE_SEVEN_READ_ROUTES = 2;
+export const SLICE_SEVEN_READ_ROUTES = 3;

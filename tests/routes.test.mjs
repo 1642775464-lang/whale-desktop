@@ -15,21 +15,21 @@ import {
   validateRouteTable,
 } from "../whale-bridge/lib/routes.mjs";
 
-test("路由表共 26 条（PRD F2 的 22 条 + 切片 7 新增四条）", () => {
+test("路由表共 27 条（PRD F2 的 22 条 + 切片 7 新增五条）", () => {
   // 22 = 切片 1–3 的原始条数（D3）；23 = 加上切片 7 的 /whale/commands。
   // 写死总数是有意的：新增路由时必须显式改这里。
-  assert.equal(ROUTE_DEFS.length, 26);
+  assert.equal(ROUTE_DEFS.length, 27);
 });
 
 test("路由表自检无问题", () => {
   assert.deepEqual(validateRouteTable(), []);
 });
 
-test("路由方法分布：14 条 GET + 12 条 POST", () => {
+test("路由方法分布：15 条 GET + 12 条 POST", () => {
   // 切片 7 加了两条 GET + 两条 POST（commands/presets/upload.file/upload.images）
   const get = ROUTE_DEFS.filter((d) => d.method === "GET").length;
   const post = ROUTE_DEFS.filter((d) => d.method === "POST").length;
-  assert.equal(get, 14);
+  assert.equal(get, 15);
   assert.equal(post, 12);
 });
 
@@ -58,7 +58,7 @@ test("切片 1 的四条路由都是 GET", () => {
 
 test("概览输出不泄漏处理器函数", () => {
   const routes = describeRoutes();
-  assert.equal(routes.length, 26);
+  assert.equal(routes.length, 27);
   for (const r of routes) {
     assert.deepEqual(
       Object.keys(r).sort(),

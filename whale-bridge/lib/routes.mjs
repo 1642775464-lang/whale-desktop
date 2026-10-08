@@ -54,6 +54,7 @@ export const ROUTE_DEFS = [
   { method: "GET", path: "/whale/models", purpose: "模型目录", slice: 3 },
   { method: "GET", path: "/whale/commands", purpose: "斜杠命令目录（宿主真命令）", slice: 7 },
   { method: "GET", path: "/whale/presets", purpose: "权限档位清单与当前档位", slice: 7 },
+  { method: "GET", path: "/whale/summon", purpose: "取走唤起请求（复用窗口拿到面前）", slice: 7 },
   { method: "GET", path: "/whale/approval", purpose: "待确认权限请求", slice: 3 },
   { method: "POST", path: "/whale/open", purpose: "唤起小窗或悬浮条（target 可选）", slice: 3 },
   { method: "POST", path: "/whale/close", purpose: "关闭窗口进程", slice: 3 },

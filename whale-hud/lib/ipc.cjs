@@ -27,6 +27,8 @@ const CHANNELS = Object.freeze({
   DRAG_START: "hud:drag-start",
   DRAG_MOVE: "hud:drag-move",
   DRAG_END: "hud:drag-end",
+  /** 唤起：显示 + 展开成条 + 聚焦（桥的复用分支留下唤起请求，渲染层来取） */
+  SUMMON: "hud:summon",
 });
 
 /**
@@ -111,6 +113,32 @@ function registerIpc(deps) {
     port: deps.port ?? null,
     version: deps.version ?? null,
   }));
+
+  /**
+   * 唤起（切片 7 第三批）。
+   *
+   * 用户报「已重启，但是点击无法唤起」。真因是**复用 ≠ 唤起**：
+   * 点鲸鱼时桥走复用分支只回 `{reused:true}`，从不把已存在的悬浮条显示出来。
+   * 悬浮条一旦被收成球（或隐藏），再点就是「点了没反应」。
+   *
+   * 三步：显示 → 展开成条 → 聚焦。
+   * **展开成条是用户明确裁定的**：「我看不出反应的窗口等于没响应」。
+   */
+  on(CHANNELS.SUMMON, () => {
+    const raw = hudWindow.win;
+    if (raw !== undefined && typeof raw.isDestroyed === "function" && raw.isDestroyed()) {
+      return { ok: false, code: "window-destroyed" };
+    }
+    hudWindow.show();
+    // 收成球时展开成条：只看球等于没有反馈（用户明确裁定）
+    //
+    // 形态的真相源是**主进程的 state**（渲染层通过 hud:form 通道请求切换，
+    // 由 state.expand/collapse 落地）—— 所以这里调 state，不是窗口封装。
+    if (state.form() === "ball") state.expand();
+    if (raw !== undefined && typeof raw.focus === "function") raw.focus();
+    if (raw !== undefined && typeof raw.moveTop === "function") raw.moveTop();
+    return { ok: true, action: "summon", form: state.form() };
+  });
 
   on(CHANNELS.FORM, (payload) => {
     const form = payload?.form;

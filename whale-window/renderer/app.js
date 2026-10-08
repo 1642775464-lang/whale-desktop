@@ -384,6 +384,27 @@
     client.connect();
     client.startPolling();
 
+    /**
+     * 取走「唤起请求」（切片 7 第三批）。
+     *
+     * 用户报「已重启，但是点击无法唤起」。真因是**复用 ≠ 唤起**：
+     * 点鲸鱼时桥走复用分支只回 `{reused:true}`，从不把已存在的窗口
+     * 显示出来——被压住时看着就是「点了没反应」。
+     *
+     * 桥没法主动推给窗口（窗口是独立进程，自己来连桥），
+     * 所以做成「桥留标记、窗口用**已有的 5 秒轮询**来取」。
+     * 取走即消费，所以不会反复弹出来。
+     */
+    const SUMMON_WATCH_MS = 1500;
+    global.setInterval(() => {
+      client.takeSummon().then((summon) => {
+        if (!summon) return;
+        global.whale.windowAction("summon").then((out) => {
+          if (out && out.ok !== true) global.console.warn(`唤起失败：${out.code}`);
+        });
+      });
+    }, SUMMON_WATCH_MS);
+
     // 唤醒倒计时（F9）：「唤醒中 3s」每秒推进；抽屉开着时同步事件计数
     global.setInterval(() => {
       panels.tickWaking();

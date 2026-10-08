@@ -30,7 +30,7 @@ const CHANNEL = Object.freeze({
  * 白名单而不是「转发任意 action」：渲染层是沙箱里跑网页的地方，
  * 让它能调任意主进程动作等于把整个主进程开放出去。
  */
-const WINDOW_ACTIONS = Object.freeze(["minimize", "hide", "close", "toggle-pin"]);
+const WINDOW_ACTIONS = Object.freeze(["minimize", "hide", "close", "toggle-pin", "summon"]);
 
 /**
  * 注册 IPC。
@@ -89,6 +89,27 @@ function registerIpc(deps) {
     }
     if (action === "close") {
       win.close();
+      return { ok: true, action };
+    }
+    if (action === "summon") {
+      /**
+       * 唤起：把窗口拿到用户面前。
+       *
+       * 用户报「已重启，但是点击无法唤起」——桥的复用分支只回 reused:true，
+       * 从不把已存在的窗口显示出来（被压住时看着就是「点了没反应」）。
+       * 三步都要做：还原（可能被最小化）→ 显示 → 聚焦并抬到最前。
+       */
+      const raw = win.win;
+      if (raw !== undefined && typeof raw.isDestroyed === "function" && raw.isDestroyed()) {
+        return { ok: false, code: "window-destroyed" };
+      }
+      if (raw !== undefined && typeof raw.isMinimized === "function" && raw.isMinimized()) {
+        raw.restore();
+      }
+      win.show();
+      if (raw !== undefined && typeof raw.focus === "function") raw.focus();
+      // moveTop 兜底：无边框窗口在部分环境里 focus() 不足以压过别的前台窗口
+      if (raw !== undefined && typeof raw.moveTop === "function") raw.moveTop();
       return { ok: true, action };
     }
     // toggle-pin

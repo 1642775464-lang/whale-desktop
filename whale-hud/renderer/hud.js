@@ -250,22 +250,29 @@
   }
 
   /**
-   * 定期核对小窗运行态，让绿环跟着现实走。
+   * 定期核对小窗运行态，让绿环跟着现实走；顺带取走「唤起请求」。
    *
    * 为什么不能只在点击时更新：用户可能从小窗自己的「更多 → 退出小窗」关掉它，
    * 那样本地标记会一直停在「在跑」，绿环亮着但再点却是唤起——
    * 指示与语义不一致，比没有指示更糟。
+   *
+   * 唤起请求为什么在这里取：桥**没法主动推**给窗口（窗口是独立进程，
+   * 只靠环境变量拿到桥端口后自己来连），所以做成「桥留标记、
+   * 窗口用已有的轮询来取」。取走即消费，拿到才唤起。
+   * 具体轮询逻辑收在客户端（`watchSummon`），这里只负责挂上。
    */
   function startRingWatch() {
     const check = function () {
-      client.isSmallWindowRunning().then((running) => {
-        if (running === smallWindowRunning) return;
-        smallWindowRunning = running;
+      const running = client.isSmallWindowRunning;
+      running().then((value) => {
+        if (value === smallWindowRunning) return;
+        smallWindowRunning = value;
         renderWhaleRing();
       });
     };
     check();
     global.setInterval(check, RING_WATCH_MS);
+    client.watchSummon();
   }
 
   // ── 悬停详情（F3）────────────────────────────────────

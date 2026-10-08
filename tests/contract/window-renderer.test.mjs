@@ -330,9 +330,13 @@ test("preload 不暴露 ipcRenderer 本体，也不开放任意 channel", () => 
   assert.ok(!/invoke\(\s*channel\s*[,)]/.test(preloadText), "不得转发任意 channel");
 });
 
-test("窗口动作白名单权威定义在 ipc.cjs，且含 4 个动作", () => {
+test("窗口动作白名单权威定义在 ipc.cjs，且含 5 个动作", () => {
   const ipc = require(join(WIN, "lib", "ipc.cjs"));
-  assert.deepEqual([...ipc.WINDOW_ACTIONS], ["minimize", "hide", "close", "toggle-pin"]);
+  assert.deepEqual(
+    [...ipc.WINDOW_ACTIONS],
+    ["minimize", "hide", "close", "toggle-pin", "summon"],
+    "summon 是切片 7 第三批加的：复用 ≠ 唤起，已存在的窗口要被拿到面前",
+  );
 });
 
 test("渲染层不出现 @deepseek-ai/，也不出现第三方裸包", () => {

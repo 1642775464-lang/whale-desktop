@@ -25,6 +25,14 @@
   const POLL_MS = 5000;
 
   /**
+ * 「唤起请求」的轮询间隔（切片 7 第三批）。
+ *
+ * 比 POLL_MS 密：用户点了鲸鱼就站在那儿等反馈，
+ * 5 秒才响应一次会让他以为「又没反应」。
+ */
+  const SUMMON_WATCH_MS = 1500;
+
+  /**
    * 从 URL 查询串取桥端口。
    *
    * @returns {number}
@@ -67,6 +75,8 @@
 
     let pollHandle = null;
     let stream = null;
+    /** 唤起轮询的句柄（与 pollHandle 分开：两者节奏不同）。 */
+    let summonHandle = null;
 
     /** 合并一批心跳 tick 进快照。 */
     function applyTicks(ticks) {
@@ -213,6 +223,50 @@
     }
 
     /**
+     * 起「唤起请求」轮询：桥留标记，窗口来取。
+     *
+     * 为什么不用推送：桥**没法主动推**给窗口——窗口是独立进程，
+     * 只靠环境变量拿到桥端口后自己来连，桥到窗口没有反向通道。
+     * 所以复用窗口**已有的轮询**：定期问一次，拿到就唤起。
+     *
+     * 用户裁定：收成球时点鲸鱼要**展开成条**（「我看不出反应的窗口等于没响应」）。
+     *
+     * @param {number} [ms]
+     */
+    function watchSummon(ms) {
+      const every = Number.isInteger(ms) ? ms : SUMMON_WATCH_MS;
+      if (summonHandle !== null) return;
+      const check = function () {
+        takeSummon().then(function (summon) {
+          if (!summon) return;
+          global.whale.summon().then(function (out) {
+            if (out && out.ok !== true) global.console.warn(`唤起失败：${out.code}`);
+          });
+        });
+      };
+      check();
+      summonHandle = global.setInterval(check, every);
+    }
+
+    /**
+     * 取走「唤起请求」（切片 7 第三批）。
+     *
+     * 用户报「已重启，但是点击无法唤起」。真因是**复用 ≠ 唤起**：
+     * 桥的复用分支只回 `{reused:true}`，从不把已存在的窗口显示出来。
+     * **取走即消费**（桥侧实现），所以只有拿到 true 才唤起，
+     * 不会每轮都把自己弹出来。
+     *
+     * @returns {Promise<boolean>}
+     */
+    function takeSummon() {
+      return global
+        .fetch(`${base}/whale/summon?target=hud`)
+        .then(function (res) { return res.ok ? res.json() : {}; })
+        .then(function (json) { return json?.summon === true; })
+        .catch(function () { return false; });
+    }
+
+    /**
      * 切到某个会话。
      *
      * @param {string} sessionId
@@ -256,6 +310,11 @@
         global.clearInterval(pollHandle);
         pollHandle = null;
       }
+      // 唤起轮询也要停：它同样是定时器，漏了会在退出后继续敲桥
+      if (summonHandle !== null) {
+        global.clearInterval(summonHandle);
+        summonHandle = null;
+      }
       if (stream !== null) {
         stream.close();
         stream = null;
@@ -272,6 +331,8 @@
       openSmallWindow,
       refresh,
       startPolling,
+      takeSummon,
+      watchSummon,
     };
   }
 

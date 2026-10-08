@@ -112,15 +112,57 @@ export function createWindowManager(deps) {
    * @param {{sessionId?: string, reason?: string, target?: string, port?: number}} [options]
    * @returns {{ok: boolean, code?: string, message?: string, pid?: number, reused?: boolean, target?: string}}
    */
+  /**
+   * 唤起请求的落点：`target → 时间戳`。
+   *
+   * 为什么需要它（用户报「已重启，但是点击无法唤起」）：
+   * 复用分支原先只回一个 `{reused:true}` 就结束了——窗口认对了、也活着，
+   * 但**从不把它显示出来**。于是悬浮条收成球之后、或小窗被别的窗口压住之后，
+   * 再点鲸鱼就是「点了没反应」。
+   *
+   * 桥**没法主动推**给窗口：窗口是独立进程，只靠环境变量拿到桥端口后
+   * 自己来连，桥到窗口没有反向通道。所以改成「桥留一个标记，
+   * 窗口用**已有的轮询**来取」——不新增进程间通道。
+   */
+  const summons = new Map();
+
+  /** 唤起请求的有效期：窗口要是没在跑，标记不能一直挂着。 */
+  const SUMMON_TTL_MS = 10_000;
+
+  /** 记一次唤起请求。 */
+  function markSummon(target) {
+    summons.set(target, now());
+  }
+
+  /**
+   * 取走某目标的唤起请求（**取一次就清掉**）。
+   *
+   * 取走即消费：否则窗口每一轮轮询都会看到旧标记、反复把自己弹出来。
+   *
+   * @param {string} [target]
+   * @returns {{summon: boolean}}
+   */
+  function takeSummon(target) {
+    const key = normalizeTarget(target);
+    const at = summons.get(key);
+    if (at === undefined) return { summon: false };
+    summons.delete(key);
+    // 过期当没有：窗口可能刚重启，不该翻出十秒前的旧请求
+    if (now() - at > SUMMON_TTL_MS) return { summon: false };
+    return { summon: true };
+  }
+
   function open(options = {}) {
     const target = normalizeTarget(options.target);
     const spec = TARGETS[target];
 
-    // 复用：该目标已有存活窗口就直接返回，不拉新的（C8）
+    // 复用：该目标已有存活窗口就**唤起**它，不拉新的（C8）
     const alive = findAlive(target);
     if (alive !== undefined) {
       stats.reused += 1;
-      return { ok: true, pid: alive.pid, reused: true, target };
+      // 复用 ≠ 唤起：把「拿到用户面前」这件事记下来，等窗口来取
+      markSummon(target);
+      return { ok: true, pid: alive.pid, reused: true, target, summoned: true };
     }
 
     const electronPath = path.join(repoRoot, ELECTRON_RELATIVE);
@@ -304,6 +346,7 @@ export function createWindowManager(deps) {
     list,
     count,
     stats,
+    takeSummon,
     /** 仅测试用：直接看进程表的 pid 集合 */
     pids: () => [...windows.keys()],
     /** 仅测试用：按目标看 pid（验「两个目标各自复用」用） */

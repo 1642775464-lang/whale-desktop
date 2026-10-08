@@ -328,6 +328,27 @@
     }
 
     /**
+     * 取走「唤起请求」（切片 7 第三批）。
+     *
+     * 用户报「已重启，但是点击无法唤起」。真因是**复用 ≠ 唤起**：
+     * 点鲸鱼时桥走复用分支只回 `{reused:true}`，从不把已存在的窗口
+     * 显示出来——被别的窗口压住时看着就是「点了没反应」。
+     *
+     * 桥**没法主动推**给窗口（窗口是独立进程，靠环境变量拿到桥端口后
+     * 自己来连），所以做成「桥留标记、窗口用**已有轮询**来取」。
+     * 取走即消费（桥侧实现），只有拿到 true 才唤起。
+     *
+     * @returns {Promise<boolean>}
+     */
+    function takeSummon() {
+      return global
+        .fetch(`${base}/whale/summon?target=window`)
+        .then(function (res) { return res.ok ? res.json() : {}; })
+        .then(function (json) { return json?.summon === true; })
+        .catch(function () { return false; });
+    }
+
+    /**
      * 权限档位清单与当前档位（切片 7 第二批）。
      *
      * **顺带把当前档位写进 state** —— 输入框上那个权限标签读的就是
@@ -459,6 +480,7 @@
       send,
       setModel,
       startPolling,
+      takeSummon,
       uploadFiles,
       uploadImages,
     };

@@ -51,6 +51,7 @@ const PRD_ROUTES = [
   ["GET", "/whale/models"],
   ["GET", "/whale/commands"],
   ["GET", "/whale/presets"],
+  ["GET", "/whale/summon"],
   ["GET", "/whale/approval"],
   ["POST", "/whale/open"],
   ["POST", "/whale/close"],
@@ -76,7 +77,7 @@ test("路由表与 PRD 逐条一致（顺序、方法、路径）", () => {
   );
 });
 
-test("26 条路由全部已实现（C1 的静态侧）", () => {
+test("27 条路由全部已实现（C1 的静态侧）", () => {
   const missing = ROUTE_DEFS.filter((d) => getHandler(d.method, d.path) === undefined);
   assert.deepEqual(
     missing.map((d) => `${d.method} ${d.path}`),
@@ -95,7 +96,7 @@ test("切片归属分布：切片 1 有 4 条，切片 2/3 有 18 条，切片 7
   assert.equal(ROUTE_DEFS.filter((d) => d.slice === 1).length, 4);
   assert.equal(ROUTE_DEFS.filter((d) => d.slice === 2 || d.slice === 3).length, 18);
   // 切片 7（输入框交互全量复刻）新增：命令目录 + 权限档位 + 两条上传
-  assert.equal(ROUTE_DEFS.filter((d) => d.slice === 7).length, 4);
+  assert.equal(ROUTE_DEFS.filter((d) => d.slice === 7).length, 5);
 });
 
 test("每条路由都标了切片归属（进度可见）", () => {
