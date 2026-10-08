@@ -65,6 +65,9 @@ export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date
    */
   let lastEmptyAt = null;
 
+  /** 「宿主没这个服务」只报一次的标记（小窗每 5 秒轮询，重复报会淹掉日志）。 */
+  let warnedUnavailable = false;
+
   /**
    * 把一批事件折进某会话。
    *
@@ -93,6 +96,24 @@ export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date
     // 已经有会话就说明事件流正在喂折叠器，种子必须让路（纪律 2）
     if (foldSet.sessions.size > 0) return null;
 
+    /**
+     * 读不到持久层时**必须落一条日志**。
+     *
+     * 原先这里会静默返回空，于是「小窗还是没会话」这件事在重启后
+     * 给不出任何原因——到底是宿主没这个服务、方法没提供，还是真没会话？
+     * 三者表现完全一样，而这正是本项目反复踩的那类静默失败。
+     *
+     * 只报一次：小窗每 5 秒轮询 hud，每次都报会变成日志噪音，
+     * 反而把有用的行冲掉。
+     */
+    if (host.available !== undefined && host.available.sessionController === false) {
+      if (!warnedUnavailable) {
+        warnedUnavailable = true;
+        log("[桥] 种子跳过：宿主未提供 sessionController，读不到持久层");
+      }
+      return null;
+    }
+
     // 空窗限流：见 lastEmptyAt 注释
     if (lastEmptyAt !== null && now() - lastEmptyAt < EMPTY_RETRY_MS) return null;
 
@@ -106,6 +127,7 @@ export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date
     }
     if (!Array.isArray(list) || list.length === 0) {
       lastEmptyAt = now();
+      log("[桥] 持久层没有可见会话（或 list 未提供），小窗保持待机");
       return null;
     }
 

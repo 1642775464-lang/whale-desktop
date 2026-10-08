@@ -165,7 +165,6 @@ export async function apply(ctx, options = {}) {
   bridge.hostActions = hostActions;
   // 处理器靠这个访问种子（/whale/hud 与 /whale/panel 在折叠器为空时调它）
   bridge.seed = seed;
-  bridge.seed = seed;
 
   /**
    * 标题兜底：折叠器没有标题时读宿主投影。

@@ -146,11 +146,14 @@
 | 28 | HTTP 处理器与底层实现**要一起改** | 只在 `windows.close` 里实现了按 `target` 关，处理器却只读 `pid`/`all` → 参数被静默丢掉 → 返回 `{ok:true, closed:0}`：**看着成功、一个都没关**。这类返回比报错难查得多 |
 | 29 | 源 svg 的 `fill="none"` 靠 CSS 补色，**换个宿主就没有那条 CSS** | 悬浮条有 `.whale svg path{fill:var(--ink)}`；客户端插件没有样式表，照抄 `fill="none"` 会画成空心 = 看着透明。跨宿主复用图标时**填充要显式给** |
 | 30 | `align-items: baseline` 的行盒**贴着容器顶**排 | flex 行高 = 内容高，容器高出来的部分全在下方。`.seg.mono` 是 `height:36px` + 内容高 24.75px → 文字中心偏上 **6px**。修法：行盒 `line-height` 撑满容器高 |
-| 35 | **可选服务被 apply 时刻的快照定死** | sessionController 的注册时机在桥之后；在 createHostAccess 里 `ctx.get` 一次存进 const 就永远是 undefined（`/whale/models` 恒 0、probe 恒 false），而稳态下服务确实存在。修法：**每次调用现取**，`available` 等结论也要 getter |
 | 31 | **重启宿主不会重建已存在的小窗/悬浮条** | 它们是独立 Electron 进程。改了渲染层代码后，只重启宿主 → 老窗口进程仍带着旧状态在跑，表现是「改了没生效」。**必须关掉窗口重新拉起**（`POST /whale/close {all:true}` 再 `open`）。现场为此排查了很久 |
 | 32 | `URLSearchParams` 只能用 `.get()` 取 | 写成 `query?.sessionId`（属性访问）恒为 `undefined`，接口永远回「缺少 sessionId」而调用方明明传了。桥的既有约定，slice1/slice2 都标了这条注释 |
 | 33 | 宿主 `commands.execute` 的**第 3、4 参都没有空值保护** | 第 3 参 `submittedAttachments` 会被读 `.length`，第 4 参 `signal` 会被读 `.aborted`。传 `undefined` 分别抛 `reading 'length'` / `reading 'aborted'`。**修一个会立刻撞上另一个**，必须一起给（空数组 + 真 AbortSignal） |
 | 34 | **「改了没生效」要先分辨：是代码没生效，还是进程是旧的** | 判断方法：查进程启动时间 vs 提交时间；更硬的办法是**起一个全新进程连真桥**验证（新增 `tools/window-diag.cjs`）。本次就是靠它证明「代码是好的、只是窗口进程旧」 |
+| 35 | **可选服务被 apply 时刻的快照定死** | sessionController 的注册时机在桥之后；在 createHostAccess 里 `ctx.get` 一次存进 const 就永远是 undefined（`/whale/models` 恒 0、probe 恒 false），而稳态下服务确实存在。修法：**每次调用现取**，`available` 等结论也要 getter |
+| 36 | **桥的折叠器只由事件填充 → 冷启动时「零个会话」** | 宿主重启后那条会话是**空闲的**，不再产生任何事件，折叠器永远是空的；而 `sessions.list()` 宿主注释写明只含 "All **live** sessions"，冷会话连清单都不在。后果：小窗拿不到 sessionId → 权限档位读不到、切模型与发命令全部 `bad-request`。**轮询救不了**（继续空闲就永远没事件）。修法：走 `sessionController.list / inspect`（读持久层但不激活 agent）做**冷会话种子**，见 `lib/seed.mjs` |
+| 37 | **测端口段（19380–19399）只有 20 个位，加用例就会用完** | 新增 3 条 HTTP 用例时越过 19399，闸门 6 的端口纪律直接变红。**不改阈值**：把属于单元层的规则挪下去、合并同源用例。另：同文件的顶层 test 是并发跑的，**同一端口会被两组互相掐断**（表现为随机 ECONNRESET），必须一组一个端口 |
+| 38 | **探针的假 logger 必须带 `.info`** | `tools/window-diag.cjs` 早前传了裸函数 `log: () => {}`，而 `boot.cjs` / `ipc.cjs` 都会调 `log.info()` → 探针自己在装配期崩掉，**表现为「无输出」**，白跑两轮。另外探针只抓请求体不够——只能证明「发得对」，要证明「桥收下了」必须连 **status 与响应体**一起抓 |
 
 ---
 
