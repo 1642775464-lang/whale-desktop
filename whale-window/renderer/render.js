@@ -185,8 +185,25 @@
     }
 
     /** 权限按钮文案（三档，与主窗逐字一致）。 */
-    function permissionText() {
-      const p = getPermission();
+    /**
+     * 输入框上那个权限标签。
+     *
+     * **真值来自 state.permission**（由 `/whale/presets` 的 `current` 填进来，
+     * 那是宿主 `permissionPresets.current(session)` 算出的唯一真相源）。
+     *
+     * 真实事故（用户报「切为完全权限了，输入框还是显示工作区内修改」）：
+     * 这个标签原先读的是一个**写死的常量**，与宿主实际档位毫无关系；
+     * 而桥的面板 permission 字段又恒为 null（处理器从没传过 gates），
+     * 于是真值从来没有来源，文案永远停在「工作区内修改」。
+     *
+     * 真值还没拿到时（首帧、或宿主读不到）退回注入的 getPermission()
+     * ——它是启动时的已知值，不是「编一个」。
+     *
+     * @param {object} [state]
+     */
+    function permissionText(state) {
+      const fromState = state !== undefined && state !== null ? state.permission : undefined;
+      const p = typeof fromState === "string" && fromState !== "" ? fromState : getPermission();
       dom.btnPerm.textContent = PERMISSION_TEXT[p] ?? PERMISSION_TEXT["workspace-write"];
     }
 
@@ -206,7 +223,7 @@
       dock(state);
       sendButton(state);
       usage(state);
-      permissionText();
+      permissionText(state);
     }
 
     return {

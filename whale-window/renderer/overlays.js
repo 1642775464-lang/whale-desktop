@@ -147,7 +147,13 @@
               onClick () {
                 if (isCurrent) { close(); return; }
                 clientOf().command(`/permission ${  name}`).then(function (out) {
-                  if (out.ok) { close(); return; }
+                  if (out.ok) {
+                    // 切成功后**立刻重读宿主的档位**，让输入框那个标签即时更新。
+                    // 不重读的话标签要等下一次轮询才知道变了，用户会觉得「切了没反应」
+                    // ——他报过的原话就是「切为完全权限，输入框还是显示工作区内修改」。
+                    clientOf().permissionPresets().then(function () { close(); });
+                    return;
+                  }
                   onNotify(`切换权限失败：${  out.code}`);
                   global.console.warn(`切权限失败：${  out.code}`);
                 });

@@ -330,7 +330,17 @@
     /**
      * 权限档位清单与当前档位（切片 7 第二批）。
      *
-     * 失败返回 null —— 调用方要如实显示「读不到」，**不退回硬编码档位**。
+     * **顺带把当前档位写进 state** —— 输入框上那个权限标签读的就是
+     * `state.permission`，它是「宿主实际档位」在小窗里的唯一落点。
+     *
+     * 为什么必须走宿主：user 报过「切成完全权限了，输入框还是显示工作区内修改」。
+     * 根因是那个标签原先读的是 app.js 里一个**写死的常量**，
+     * 而桥的面板 permission 字段又恒为 null（处理器从没传过 gates）——
+     * 真值从来没有来源。`/whale/presets` 的 `current` 是宿主
+     * `permissionPresets.current(session)` 算出来的，是唯一真相源。
+     *
+     * 读不到时**保留上一次的值**（返回 null 让调用方如实提示），
+     * 不退回硬编码档位：那是把「读不到」伪装成「就是这个档位」。
      *
      * @returns {Promise<{options: Array<string>, current: string|null} | null>}
      */
@@ -341,7 +351,12 @@
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (json) {
           if (!json || !Array.isArray(json.options) || json.options.length === 0) return null;
-          return { options: json.options, current: json.current ?? null };
+          const current = typeof json.current === "string" && json.current !== "" ? json.current : null;
+          if (current !== null) {
+            state.permission = current;
+            onChange(state);
+          }
+          return { options: json.options, current };
         })
         .catch(function () { return null; });
     }
