@@ -55,6 +55,11 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
   // 定死成 undefined —— /whale/models 恒 0、probe 恒 false（真实踩过）。
   const sessionControllerOf = () => optionalService(ctx, "sessionController");
   const permissionPresetsOf = () => optionalService(ctx, "permissionPresets");
+  /**
+   * `@` 文件引用（切片 7 第四批）。同样是可选服务：
+   * 塞进 inject 会让插件在「服务不存在」时**永远不启动**（环境坑 21）。
+   */
+  const fileReferencesOf = () => optionalService(ctx, "fileReferences");
 
   /**
    * 读宿主的模型目录（含各模型的可选推理档位）。
@@ -276,6 +281,35 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
   }
 
   /**
+   * 搜工作区的文件引用候选（`@` 引用，切片 7 第四批）。
+   *
+   * 走 `fileReferences.list(agent, query, signal)` —— 宿主给主窗口
+   * `@` 补全用的就是这条。返回
+   * `FileReferenceCandidate { path, kind: "file" | "directory" }[]`。
+   *
+   * **结果原样透传**：不改名、不补全。桥自己再造一份字段，
+   * 将来宿主改名就对不上，而这类不一致的表现是「跑了、没数据、也不报错」。
+   *
+   * ⚠️ 必须传 agent：宿主要用它做作用域与鉴权。
+   * 拿不到 agent 就**不去问宿主**——空敲一次没有意义（宿主那条路需要活 agent）。
+   *
+   * @param {string} query 查询串（可以为空串）
+   * @param {object|undefined} agent 宿主 agent（宿主 fileReferences.list 的第一参）
+   * @returns {Promise<Array<{path: string, kind: string}>>}
+   */
+  async function fileReferences(query, agent) {
+    if (agent === undefined || agent === null) return [];
+    const service = fileReferencesOf();
+    if (service === undefined || typeof service.list !== "function") return [];
+    try {
+      const out = await service.list(agent, typeof query === "string" ? query : "", new AbortController().signal);
+      return Array.isArray(out) ? out : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * 读某会话的**历史事件**（不激活 agent）。
    *
    * 走 `sessionController.inspect(sessionId, signal)`，返回
@@ -312,6 +346,7 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
 
   return {
     modelCatalog,
+    fileReferences,
     recentSessions,
     selectModel,
     sessionEvents,

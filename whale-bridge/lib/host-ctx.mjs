@@ -369,6 +369,7 @@ export function createHostAccess(ctx) {
     modelCatalog: catalog.modelCatalog,
     selectModel: catalog.selectModel,
     permissionPresets: catalog.permissionPresets,
+    fileReferences: catalog.fileReferences,
     recentSessions: catalog.recentSessions,
     sessionEvents: catalog.sessionEvents,
     uploadFile: catalog.uploadFile,

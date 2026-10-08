@@ -256,6 +256,58 @@ function summon({ bridge, query }) {
  *
  * 取不到就返回空 + `reason`，不编造档位。
  */
+/**
+ * GET /whale/files —— `@` 文件引用候选（切片 7 第四批）。
+ *
+ * 用户报「小窗的＋号交互内容和主窗口的没有对齐」。主窗口＋号菜单里的「文件」
+ * 是 `@` 触发的**工作区文件引用**（插入 `@路径`），不是上传；小窗原先只有拖拽上传。
+ * 用户裁定：＋浮层里的「文件」按 A —— 搜索 → 选中后插入 `@路径` **待发送**。
+ *
+ * 走宿主 `fileReferences.list(agent, query, signal)`（主窗口 `@` 补全同一条），
+ * 返回 `FileReferenceCandidate { path, kind: "file" | "directory" }[]`，
+ * **原样透传**不改名（桥再造一份字段，宿主改了就对不上）。
+ *
+ * 三类结果要分开（各有测试）：
+ *   · 缺 sessionId / 未知会话 → 400 / 404（不能静默给空）
+ *   · 宿主没这个服务 → 空数组 + reason（那是「能力未接通」，不是故障）
+ *   · 宿主抛错 → 空数组，不把异常冒到 HTTP 层
+ *
+ * `q` 可省略：没给时按空串传给宿主（主窗口也是这样列出当前目录）。
+ */
+async function files({ query, host }) {
+  const sessionId = query?.get?.("sessionId");
+  if (typeof sessionId !== "string" || sessionId === "") {
+    const err = new Error("缺少 sessionId");
+    err.code = "bad-request";
+    err.status = 400;
+    throw err;
+  }
+
+  const session = host.getSession(sessionId);
+  if (session === undefined) {
+    const err = new Error(`会话 ${sessionId} 不存在`);
+    err.code = "session-not-found";
+    err.status = 404;
+    throw err;
+  }
+
+  const agent = host.getAgent(sessionId);
+  const raw = query?.get?.("q");
+  const q = typeof raw === "string" ? raw : "";
+
+  // 没有活 agent 时读不到文件引用（宿主那条路需要它）。
+  // 要明确说原因 —— 否则界面会以为「工作区里没有文件」。
+  if (agent === undefined || agent === null) {
+    return { ok: true, candidates: [], reason: "该会话当前没有活跃 agent，读不到文件引用" };
+  }
+
+  const candidates = await host.fileReferences(q, agent);
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return { ok: true, candidates: [], reason: "宿主未返回文件引用候选" };
+  }
+  return { ok: true, candidates };
+}
+
 function presets({ host, query }) {
   const sessionId = query?.get?.("sessionId");
   const info = host.permissionPresets(
@@ -354,6 +406,8 @@ export function registerSliceThreeReadRoutes(deps) {
   register("GET", "/whale/presets", presets);
   // 切片 7 第三批：唤起请求（复用 ≠ 唤起）
   register("GET", "/whale/summon", summon);
+  // 切片 7 第四批：@ 文件引用候选
+  register("GET", "/whale/files", files);
 
   // deps 目前只用来自检装配是否完整；保留参数便于后续扩展
   void deps;
@@ -363,4 +417,4 @@ export function registerSliceThreeReadRoutes(deps) {
 export const SLICE_THREE_READ_ROUTES = 7;
 
 /** 切片 7 新增的只读路由条数（单测核对用；与 slice3 分开计数，便于追溯）。 */
-export const SLICE_SEVEN_READ_ROUTES = 3;
+export const SLICE_SEVEN_READ_ROUTES = 4;

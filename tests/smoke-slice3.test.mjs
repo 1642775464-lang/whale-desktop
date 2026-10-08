@@ -57,13 +57,13 @@ test("切片 3 SSE 与全路由端到端", async (t) => {
     // 22 = 切片 1–3 的原始 22 条；切片 7 新增 /whale/commands 与 /whale/presets → 24。
     // 这里写总数而不是写死 22：新增路由时应当**显式改这一行**，
     // 而不是让断言悄悄过期（D3 的「22 条」是当时的裁剪决定，不是上限）。
-    assert.equal(json.routes.length, 27, "路由总数变了就改这里，别让它悄悄漂");
+    assert.equal(json.routes.length, 28, "路由总数变了就改这里，别让它悄悄漂");
     const pending = json.routes.filter((r) => r.implemented !== true);
     assert.deepEqual(pending.map((r) => `${r.method} ${r.path}`), [], "不应有未实现路由");
     // 分片计数自检：切片 3 的两条常量加起来必须等于该片新增数
     assert.equal(SLICE_THREE_READ_ROUTES + SLICE_THREE_WRITE_ROUTES, 17);
     // 切片 7 新增的单独计数（与 slice3 分开，便于追溯是哪一片加的）
-    assert.equal(SLICE_SEVEN_READ_ROUTES, 3, "切片 7：命令目录 + 权限档位清单 + 唤起请求");
+    assert.equal(SLICE_SEVEN_READ_ROUTES, 4, "切片 7：命令目录 + 权限档位清单 + 唤起请求 + 文件引用");
   });
 
   await t.test("SSE：响应头是 text/event-stream", async () => {
