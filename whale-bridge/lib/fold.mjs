@@ -135,6 +135,37 @@ export function applyEvent(foldSet, event, options = {}) {
     }
 
     case "user/message": {
+      /*
+       * 只有 `source.kind === "user"` 才是**人**说的话，其余都是系统注入。
+       *
+       * 用户报：小窗里冒出一条「Time sampled while preparing turn 140,
+       * step 1: …」—— 那是宿主在发起请求前注入的**运行时上下文**，
+       * 不是他说的话。它和真正的对话混在一起，看着像自己发的。
+       *
+       * ⚠️ 判据不是「有没有 source」，而是「source.kind 是不是 user」。
+       * 真实会话日志（386 条 user/message）显示：**每一条都有 source.kind**，
+       * 取值包括 ——
+       *     user 138 / time-context 126 / dsh-mnemon 45 / model-selection 36
+       *     user-approval 13 / runtime-context 13 / skill-catalog 7 /
+       *     compact-checkpoint 4 / whale-hud 3 / tool-jobs 1
+       * 其中只有 `user` 是真人。写成「有 source 就算注入」会把用户说的
+       * **每一句话**都吃掉 —— 比漏一条注入严重得多。
+       * （这个错差点溜过去：我最初的测试夹具里「真人消息」没有 source 字段，
+       * 而真实数据里人人都有。夹具形状与真实不符，测试就白写了。）
+       *
+       * 关于其余取值：time-context / dsh-mnemon / model-selection 这些
+       * 都是运行时上下文与系统提示，不属于对话内容，一律不进消息流。
+       *
+       * ⚠️ 不要去匹配文本内容。「Time sampled」这种字样换个插件、
+       * 换种语言、换个时间格式就变了，而 `source.kind` 是稳定的结构标记。
+       *
+       * 过滤放在**桥**而不是呈现层：注入文本不属于对话内容，
+       * 任何消费方（小窗、悬浮条、面板）都不该看到它 ——
+       * 当数据性质处理，比让每个界面各自记得过滤可靠。
+       */
+      const sourceKind = data?.source?.kind;
+      if (typeof sourceKind === "string" && sourceKind !== "user") return { accepted: true };
+
       const text = textOfMessage(data);
       if (text.length > 0) pushTail(fold, { kind: "user", text, seq: seq ?? -1 });
       return { accepted: true };

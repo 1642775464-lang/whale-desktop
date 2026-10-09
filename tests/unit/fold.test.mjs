@@ -231,6 +231,12 @@ test("user/message 进 tail", () => {
   assert.equal(fold.tail[0].text, "你好");
 });
 
+/*
+ * 「真人说的话 vs 系统注入」的测试在 fold-injection.test.mjs
+ * （本文件顶到 500 行上限后按职责拆出去：那一块是**来源甄别**，
+ *   与折叠器的 seq 去重 / tail 容量 / phase 流转不是一回事）
+ */
+
 test("tool/call 进 tail 为 running，tool/result 改为 done", () => {
   const foldSet = createFoldSet();
   applyEvents(
