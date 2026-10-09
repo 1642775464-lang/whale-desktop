@@ -68,6 +68,21 @@
   });
 
   /**
+   * 插进输入框的**命令写法**（与标题不同名：导出/下载日志）。
+   *
+   * 主窗口在菜单里点一条带参数的命令时，插进草稿的就是这个写法，
+   * 提交时才由宿主的别名表解析回真实命令名（plan）。
+   */
+  const TOKENS = Object.freeze({
+    "goal": "目标",
+    "plan": "计划",
+    "feedback": "反馈",
+    "compact": "压缩",
+    "permission": "权限",
+    "export": "导出",
+  });
+
+  /**
    * 取一个菜单行的图标 svg。
    *
    * 取不到返回空串（而不是抛错）：图标是装饰，缺了不该让菜单整片打不开。
@@ -80,5 +95,5 @@
     return ICONS[key] ?? "";
   }
 
-  global.WhaleMenuIcons = { DESCRIPTIONS, ICONS, LABELS, SECTIONS, iconOf };
+  global.WhaleMenuIcons = { DESCRIPTIONS, ICONS, LABELS, SECTIONS, TOKENS, iconOf };
 })(typeof window !== "undefined" ? window : globalThis);

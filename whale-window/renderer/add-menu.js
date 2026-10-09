@@ -38,6 +38,7 @@
    * @param {(files: Array<File>) => void} deps.onFiles 收到文件
    * @param {() => void} [deps.close] 关闭浮层
    * @param {() => void} [deps.onOpenModel] 打开模型浮层（「模型」行用）
+   * @param {(hint: string) => void} [deps.onNeedArgs] 命令需要参数时的引导（hint 可能为空）
    * @param {(text: string) => object} deps.row 用共享的两栏行渲染
    * @param {(text: string) => object} deps.note 用共享的空态行渲染
    * @returns {{ renderAdd: Function, renderFileSearch: Function }}
@@ -197,9 +198,38 @@
           else close();
         };
       } else {
-        opts.onClick = function () { insertIntoInput(`/${name}`); close(); };
+        opts.onClick = function () { insertCommand(name, cmd, icons); close(); };
       }
       return row(label, desc, null, opts);
+    }
+
+    /**
+     * 把一条命令插进输入框（**不发送**）。
+     *
+     * 复刻主窗口的 `leadingClaim` 语义（见 DSH 命令包）：
+     *   1. 插进去的是**本地化写法**（`/计划` 而不是 `/plan`）——
+     *      宿主用一张别名表把中英文写法都解析回真实命令名，所以两种都对；
+     *   2. **末尾必须带一个空格**。主窗口插的是 `/${shown} `（尾随空格），
+     *      这样用户接着打参数不会与命令名粘成一个词。早先插 `/plan` 不带空格，
+     *      用户接着打字就得到 `/plan描述…`，看着像「点了没用」。
+     *   3. 有参数声明的命令要把「该写什么」告诉用户（见 notifyNeedArgs）。
+     *
+     * @param {string} name 真实命令名
+     * @param {{hint?: string}|null} cmd 宿主命令
+     * @param {object|undefined} icons 图标模块
+     */
+    function insertCommand(name, cmd, icons) {
+      const token = icons?.TOKENS?.[name] ?? name;
+      const inserted = `/${token} `;
+      insertIntoInput(inserted);
+      // 有参数声明的命令：把宿主的参数说明交给上层显示（主窗口也是这个行为，
+      // 它把 hint 当作输入引导而不是菜单旁的说明文字）。
+      //
+      // 把「刚插进去的文本」一起传过去：上层要靠它判断用户是否已经补了参数
+      // （否则「输入框非空就不引导」这个条件会恒为真 —— 刚插入的命令本身就是内容）。
+      if (typeof deps.onNeedArgs === "function") {
+        deps.onNeedArgs(cmd?.hint ?? "", inserted);
+      }
     }
 
     async function renderAdd() {

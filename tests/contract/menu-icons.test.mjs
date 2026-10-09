@@ -144,6 +144,27 @@ test("本地化标题与说明来自主窗口的中文字典", async () => {
   assert.equal(icons.DESCRIPTIONS.model, "选择本会话使用的模型");
 });
 
+test("插进输入框的写法与标题是两回事，且都来自主窗口字典", async () => {
+  const icons = await loadIcons();
+
+  // 主窗口在菜单里点命令时，插进草稿的是**本地化写法**（token），
+  // 不是标题（label）。两者对 export 不同名 —— 混用会让用户看到
+  // 「下载日志」却被插进「/下载日志」这个宿主不认识的写法。
+  assert.equal(icons.TOKENS.goal, "目标");
+  assert.equal(icons.TOKENS.plan, "计划");
+  assert.equal(icons.TOKENS.feedback, "反馈");
+  assert.equal(icons.TOKENS.compact, "压缩");
+  assert.equal(icons.TOKENS.permission, "权限");
+  assert.equal(icons.TOKENS.export, "导出");
+
+  assert.equal(icons.LABELS.export, "下载日志");
+  assert.notEqual(
+    icons.TOKENS.export,
+    icons.LABELS.export,
+    "export 的写法与标题必须不同名 —— 这条正是为了防两者被混成一个字段",
+  );
+});
+
 test("文案必须与主窗口各包的 zh 字典逐字一致（不是我们编的）", async (t) => {
   const tool = await importTool();
 

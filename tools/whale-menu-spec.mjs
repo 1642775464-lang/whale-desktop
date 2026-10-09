@@ -120,6 +120,26 @@ export const MENU_DESCRIPTIONS = Object.freeze({
 });
 
 /**
+ * 内置命令的**本地化命令写法**（zh 字典里的 `token.*`）。
+ *
+ * ⚠️ 与标题是**两回事**，不要混：
+ *   · 标题（`label.*`）：菜单行左边显示什么 —— export 是「下载日志」；
+ *   · 写法（`token.*`）：**插进输入框的文本** —— export 是「导出」。
+ *
+ * 主窗口在菜单里点一条带参数的命令时，插进草稿的是**本地化写法**，
+ * 提交时才由 `TOKEN_ALIASES` 解析回真实命令名（`plan`）。用户接着写参数，
+ * 中英文写法都能被认出来。
+ */
+export const MENU_TOKENS = Object.freeze({
+  goal: "目标",
+  plan: "计划",
+  feedback: "反馈",
+  compact: "压缩",
+  permission: "权限",
+  export: "导出",
+});
+
+/**
  * 本地化文案的校验源：包 → 字典键 → 期望值。
  *
  * 这些文案**必须来自主窗口自己的字典**，不能由我们编。DSH 改了措辞时，
@@ -138,6 +158,13 @@ export const LABEL_SOURCES = Object.freeze([
       "description.goal": "设置或查看长期任务目标",
       "description.plan": "进入或退出计划模式",
       "description.feedback": "发送关于当前会话的反馈",
+      // 插进输入框的写法（与标题不同名，单独核对）
+      "token.goal": "目标",
+      "token.plan": "计划",
+      "token.feedback": "反馈",
+      "token.compact": "压缩",
+      "token.permission": "权限",
+      "token.export": "导出",
     },
   },
   {

@@ -127,17 +127,33 @@
   fileInput.hidden = true;
   global.document.body.appendChild(fileInput);
 
+  /** 输入框原本的占位提示（参数引导用完后要还原）。 */
+  const PLACEHOLDER_DEFAULT = global.WhaleInputInsert.rememberPlaceholder(dom.input);
+
   /**
-   * 把文本插进输入框（**不发送**）。
+   * 往输入框插文本（**不发送**）。
    *
    * ＋菜单里的「文件」与「指令」都走这条：与主窗口的 `@` / `/` 语义一致
    * ——插入引用待用户补完再发，而不是替他发出去。
    *
-   * 实现按职责拆在 input-insert.js（它有一处真实缺陷与一条对应的测试，
-   * 内联在这里时测不到）。这里只负责把输入框交给它。
+   * 实现在 input-insert.js（那里有一处真实缺陷与对应的测试，
+   * 内联在这里时测不到；它也把 app.js 顶过了 500 行上限）。
    */
   function insertIntoInput(text) {
     return global.WhaleInputInsert.insertIntoInput(dom.input, text);
+  }
+
+  /**
+   * 命令需要参数时，用占位提示告诉用户该写什么。
+   *
+   * 复刻主窗口的做法：点「计划」之后输入框提示「描述你的任务以生成计划」，
+   * 而不是让用户对着一个光秃秃的 `/计划 ` 发呆。
+   *
+   * 实现同样在 input-insert.js（`justInserted` 那个参数是防一段
+   * 「条件恒为真」的死代码，见那边的注释）。
+   */
+  function showArgHint(hint, justInserted) {
+    global.WhaleInputInsert.showArgHint(dom.input, hint, justInserted, PLACEHOLDER_DEFAULT);
   }
 
   const overlays = global.WhaleOverlays.createOverlays({
@@ -181,6 +197,8 @@
     close: () => overlays.close(),
     // 「模型」行不走斜杠命令（它是客户端浮层），点开与顶栏的模型键同一条路
     onOpenModel: () => overlays.renderModel(),
+    // 命令要参数时给引导（主窗口同样把 hint 当输入引导用）
+    onNeedArgs: showArgHint,
     row: (label, desc, value, opts) => overlays.sharedRow(label, desc, value, opts),
     note: (text) => overlays.sharedNote(text),
   });
@@ -406,7 +424,12 @@
     });
 
     // 输入变化时同步斜杠面板：敲 / 弹出、删掉 / 关闭、继续打字实时过滤
-    dom.input.addEventListener("input", () => palette.sync());
+    dom.input.addEventListener("input", () => {
+      palette.sync();
+      // 用户把内容清空后，参数引导也该退场（否则它会一直黏着，
+      // 让人以为输入框里已经有东西了）
+      if (dom.input.value === "") dom.input.setAttribute("placeholder", PLACEHOLDER_DEFAULT);
+    });
 
     // 禁掉整窗右键菜单（无边框窗口里它没有意义，还会盖住界面）
     global.document.addEventListener("contextmenu", (ev) => ev.preventDefault());

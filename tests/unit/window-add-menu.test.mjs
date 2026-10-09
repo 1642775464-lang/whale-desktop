@@ -143,6 +143,8 @@ function loadOverlays(deps) {
     insertIntoInput: deps?.onInsertText ?? (() => {}),
     onFiles: deps?.onFiles ?? (() => {}),
     onPickFiles: deps?.onPickFiles ?? (() => {}),
+    onOpenModel: deps?.onOpenModel ?? (() => {}),
+    onNeedArgs: deps?.onNeedArgs ?? (() => {}),
     close: () => { openName = null; },
     row: makeRow,
     note: makeNote,
@@ -229,7 +231,15 @@ test("指令点一下是**插进输入框**而不是立即执行（与主窗口�
   assert.ok(row !== undefined, "要能找到「压缩」这一行");
   row.click();
 
-  assert.equal(inserted, "/compact", "点指令应把 /命令 插进输入框，由用户补参数再发送");
+  /*
+   * ⚠️ 插进去的是**本地化写法 + 尾随空格**，不是真实命令名。
+   *
+   * 这与主窗口一致（DSH 命令包的 leadingClaim：`const token = "/" + shown + " "`）：
+   *   · shown 是本地化写法（`压缩`），宿主用别名表把它解析回 `compact`；
+   *   · 末尾那个空格让用户接着打参数时不会与命令名粘成一个词
+   *     —— 早先插 `/compact` 不带空格，接着打字得到 `/compact内容`。
+   */
+  assert.equal(inserted, "/压缩 ", "点指令应把「/本地化写法 + 空格」插进输入框");
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -349,7 +359,40 @@ test("点「目标」也是插进输入框待发送（不是立即进计划模�
   assert.ok(goal !== undefined, "缺「目标」行");
   goal.click();
 
-  assert.equal(inserted, "/goal", "点「目标」应把 /goal 插进输入框，等用户补目标再发");
+  // 本地化写法「目标」+ 尾空格（宿主把它解析回 goal）
+  assert.equal(inserted, "/目标 ", "点「目标」应把 /目标 + 空格 插进输入框，等用户补目标再发");
+});
+
+test("参数声明的命令要把「该写什么」交给上层（主窗口把 hint 当输入引导）", async () => {
+  const calls = [];
+  const { dom, api } = loadOverlays({ onNeedArgs: (h, ins) => calls.push([h, ins]) });
+  await api.renderAdd();
+
+  const rows = rowsOf(dom);
+  const btw = rows.find((r) => labelOf(r) === "btw");
+  assert.ok(btw !== undefined, "缺 btw 行");
+  btw.click();
+
+  assert.deepEqual(
+    calls,
+    [["旁问内容", "/btw "]],
+    "点 btw 应把宿主的参数说明**与刚插入的文本**一起交给上层做引导",
+  );
+});
+
+test("引导要带上「刚插入的文本」，否则上层无法区分用户有没有补参数", async () => {
+  // 这是一个真实缺陷的防线：onNeedArgs 在 insertIntoInput 之后调用，
+  // 此时输入框必然非空。上层若只判断「非空就不引导」，条件恒为真 → 引导永不显示。
+  const calls = [];
+  const { dom, api } = loadOverlays({ onNeedArgs: (h, ins) => calls.push([h, ins]) });
+  await api.renderAdd();
+
+  const rows = rowsOf(dom);
+  rows.find((r) => labelOf(r) === "压缩").click();
+
+  assert.equal(calls.length, 1, "应调用一次");
+  assert.equal(calls[0][0], "", "compact 没有参数说明");
+  assert.equal(calls[0][1], "/压缩 ", "必须把插入的文本一并传出（哪怕 hint 为空）");
 });
 
 test("内置命令的说明不拼 hint（与主窗口文案逐字一致）", async () => {

@@ -32,9 +32,11 @@ const RENDERER = join(ROOT, "whale-window", "renderer");
  *
  * ⚠️ 替身的能力必须覆盖产品真实用到的那部分：如果 `dispatchEvent` 是空函数，
  * 「有没有派发」就永远测不出来，而这正是本条要守的东西。
+ * 占位提示走 attributes，也要真存真取。
  */
-function makeInput(initial = "") {
+function makeInput(initial = "", placeholder = "问点什么…") {
   const listeners = new Map();
+  const attrs = new Map([["placeholder", placeholder]]);
   return {
     value: initial,
     focused: false,
@@ -48,6 +50,8 @@ function makeInput(initial = "") {
       for (const fn of listeners.get(ev.type) ?? []) fn(ev);
       return true;
     },
+    setAttribute(name, v) { attrs.set(name, v); },
+    getAttribute(name) { return attrs.has(name) ? attrs.get(name) : null; },
     focus() { this.focused = true; },
   };
 }
@@ -124,6 +128,57 @@ test("输入框缺失时安全返回，不抛错", () => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// 参数引导（点「计划」之后要告诉用户接着写什么）
+// ─────────────────────────────────────────────────────────────
+
+test("记住输入框原本的占位提示（引导结束后要还原成它）", () => {
+  const { rememberPlaceholder } = load();
+  const input = makeInput("", "问点什么…");
+  assert.equal(rememberPlaceholder(input), "问点什么…");
+  assert.equal(rememberPlaceholder(null), "", "输入框缺失时给空串，不抛错");
+});
+
+test("有参数声明的命令：把宿主的说明显示成占位提示", () => {
+  const { showArgHint } = load();
+  // 真实调用顺序：先插入（输入框里就有了 /btw ），再给引导
+  const input = makeInput("/btw ");
+  showArgHint(input, "旁问内容", "/btw ", "问点什么…");
+  assert.equal(input.getAttribute("placeholder"), "接着写：旁问内容");
+});
+
+test("没有参数声明的命令：还原默认提示（引导不许黏着）", () => {
+  const { showArgHint } = load();
+  const input = makeInput("/压缩 ");
+  showArgHint(input, "", "/压缩 ", "问点什么…");
+  assert.equal(input.getAttribute("placeholder"), "问点什么…");
+});
+
+test("用户已经补了参数就不再引导（内容超出刚插入的命令）", () => {
+  const { showArgHint } = load();
+  const input = makeInput("/btw 这段是用户已经写的旁问");
+  showArgHint(input, "旁问内容", "/btw ", "问点什么…");
+  assert.equal(
+    input.getAttribute("placeholder"),
+    "问点什么…",
+    "用户已经在写了，不该再提示他该写什么",
+  );
+});
+
+test("阴性对照：引导必须靠「刚插入的文本」判断，不能只看输入框非空", () => {
+  // 这是一段真实死代码的防线：showArgHint 在插入**之后**被调用，
+  // 此时输入框必然非空。若实现里判断「输入框非空 → 不引导」，条件恒为真，
+  // 引导永远不显示，而测试如果只喂空输入框就会全绿。
+  const { showArgHint } = load();
+  const input = makeInput("/btw ");
+  showArgHint(input, "旁问内容", "/btw ", "问点什么…");
+  assert.equal(
+    input.getAttribute("placeholder"),
+    "接着写：旁问内容",
+    "输入框非空（刚插入的命令）时仍然要给出引导",
+  );
+});
+
+// ─────────────────────────────────────────────────────────────
 // 接线：app.js 必须走这个模块，不能自己再写一份
 // ─────────────────────────────────────────────────────────────
 
@@ -139,6 +194,12 @@ test("app.js 的 insertIntoInput 走 input-insert.js（不许自己再写一份�
     appJs,
     /dom\.input\.value\s*=\s*cur\s*===/,
     "app.js 里不该再有内联的插入实现",
+  );
+  // 参数引导同理：内联一份会再次踩「条件恒为真」的死代码
+  assert.match(
+    appJs,
+    /WhaleInputInsert\.showArgHint\(dom\.input/,
+    "参数引导也必须委托给 input-insert.js",
   );
 });
 

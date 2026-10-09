@@ -40,6 +40,7 @@ import {
   MENU_LABELS,
   MENU_ROWS,
   MENU_SECTIONS,
+  MENU_TOKENS,
   MODEL_FILE,
   OUT_FILE,
   PRIMITIVES_FILE,
@@ -59,6 +60,7 @@ export {
   MENU_LABELS,
   MENU_ROWS,
   MENU_SECTIONS,
+  MENU_TOKENS,
   MODEL_FILE,
   OUT_FILE,
   PRIMITIVES_FILE,
@@ -343,6 +345,14 @@ export function renderModule(icons) {
   lines.push(`  const DESCRIPTIONS = Object.freeze(${jsonBlock(MENU_DESCRIPTIONS)});`);
   lines.push("");
   lines.push("  /**");
+  lines.push("   * 插进输入框的**命令写法**（与标题不同名：导出/下载日志）。");
+  lines.push("   *");
+  lines.push("   * 主窗口在菜单里点一条带参数的命令时，插进草稿的就是这个写法，");
+  lines.push("   * 提交时才由宿主的别名表解析回真实命令名（plan）。");
+  lines.push("   */");
+  lines.push(`  const TOKENS = Object.freeze(${jsonBlock(MENU_TOKENS)});`);
+  lines.push("");
+  lines.push("  /**");
   lines.push("   * 取一个菜单行的图标 svg。");
   lines.push("   *");
   lines.push("   * 取不到返回空串（而不是抛错）：图标是装饰，缺了不该让菜单整片打不开。");
@@ -355,7 +365,7 @@ export function renderModule(icons) {
   lines.push("    return ICONS[key] ?? \"\";");
   lines.push("  }");
   lines.push("");
-  lines.push("  global.WhaleMenuIcons = { DESCRIPTIONS, ICONS, LABELS, SECTIONS, iconOf };");
+  lines.push("  global.WhaleMenuIcons = { DESCRIPTIONS, ICONS, LABELS, SECTIONS, TOKENS, iconOf };");
   lines.push("})(typeof window !== \"undefined\" ? window : globalThis);");
   lines.push("");
   return lines.join("\n");
