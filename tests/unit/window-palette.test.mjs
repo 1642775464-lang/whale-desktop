@@ -226,13 +226,25 @@ test("app.js 必须按参数声明分流（需要参数的不能直接执行）"
     "分流交给 input-area 的 pick（它与「插入 + 参数引导」是同一件事）",
   );
 
-  // 分流本体：带 hint 的插入、其余交给执行回调
+  // 分流本体：带 hint 的认领、其余交给执行回调
   const inputArea = readFileSync(join(RENDERER, "input-area.js"), "utf8");
   assert.match(inputArea, /pick\(command, item, run\)/, "input-area 必须实现 pick");
   assert.match(
     inputArea,
-    /item\?\.hint[\s\S]{0,220}editor\.insert\(/,
-    "带参数声明的命令必须插进输入框等用户补参数（主窗口的 leadingInput 语义），" +
+    /item\?\.hint[\s\S]{0,320}claimCommand\(/,
+    "带参数声明的命令必须**认领**进输入框等用户补参数（主窗口的 leadingInput 语义），" +
     "而不是被直接执行掉",
+  );
+});
+
+test("面板选中必须「认领」而不是「追加」（否则出现两个斜杠）", () => {
+  // 用户报：「我输入 / 后，选择 btw 后，直接弹出了两个 /」。
+  // 他敲的 `/` 是命令引导符；追加得到 `//btw`，主窗口是替换。
+  const inputArea = readFileSync(join(RENDERER, "input-area.js"), "utf8");
+  assert.match(inputArea, /claimCommand\(/, "pick 必须用认领（替换）语义");
+  assert.doesNotMatch(
+    inputArea,
+    /pick\(command, item, run\)[\s\S]{0,400}?editor\.insert\(/,
+    "pick 里不能用追加式插入 —— 那会把用户敲的引导符留在原地",
   );
 });

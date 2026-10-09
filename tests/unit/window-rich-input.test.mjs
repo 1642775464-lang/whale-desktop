@@ -94,9 +94,25 @@ function load(opts = {}) {
   const w = sandbox.window;
   w.document = makeDocument();
   w.console = sandbox.console;
-  // 光标相关：给一个最小 Selection/Range 替身（真实浏览器有，测试里只要不炸）
-  w.getSelection = () => null;
-  w.document.createRange = () => ({ selectNodeContents() {}, collapse() {} });
+
+  /*
+   * 光标替身：**记录**「光标被放到了哪里」。
+   *
+   * ⚠️ 不能给个空函数。用户报的第二个问题就是「鼠标光标位置也不对」——
+   * 若替身什么都不记，这条永远测不出来（只会得到「测试全绿、界面不对」）。
+   * 这里记下 selectedNode 与 collapsed，足以断言「光标落在末尾」。
+   */
+  const caret = { node: null, collapsed: null, cleared: false };
+  w.document.createRange = () => ({
+    selectNodeContents(node) { caret.node = node; },
+    collapse(toEnd) { caret.collapsed = toEnd; },
+  });
+  w.getSelection = () => ({
+    removeAllRanges() { caret.cleared = true; },
+    addRange() {},
+    rangeCount: 0,
+  });
+
   createContext(sandbox);
   runInContext(readFileSync(join(RENDERER, "rich-input.js"), "utf8"), sandbox, {
     filename: "rich-input.js",
@@ -109,7 +125,7 @@ function load(opts = {}) {
     placeholder: opts.placeholder ?? "问点什么…",
     onChange: () => changes.push(editor.getText()),
   });
-  return { editor, el, changes };
+  return { editor, el, changes, caret };
 }
 
 /** 取出被染色的片段文字。 */
@@ -289,6 +305,60 @@ test("data-guide 始终记录当前引导（与是否显示无关）", () => {
     "接着写：旁问内容",
     "但引导内容必须始终可查",
   );
+});
+
+// ─────────────────────────────────────────────────────────────
+// 五、认领命令（把已敲的「/前缀」替换成完整命令）
+//
+// 用户报：「我输入 / 后，选择 btw 后，直接弹出了两个 /，而且鼠标光标位置也不对」
+//
+// 根因：选中面板条目时用的是**追加**，而草稿里那个 `/` 是用户敲的**命令引导符**。
+// 追加的结果就是 `//btw`。主窗口的语义是**替换**草稿里那个 token
+// （DSH 的 leadingClaim 注释：the composer keeps the claimed token in the draft）。
+// ─────────────────────────────────────────────────────────────
+
+test("认领命令：草稿是「/」时要替换成完整命令，不能追加", () => {
+  const { editor } = load();
+  editor.setText("/");
+  const out = editor.claimCommand("/btw ");
+  assert.equal(out, "/btw ", "必须替换掉用户敲的那个斜杠");
+  assert.equal(editor.getText(), "/btw ", "界面上不能出现两个斜杠");
+});
+
+test("认领命令：草稿是已敲的过滤词时要整段替换", () => {
+  const { editor } = load();
+  editor.setText("/bt");
+  editor.claimCommand("/btw ");
+  assert.equal(editor.getText(), "/btw ", "用户敲的 /bt 应由完整命令取代");
+});
+
+test("认领命令：草稿为空时直接放进完整命令", () => {
+  const { editor } = load();
+  editor.setText("");
+  editor.claimCommand("/btw ");
+  assert.equal(editor.getText(), "/btw ");
+});
+
+test("认领命令：普通文字不被动（只认领以 / 开头的情况）", () => {
+  const { editor } = load();
+  editor.setText("你好");
+  editor.claimCommand("/btw ");
+  assert.equal(editor.getText(), "你好 /btw ", "不是命令引导符时按普通插入处理");
+});
+
+test("认领命令后光标必须落在末尾（用户接着打字，不该跳回开头）", () => {
+  const { editor } = load();
+  editor.setText("/");
+  editor.claimCommand("/btw ");
+  assert.equal(editor.getText(), "/btw ");
+  assert.ok(editor.caretAtEnd(), "认领之后光标要落在末尾");
+});
+
+test("认领之后命令那段会被染色（它与插入是同一条视觉路径）", () => {
+  const { editor, el } = load();
+  editor.setText("/");
+  editor.claimCommand("/btw ");
+  assert.equal(tokenText(el), "/btw");
 });
 
 // ─────────────────────────────────────────────────────────────

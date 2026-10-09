@@ -198,9 +198,16 @@
        */
       pick(command, item, run) {
         if (typeof item?.hint === "string" && item.hint !== "") {
-          // 需要参数：插进输入框（带上尾空格），并提示该写什么
-          const inserted = editor.insert(`${command} `);
-          showArgHint(item.hint, inserted);
+          /*
+           * 需要参数：把命令**认领**进输入框（带尾空格），并提示该写什么。
+           *
+           * ⚠️ 用 `claimCommand` 而不是 `insert`：用户是从候选面板选中的，
+           * 草稿开头那个 `/` 是他敲来唤出面板的**命令引导符**，不是正文。
+           * 用追加会得到 `//btw`（用户报的就是这个），主窗口是替换。
+           */
+          const claimed = editor.claimCommand(`${command} `);
+          editor.focus();
+          showArgHint(item.hint, claimed);
           return "inserted";
         }
         if (typeof run === "function") run(command);

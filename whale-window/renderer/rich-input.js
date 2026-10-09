@@ -58,6 +58,13 @@
     let placeholder = placeholderText;
     /** 是否有焦点：占位只在空且无焦点时显示（与原生 textarea 一致）。 */
     let focused = false;
+    /**
+     * 光标是否被安置到末尾。
+     *
+     * 为什么要记这个：用户报「鼠标光标位置也不对」，而光标是**看不见**的
+     * 运行时状态 —— 不记下来就没法断言，只能靠肉眼在真窗口里看。
+     */
+    let caretAtEnd = false;
 
     /**
      * 取纯文本。
@@ -179,8 +186,40 @@
       return next;
     }
 
+    /**
+     * 认领一条命令：把草稿开头那个「命令引导符」替换成完整命令。
+     *
+     * ⚠️ 这是**替换**，不是追加。用户报：「我输入 / 后，选择 btw 后，
+     * 直接弹出了两个 /」—— 他敲的那个 `/` 是**命令引导符**
+     * （用来唤出候选面板的），不是要保留的正文；追加就得到 `//btw`。
+     *
+     * 主窗口也是替换（DSH 的 leadingClaim：the composer keeps the claimed
+     * token in the draft —— 草稿里保留的就是那个 token 本身）。
+     *
+     * 规则：
+     *   · 草稿以 `/` 开头 → 把开头那个「/词」整段换成 `text`
+     *     （用户可能已敲了过滤词 `/bt`，那也该由完整命令取代）；
+     *   · 其余情况 → 按普通插入处理（用户不是在选命令）。
+     *
+     * @param {string} text 完整的命令行（含尾空格，如 `/btw `）
+     * @returns {string} 认领后的纯文本
+     */
+    function claimCommand(text) {
+      if (typeof text !== "string" || text === "") return getText();
+      const cur = getText();
+      if (cur.charAt(0) !== "/") return insert(text);
+
+      // 开头的「/词」整体替换；后面若已有参数（`/btw 内容`）保留下来
+      const rest = cur.replace(/^\/\S*/, "").replace(/^\s+/, "");
+      const next = `${text}${rest}`;
+      setText(next);
+      moveCaretToEnd();
+      return next;
+    }
+
     /** 把光标放到末尾（插入之后用户接着打字，不该跳回开头）。 */
     function moveCaretToEnd() {
+      caretAtEnd = true;
       const sel = global.getSelection === undefined ? null : global.getSelection();
       if (sel === null) return;
       const range = global.document.createRange();
@@ -225,6 +264,10 @@
     paint();
 
     return {
+      /** 最近一次操作后光标是否落在末尾（光标不可见，只能靠这个断言）。 */
+      caretAtEnd: () => caretAtEnd,
+      /** 认领一条命令：把草稿开头的「/前缀」替换成完整命令（不是追加）。 */
+      claimCommand,
       clear,
       el,
       focus,

@@ -191,15 +191,19 @@ async function main() {
   const path2Bad = afterEnter.length > beforeEnter || after2.count > after.count;
 
   /*
-   * ── 路径 3：手打 `/btw` 弹出面板，**点**需要参数的那一条 ──────────
+   * ── 路径 3：手打 `/` 弹出面板，**点**需要参数的那一条 ───────────
    *
-   * 这正是用户报的那条：「选择某个指令就直接被发送出去了」。
-   * 预期（与主窗口一致）：需要参数的命令**不能直接被执行**，
-   * 而应把 `/写法 ` 插进输入框等用户补参数。
+   * 这正是用户报的那条：「我输入 / 后，选择 btw 后，直接弹出了两个 /，
+   * 而且鼠标光标位置也不对」。
    *
-   * ⚠️ 先把输入框清干净。路径 2 的 Enter 已经按同样的语义把 `btw`
-   * 插了进去，输入框里是 `/ /btw ` —— 不清就搜不到条目，
-   * 于是这一路会变成「什么都没点到」却判为通过（假通过）。
+   * 预期（与主窗口一致）：
+   *   · 命令**只插进输入框**，不执行、不发送；
+   *   · 那个 `/` 是命令引导符，要被**替换**掉 —— 内容应是 `/btw `，
+   *     斜杠只出现一次，不能是 `//btw`；
+   *   · 光标落在末尾，用户接着就能写参数。
+   *
+   * ⚠️ 先把输入框清干净。前一条路径已经插过内容，不清就搜不到条目，
+   * 于是这一路会退化成「什么都没点到」却判为通过（假通过）。
    */
   await run(`
     (function () {
@@ -213,7 +217,7 @@ async function main() {
     (function () {
       const i = document.getElementById("input");
       i.innerHTML = "";
-      i.appendChild(document.createTextNode("/btw"));
+      i.appendChild(document.createTextNode("/"));
       i.dispatchEvent(new Event("input", { bubbles: true }));
     })()
   `);
@@ -247,15 +251,37 @@ async function main() {
 
   const execAfter = await run("window.__probeExecCalls.length");
   const sendAfter3 = await run("window.__probeSendCalls.length");
-  const input3 = await run("document.getElementById('input').innerText");
+  const input3 = await run(`
+    (function () {
+      const i = document.getElementById("input");
+      // 直接把光标位置读出来（用户报「光标位置也不对」，这一项必须实测）
+      const sel = window.getSelection();
+      let caretWhere = "无选区";
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        const pre = r.cloneRange();
+        pre.selectNodeContents(i);
+        pre.setEnd(r.endContainer, r.endOffset);
+        const at = pre.toString().length;
+        caretWhere = at === i.innerText.length ? "末尾" : ("位置 " + at);
+      }
+      return { text: i.innerText, caret: caretWhere };
+    })()
+  `);
   const guide3 = await run("document.getElementById('input').getAttribute('data-guide')");
 
+  const slashCount = (input3.text.match(/\//g) ?? []).length;
   say(`路径3 点面板里的「btw」：${clickedRow}`);
-  say(`  执行调用：${execAfter - execBefore} 次（期望 0 —— 需要参数的不该被执行）`);
+  say(`  执行调用：${execAfter - execBefore} 次（期望 0）`);
   say(`  发送调用：${sendAfter3 - sendBefore3} 次（期望 0）`);
-  say(`  输入框内容：${JSON.stringify(input3)}（期望含 /btw）`);
+  say(`  输入框内容：${JSON.stringify(input3.text)}（斜杠 ${slashCount} 个，期望 1）`);
+  say(`  光标位置：${input3.caret}（期望末尾）`);
   say(`  参数引导：${JSON.stringify(guide3)}`);
-  const path3Bad = execAfter > execBefore || sendAfter3 > sendBefore3 || input3.indexOf("/btw") === -1;
+  const path3Bad = execAfter > execBefore
+    || sendAfter3 > sendBefore3
+    || input3.text !== "/btw "
+    || slashCount !== 1
+    || input3.caret !== "末尾";
 
   const anyBad = path1Bad || path2Bad || path3Bad;
   say(
