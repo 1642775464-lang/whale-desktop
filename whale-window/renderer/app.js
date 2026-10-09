@@ -132,13 +132,12 @@
    *
    * ＋菜单里的「文件」与「指令」都走这条：与主窗口的 `@` / `/` 语义一致
    * ——插入引用待用户补完再发，而不是替他发出去。
+   *
+   * 实现按职责拆在 input-insert.js（它有一处真实缺陷与一条对应的测试，
+   * 内联在这里时测不到）。这里只负责把输入框交给它。
    */
   function insertIntoInput(text) {
-    if (typeof text !== "string" || text === "") return;
-    const cur = dom.input.value;
-    // 已有内容且不以空白结尾时补一个空格，避免与上一个词粘在一起
-    dom.input.value = cur === "" || /\s$/.test(cur) ? `${cur}${text}` : `${cur} ${text}`;
-    dom.input.focus();
+    return global.WhaleInputInsert.insertIntoInput(dom.input, text);
   }
 
   const overlays = global.WhaleOverlays.createOverlays({

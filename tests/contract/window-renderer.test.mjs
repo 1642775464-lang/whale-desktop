@@ -45,7 +45,8 @@ const preloadText = read("preload.cjs");
  */
 const rendererAll = [
   "app.js", "render.js", "palette.js", "panels.js", "bridge-client.js",
-  "bridge-capabilities.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js",
+  "bridge-capabilities.js", "follow.js", "stream.js", "menu-icons.js",
+  "add-menu.js", "input-insert.js",
 ]
   .map((f) => read(join("renderer", f)))
   .join("\n");
@@ -217,7 +218,7 @@ test("脚本加载顺序：各模块先定义、app.js 最后装配", () => {
   const tags = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(
     tags,
-    ["bridge-capabilities.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "render.js", "palette.js", "panels.js", "overlays.js", "app.js"],
+    ["bridge-capabilities.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "input-insert.js", "render.js", "palette.js", "panels.js", "overlays.js", "app.js"],
     "顺序错了会在启动时抛 ReferenceError（现象是「窗口在、什么都没接上」）",
   );
   // app.js 必须最后：它是装配层，要用到前面每个模块的命名空间
