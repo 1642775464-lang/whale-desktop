@@ -17,9 +17,17 @@
  */
 
 import { emptyTotals, addUsage, pressureFrom, pushSample } from "./usage-stats.mjs";
+import { textOfMessage, isHumanMessage, isIntermediateStep } from "./message-visibility.mjs";
 
 /** 小窗折叠器保留的渲染事件条数上限（F3）。 */
 export const TAIL_LIMIT = 40;
+
+/*
+ * 「哪些消息该显示」的判据（真人消息、最终回答 vs 中间旁白）在
+ * message-visibility.mjs —— 那里装的是**宿主事件形状的知识**，
+ * 与「怎么折叠事件」是两回事，宿主改了形状只动那个文件。
+ */
+export { textOfMessage, isHumanMessage, isIntermediateStep };
 
 /**
  * 新建一个会话的折叠态。
@@ -129,6 +137,27 @@ export function applyEvent(foldSet, event, options = {}) {
         const pushed = pushSample(fold.samples, { at: now, outputTokens }, now);
         fold.samples = pushed.samples;
       }
+      /*
+       * 只把**这一轮说完了**的那条当成助手的回答。
+       *
+       * 用户报：小窗里冒出「课 审计确认判据安全。跑全量 + lint + gate.」
+       * 这种句子 —— 那是助手边干活边说的话，不是给他的回答。
+       *
+       * 判据取真实会话日志：`stream` 里最后一个 `finish` chunk 的
+       * `reason.kind` —— `stop` = 说完了；`tool-calls` = 还要接着干活。
+       * 真实分布（同一份日志）：
+       *     纯文本        105 条 → stop
+       *     文本 + 工具  2097 条 → tool-calls   ← 之前全漏了
+       *     纯工具       1899 条 → tool-calls
+       *
+       * ⚠️ 之前只过滤了「独立的工具消息」，漏掉了「文本和工具混在同一条
+       * 消息里」这种形状 —— 而它才是绝大多数（2097 条）。
+       * 一条消息里只要带工具调用，它就属于过程，不该显示。
+       *
+       * 保守原则：**认不出形状时按最终回答处理**（宁可多显示一条，
+       * 也不要把助手的回答静默吃掉）。
+       */
+      if (isIntermediateStep(data)) return { accepted: true };
       const text = textOfMessage(data.message);
       if (text.length > 0) pushTail(fold, { kind: "assistant", text, seq: seq ?? -1 });
       return { accepted: true };
@@ -163,8 +192,7 @@ export function applyEvent(foldSet, event, options = {}) {
        * 任何消费方（小窗、悬浮条、面板）都不该看到它 ——
        * 当数据性质处理，比让每个界面各自记得过滤可靠。
        */
-      const sourceKind = data?.source?.kind;
-      if (typeof sourceKind === "string" && sourceKind !== "user") return { accepted: true };
+      if (!isHumanMessage(data)) return { accepted: true };
 
       const text = textOfMessage(data);
       if (text.length > 0) pushTail(fold, { kind: "user", text, seq: seq ?? -1 });
@@ -253,23 +281,9 @@ function pushTail(fold, item) {
   if (fold.tail.length > TAIL_LIMIT) fold.tail.splice(0, fold.tail.length - TAIL_LIMIT);
 }
 
-/**
- * 从消息里取出纯文本。
- *
- * 只认 `type === "text"` 的块：`tool-call` 块的 arguments 是一坨 JSON，
- * 混进小窗消息流会把界面冲垮。取不到就返回空串，调用方据此决定不推送。
- *
- * @param {object} message 消息对象（`{ content: [...] }`）
- * @returns {string}
+/*
+ * textOfMessage / isHumanMessage / isIntermediateStep 已移到
+ * message-visibility.mjs（本文件是纯函数模块，上限 300 行更严），
+ * 顶部 import 后原样再导出，调用方无需改。
  */
-function textOfMessage(message) {
-  if (message === null || typeof message !== "object") return "";
-  const blocks = Array.isArray(message.content) ? message.content : [];
-  let out = "";
-  for (const block of blocks) {
-    if (block !== null && typeof block === "object" && block.type === "text" && typeof block.text === "string") {
-      out += block.text;
-    }
-  }
-  return out;
-}
+

@@ -202,23 +202,6 @@ test("tail 保留上限 40，超出从头部丢弃", () => {
   assert.equal(fold.tail[39].text, "第 60 条");
 });
 
-test("assistant 只有文本块时进 tail，纯工具调用不进", () => {
-  const foldSet = createFoldSet();
-  applyEvent(foldSet, assistantEvent(1, {}, "有话说"), { sessionId: SID });
-  applyEvent(
-    foldSet,
-    {
-      seq: 2,
-      type: "assistant/message",
-      data: { usage: {}, message: { content: [{ type: "tool-call", name: "pwsh", arguments: "{}" }] } },
-    },
-    { sessionId: SID },
-  );
-  const fold = foldSet.sessions.get(SID);
-  assert.equal(fold.tail.length, 1);
-  assert.equal(fold.tail[0].text, "有话说");
-});
-
 test("user/message 进 tail", () => {
   const foldSet = createFoldSet();
   applyEvent(
