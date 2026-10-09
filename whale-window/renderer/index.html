@@ -102,7 +102,15 @@
         </section>
 
         <div class="input-box">
-          <textarea id="input" placeholder="问点什么…  Enter 发送 / Shift+Enter 换行"></textarea>
+          <!--
+            富文本输入框（与主窗口一致）：
+            用 contenteditable 而不是 textarea —— 纯文本控件没法定点给「命令」
+            那一段上色，而主窗口点指令后会把命令染蓝。
+            占位提示走 data-placeholder（由 rich-input.js 维护，CSS 用 ::before 渲染）。
+            注意：它没有 .value，读内容一律走 window.WhaleRichInput。
+          -->
+          <div id="input" class="ri" contenteditable="true" role="textbox"
+               aria-multiline="true" data-empty="1" data-placeholder="问点什么…  Enter 发送 / Shift+Enter 换行"></div>
           <div class="input-row">
             <button class="cbtn" id="btnAdd" aria-label="添加">＋</button>
             <button class="cbtn wide perm" id="btnPerm">工作区内修改</button>
@@ -173,7 +181,8 @@
     <script src="stream.js"></script>
     <script src="menu-icons.js"></script>
     <script src="add-menu.js"></script>
-    <script src="input-insert.js"></script>
+    <script src="rich-input.js"></script>
+    <script src="input-area.js"></script>
     <script src="render.js"></script>
     <script src="palette.js"></script>
     <script src="panels.js"></script>

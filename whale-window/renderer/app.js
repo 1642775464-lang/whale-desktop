@@ -106,7 +106,14 @@
    * 宿主有二十多条命令，硬编码永远追不上。
    */
   const palette = global.WhalePalette.createPalette({
-    dom: { panel: dom.slashPanel, query: dom.slashQuery, list: dom.slashList, input: dom.input },
+    dom: {
+      panel: dom.slashPanel,
+      query: dom.slashQuery,
+      list: dom.slashList,
+      input: dom.input,
+      // 富文本没有 .value，面板靠这个取值（见 palette.js 的 sync）
+      inputText: () => inputArea.getText(),
+    },
     onPick(command) {
       client.command(command).then((out) => {
         if (!out.ok) global.console.warn(`命令失败：${out.code}`);
@@ -127,33 +134,33 @@
   fileInput.hidden = true;
   global.document.body.appendChild(fileInput);
 
-  /** 输入框原本的占位提示（参数引导用完后要还原）。 */
-  const PLACEHOLDER_DEFAULT = global.WhaleInputInsert.rememberPlaceholder(dom.input);
-
   /**
-   * 往输入框插文本（**不发送**）。
+   * 输入区（富文本输入框 + 命令着色 + 参数引导）。
    *
-   * ＋菜单里的「文件」与「指令」都走这条：与主窗口的 `@` / `/` 语义一致
-   * ——插入引用待用户补完再发，而不是替他发出去。
+   * 它取代了原来的 `<textarea>`：纯文本控件没法定点给「命令」那一段上色，
+   * 而主窗口点指令后会把命令染蓝。细节都在 input-area.js，
+   * 这里只拿「读文本 / 写文本 / 插入 / 清空 / 参数引导」这几个动作。
    *
-   * 实现在 input-insert.js（那里有一处真实缺陷与对应的测试，
-   * 内联在这里时测不到；它也把 app.js 顶过了 500 行上限）。
+   * ⚠️ 输入框**没有 `value`**（那是纯文本控件的属性）。业务侧一律走 `inputArea`。
    */
+  const inputArea = global.WhaleInputArea.createInputArea({
+    el: dom.input,
+    // 起始写法：主窗口那几条内置命令的中文写法（点它们插的就是这个）
+    initialTokens: Object.values(global.WhaleMenuIcons?.TOKENS ?? {}),
+    // 补齐写法用：宿主命令名（btw / mnemon …）要问一次才拿得到
+    listCommands: () => client.listCommands(),
+    // 输入变化时同步斜杠面板：敲 / 弹出、删掉 / 关闭、继续打字实时过滤
+    onTextChange: () => palette.sync(),
+  });
+
+  /** 往输入框插文本（**不发送**）。＋菜单里的「文件」与「指令」都走这条。 */
   function insertIntoInput(text) {
-    return global.WhaleInputInsert.insertIntoInput(dom.input, text);
+    return inputArea.insert(text);
   }
 
-  /**
-   * 命令需要参数时，用占位提示告诉用户该写什么。
-   *
-   * 复刻主窗口的做法：点「计划」之后输入框提示「描述你的任务以生成计划」，
-   * 而不是让用户对着一个光秃秃的 `/计划 ` 发呆。
-   *
-   * 实现同样在 input-insert.js（`justInserted` 那个参数是防一段
-   * 「条件恒为真」的死代码，见那边的注释）。
-   */
+  /** 命令需要参数时给引导（主窗口把 hint 当输入引导用）。 */
   function showArgHint(hint, justInserted) {
-    global.WhaleInputInsert.showArgHint(dom.input, hint, justInserted, PLACEHOLDER_DEFAULT);
+    inputArea.showArgHint(hint, justInserted);
   }
 
   const overlays = global.WhaleOverlays.createOverlays({
@@ -299,7 +306,7 @@
       if (!out.ok) global.console.warn(`中断失败：${out.code}`);
       return;
     }
-    const text = dom.input.value.trim();
+    const text = inputArea.getText().trim();
     if (text === "" && !overlays.hasPending()) return;
 
     try {
@@ -308,7 +315,7 @@
 
       // 乐观渲染：消息立刻上屏，同时真的进会话。
       // 排队不是失败——桥会在回合运行中把它排到下一回合。
-      dom.input.value = "";
+      inputArea.clear();
       const out = await client.send(text);
 
       if (out.ok) {
@@ -320,7 +327,7 @@
       }
       // 发送失败要如实告诉用户，并把输入还原（否则内容丢了）
       global.console.warn(`发送失败：${out.code}`);
-      dom.input.value = text;
+      inputArea.setText(text);
     } catch (err) {
       global.console.warn(`发送失败：${err?.message ?? err}`);
       notifyUnavailable("发送中断，输入已保留");
@@ -371,22 +378,15 @@
       if (files && files.length > 0) overlays.addFiles(Array.from(files));
     });
 
-    // 粘贴：图片走附件（文本粘贴保持原生行为）
-    dom.input.addEventListener("paste", (ev) => {
-      const items = ev.clipboardData?.items;
-      if (!items) return;
-      const imageFiles = [];
-      for (const item of items) {
-        if (item.kind === "file") {
-          const f = item.getAsFile();
-          if (f) imageFiles.push(f);
-        }
-      }
-      if (imageFiles.length > 0) {
-        ev.preventDefault();
-        overlays.addFiles(imageFiles);
-      }
-    });
+    /*
+     * 粘贴：图片走附件，文本按纯文本插入。
+     *
+     * 富文本化的**必要防线**：contenteditable 默认会把外部 HTML 原样插进来，
+     * 于是从网页粘一段带颜色的文字就会把样式带进输入框 ——
+     * 命令着色会被外来的颜色盖掉，输入框里出现一段「洗不掉」的样式。
+     * 这条规则属于输入框自己的行为，实现在 input-area.js。
+     */
+    inputArea.bindPaste((files) => overlays.addFiles(files));
 
     // 任务坞：默认收起，点标题展开（F5）
     dom.dockHead.addEventListener("click", () => {
@@ -423,14 +423,6 @@
       }
     });
 
-    // 输入变化时同步斜杠面板：敲 / 弹出、删掉 / 关闭、继续打字实时过滤
-    dom.input.addEventListener("input", () => {
-      palette.sync();
-      // 用户把内容清空后，参数引导也该退场（否则它会一直黏着，
-      // 让人以为输入框里已经有东西了）
-      if (dom.input.value === "") dom.input.setAttribute("placeholder", PLACEHOLDER_DEFAULT);
-    });
-
     // 禁掉整窗右键菜单（无边框窗口里它没有意义，还会盖住界面）
     global.document.addEventListener("contextmenu", (ev) => ev.preventDefault());
 
@@ -450,6 +442,15 @@
     client.refresh();
     client.connect();
     client.startPolling();
+
+    /*
+     * 会话就绪后补齐命令写法（用于命令着色）。
+     *
+     * 必须**等 refresh 之后**：启动那一刻 sessionId 还是空的，
+     * 直接问宿主会老实返回空表 —— 于是「点 btw 不变蓝」。
+     * 补这一次是为了覆盖「用户不是从菜单点、而是自己手打命令名」的情况。
+     */
+    void client.refresh().then(() => inputArea.rememberHostCommands());
 
     /**
      * 取走「唤起请求」（切片 7 第三批）。

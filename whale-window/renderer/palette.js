@@ -177,7 +177,17 @@
      * 规则（页面框架 4.3）：敲 `/` 弹出、删掉 `/` 关闭、继续打字实时过滤。
      */
     function sync() {
-      const value = dom.input.value;
+      /*
+       * 取输入框的纯文本。
+       *
+       * ⚠️ 不要读输入框元素的 value 属性：输入框已改成富文本
+       * （contenteditable），它**没有** value —— 读到的会是 undefined，
+       * 于是 `undefined.startsWith` 抛错、或者面板永远不开。
+       * 取值一律走上层注入的 reader（富文本与纯文本控件都能适配）。
+       */
+      const value = typeof dom.inputText === "function"
+        ? dom.inputText()
+        : (dom.input.textContent ?? "");
       // 只在「以 / 开头且还没输入空格」时开面板：
       // 输入空格说明用户在写正文，不是选命令
       const shouldOpen = value.startsWith("/") && !value.includes(" ");

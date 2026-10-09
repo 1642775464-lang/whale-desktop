@@ -756,22 +756,47 @@ body.whale {
   border-color: #c9d4f5;
 }
 
-textarea {
+/*
+  富文本输入框（contenteditable）。
+  原来是 textarea；换成富文本是为了给「命令」那一段单独上色（主窗口的做法）。
+
+  ⚠️ 尺寸相关的每一行都有理由，删之前先想清楚：
+    · white-space: pre-wrap —— contenteditable 默认会把连续空格折叠，
+      而输入框里用户打的空格必须原样保留（否则他看到的和发出去的不一样）；
+    · overflow-y: auto + max-height —— 内容变多时自己滚动，不能把窗口顶开；
+    · 与 textarea 时代的字号/行高/内边距保持完全一致，避免视觉跳动。
+*/
+.ri {
   width: 100%;
   border: 0;
   outline: 0;
-  resize: none;
   font: inherit;
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--ink);
   background: transparent;
   max-height: 120px;
-  user-select: text;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
 }
 
-textarea::placeholder {
+/* 空内容时的占位提示：走 data-placeholder（rich-input.js 维护），
+   聚焦或已有内容时该属性为空串，于是伪元素不生成任何内容。 */
+.ri[data-placeholder]::before {
+  content: attr(data-placeholder);
   color: var(--ink-disabled);
+  pointer-events: none;
+}
+
+/*
+  命令 token 的颜色 —— 与主窗口同一个语义（业务主色）。
+  主窗口那边是 DSH 的 --dsw-alias-state-business-primary；
+  小窗取自己的品牌蓝，两者视觉一致。
+*/
+.ri .ri-token {
+  color: var(--brand);
 }
 
 .input-row {
