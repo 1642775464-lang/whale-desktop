@@ -17,66 +17,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createContext, runInContext } from "node:vm";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const FILE = join(ROOT, "whale-window", "renderer", "render.js");
-
-/** 造一个最小元素替身。 */
-function el() {
-  const node = {
-    textContent: "", className: "", hidden: false, scrollTop: 0, scrollHeight: 0,
-    style: {}, children: [],
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    setAttribute() {}, removeAttribute() {}, appendChild(child) { this.children.push(child); },
-    querySelectorAll: () => [], remove() {}, addEventListener() {},
-  };
-  return node;
-}
-
-/** 造一份够用的假 DOM（含 document.createElement）。 */
-function fakeDom() {
-  const ids = [
-    "tbTitle", "shTitle", "shSub", "stream", "streamEmpty", "status", "statusText",
-    "dock", "dockList", "dockCount", "dockProg", "dockCaret", "input", "btnSend",
-    "btnPerm", "urFg", "usagePct", "infoSession", "infoBridge", "infoEvents",
-  ];
-  const dom = {};
-  for (const id of ids) dom[id] = el();
-  /** render.js 用到的最小的 document（它要 createElement 建消息行）。 */
-  dom.__document = { createElement: () => el(), createTextNode: () => el() };
-  return dom;
-}
-
-/** 在沙箱里加载 render.js 并建渲染器。 */
-function makeRenderer(fallbackPermission = "workspace-write") {
-  const dom = fakeDom();
-  const sandbox = { window: {}, console: { warn: () => {}, log: () => {} } };
-  const w = sandbox.window;
-  w.Array = Array;
-  w.Object = Object;
-  w.String = String;
-  w.Number = Number;
-  w.JSON = JSON;
-  w.console = sandbox.console;
-  // render.js 通过 global.document 建元素（global 就是内层 window）
-  w.document = dom.__document;
-  createContext(sandbox);
-  runInContext(readFileSync(FILE, "utf8"), sandbox, { filename: FILE });
-  const renderer = sandbox.window.WhaleRender.createRenderer({
-    dom,
-    getPermission: () => fallbackPermission,
-  });
-  return { dom, renderer };
-}
-
-const baseState = {
-  offline: false, title: "甲", workspace: null, running: false,
-  messages: [], todos: [], permission: null,
-};
+import { makeRenderer, baseState } from "../helpers/window-render-double.mjs";
 
 test("state.permission 是完整权限时，标签显示「完全权限」", () => {
   const { dom, renderer } = makeRenderer();

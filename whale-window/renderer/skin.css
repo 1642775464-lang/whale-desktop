@@ -229,16 +229,10 @@ body.whale {
   margin-bottom: 3px;
 }
 
-.tool-line {
-  align-self: stretch;
-  font-size: 11.5px;
-  color: var(--ink2);
-  background: #f4f6fc;
-  border: 1px solid #e9ecf7;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-family: var(--mono);
-}
+/*
+  工具行样式（.tool-line）已随「小窗不展示工具调用」一起退场。
+  留着它就是死代码，而且会让后来的人以为「这里本来就该显示工具」。
+*/
 
 /* ── 输入区 ──────────────────────────────────────── */
 .composer {

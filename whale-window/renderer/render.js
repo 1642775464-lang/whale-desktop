@@ -89,14 +89,19 @@
       messages.forEach(function (m) {
         const kind = m.kind ?? "assistant";
 
-        // 工具调用单独一种行样式（等宽、浅底）
-        if (kind === "tool") {
-          const line = global.document.createElement("div");
-          line.className = "tool-line";
-          line.textContent = `tool · ${m.name ?? "未知工具"}`;
-          dom.stream.appendChild(line);
-          return;
-        }
+        /*
+         * 工具调用**不显示**。
+         *
+         * 用户要求：「小窗里不需要展示你的工具调用过程，不需要展示你的思考过程」。
+         * 小窗是盯进度的小窗口，不是调试面板 —— 用户要看到的是
+         * 「我问了什么 / 助手答了什么」。工具调用属于过程，
+         * 放在这里只会把真正的对话挤出视野（小窗本来就矮）。
+         *
+         * 桥仍然会把工具事件折进消息尾巴（`kind: "tool"`），
+         * 那是它的职责；**过滤是呈现层的决定** —— 想看过程的将来可以考虑
+         * 放在资料抽屉里，而不是流里。
+         */
+        if (kind === "tool") return;
 
         const wrap = global.document.createElement("div");
         wrap.className = `msg ${kind === "user" ? "me" : "ai"}`;
@@ -121,9 +126,11 @@
     }
 
     /**
-     * 状态条：回合运行中出现，文案「正在运行 <工具名>」。
+     * 状态条：回合运行中出现，只说「正在运行」。
      *
-     * 工具名取不到时只说「正在运行」，不编造一个工具名。
+     * ⚠️ **不报具体工具名**。原先会显示「正在运行 read_file」之类 ——
+     * 那等于把过程暴露在界面上，与「小窗不展示工具调用」是同一条要求。
+     * 用户只需要知道「它还在忙」，不需要知道它在用哪个工具。
      */
     function status(state) {
       if (state.running !== true) {
@@ -131,10 +138,7 @@
         return;
       }
       dom.status.hidden = false;
-      dom.statusText.textContent =
-        typeof state.toolName === "string" && state.toolName !== ""
-          ? `正在运行 ${state.toolName}`
-          : "正在运行";
+      dom.statusText.textContent = "正在运行";
     }
 
     /** 任务坞：有清单才出现，默认收起，计数「已完成 / 总数」。 */
