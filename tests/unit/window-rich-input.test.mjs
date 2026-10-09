@@ -1,7 +1,7 @@
 /**
  * 富文本输入框的行为测试
  *
- * 职责：钉住「纯文本读写正确 + 命令那段被染色」两件事。
+ * 职责：钉住「纯文本读写正确 + 命令那段被染色 + 占位与引导」几件事。
  * 所属层：测试（tests/unit）
  *
  * 用户要求「小窗要和主窗口一样是富文本输入框」。
@@ -9,144 +9,20 @@
  * 而 `<textarea>` 是纯文本控件、做不到局部着色 —— 所以要换成
  * contenteditable，并由 rich-input.js 承担 DOM 复杂度。
  *
- * 这一层的测试重点是**业务看得见的行为**（读到的文本、哪个片段有颜色），
- * 而不是节点树长什么样 —— 后者是 rich-input.js 的内部实现。
+ * 这一层的测试重点是**业务看得见的行为**（读到的文本、哪个片段有颜色、
+ * 光标在哪），而不是节点树长什么样 —— 后者是 rich-input.js 的内部实现。
+ *
+ * 替身与加载装配共用 tests/helpers/rich-input-double.mjs
+ * （命令认领与光标保持的测试在 window-rich-input-caret.test.mjs）。
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createContext, runInContext } from "node:vm";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { load, tokenText, tokenClasses, RENDERER } from "../helpers/rich-input-double.mjs";
 
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const RENDERER = join(ROOT, "whale-window", "renderer");
-
-/** 一个够用的 contenteditable 元素替身（真的维护子节点）。 */
-function makeEditable() {
-  const handlers = new Map();
-  const el = {
-    tagName: "DIV",
-    children: [],
-    attrs: new Map(),
-    focused: false,
-    get firstChild() { return this.children[0] ?? null; },
-    appendChild(c) { this.children.push(c); return c; },
-    removeChild(c) {
-      const i = this.children.indexOf(c);
-      if (i !== -1) this.children.splice(i, 1);
-      return c;
-    },
-    get textContent() { return this.children.map((c) => c.textContent ?? "").join(""); },
-    get innerText() { return this.textContent; },
-    setAttribute(n, v) {
-      if (v === undefined || v === null) this.attrs.delete(n);
-      else this.attrs.set(n, v);
-    },
-    getAttribute(n) { return this.attrs.has(n) ? this.attrs.get(n) : null; },
-    addEventListener(type, fn) {
-      if (!handlers.has(type)) handlers.set(type, []);
-      handlers.get(type).push(fn);
-    },
-    focus() { this.focused = true; },
-    /** 测试用：模拟用户敲了字（改内容后派发 input）。 */
-    type(text) {
-      this.children = [{ textContent: text }];
-      this.fire("input");
-    },
-    fire(type) {
-      for (const fn of handlers.get(type) ?? []) fn({});
-    },
-  };
-  return el;
-}
-
-/** 造文档替身。 */
-function makeDocument() {
-  return {
-    createElement(tag) {
-      const node = {
-        tagName: String(tag).toUpperCase(),
-        className: "",
-        children: [],
-        attrs: new Map(),
-        textContent: "",
-        appendChild(c) { this.children.push(c); return c; },
-        removeChild(c) {
-          const i = this.children.indexOf(c);
-          if (i !== -1) this.children.splice(i, 1);
-          return c;
-        },
-        setAttribute(n, v) { this.attrs.set(n, v); },
-        getAttribute(n) { return this.attrs.has(n) ? this.attrs.get(n) : null; },
-      };
-      return node;
-    },
-    createTextNode(text) { return { nodeType: 3, textContent: text }; },
-  };
-}
-
-/** 在沙箱里加载 rich-input.js 并建一个编辑器。 */
-function load(opts = {}) {
-  const el = makeEditable();
-  const sandbox = { window: {}, console: { warn: () => {}, log: () => {} } };
-  const w = sandbox.window;
-  w.document = makeDocument();
-  w.console = sandbox.console;
-
-  /*
-   * 光标替身：**记录**「光标被放到了哪里」。
-   *
-   * ⚠️ 不能给个空函数。用户报的第二个问题就是「鼠标光标位置也不对」——
-   * 若替身什么都不记，这条永远测不出来（只会得到「测试全绿、界面不对」）。
-   * 这里记下 selectedNode 与 collapsed，足以断言「光标落在末尾」。
-   */
-  const caret = { node: null, collapsed: null, cleared: false };
-  w.document.createRange = () => ({
-    selectNodeContents(node) { caret.node = node; },
-    collapse(toEnd) { caret.collapsed = toEnd; },
-  });
-  w.getSelection = () => ({
-    removeAllRanges() { caret.cleared = true; },
-    addRange() {},
-    rangeCount: 0,
-  });
-
-  createContext(sandbox);
-  runInContext(readFileSync(join(RENDERER, "rich-input.js"), "utf8"), sandbox, {
-    filename: "rich-input.js",
-  });
-
-  const changes = [];
-  const editor = sandbox.window.WhaleRichInput.createRichInput({
-    el,
-    commandTokens: opts.commandTokens ?? (() => ["压缩", "目标", "计划", "btw"]),
-    placeholder: opts.placeholder ?? "问点什么…",
-    onChange: () => changes.push(editor.getText()),
-  });
-  return { editor, el, changes, caret };
-}
-
-/** 取出被染色的片段文字。 */
-function tokenText(el) {
-  const spans = el.children.filter((c) => c.getAttribute && c.getAttribute("data-token") === "1");
-  return spans.map((s) => s.textContent).join("");
-}
-
-/**
- * 取出被染色片段的**样式类名**。
- *
- * ⚠️ 必须单独断言 class，不能只断言 `data-token` 属性：
- * 真正让字变色的是 CSS 类（`.ri .ri-token { color: … }`），
- * 而 `data-token` 只是给测试与探针用的标记。
- * 真实踩过：把类名改成一个不存在的名字，光看属性的断言**全部照绿**，
- * 界面上却一点颜色都没有 —— 断言必须钉在「真正生效的那一环」。
- */
-function tokenClasses(el) {
-  const spans = el.children.filter((c) => c.getAttribute && c.getAttribute("data-token") === "1");
-  return spans.map((s) => s.className);
-}
+// 加载装配与断言工具见 tests/helpers/rich-input-double.mjs
 
 // ─────────────────────────────────────────────────────────────
 // 一、纯文本读写（业务只该看到这个层面）
@@ -307,59 +183,8 @@ test("data-guide 始终记录当前引导（与是否显示无关）", () => {
   );
 });
 
-// ─────────────────────────────────────────────────────────────
-// 五、认领命令（把已敲的「/前缀」替换成完整命令）
-//
-// 用户报：「我输入 / 后，选择 btw 后，直接弹出了两个 /，而且鼠标光标位置也不对」
-//
-// 根因：选中面板条目时用的是**追加**，而草稿里那个 `/` 是用户敲的**命令引导符**。
-// 追加的结果就是 `//btw`。主窗口的语义是**替换**草稿里那个 token
-// （DSH 的 leadingClaim 注释：the composer keeps the claimed token in the draft）。
-// ─────────────────────────────────────────────────────────────
-
-test("认领命令：草稿是「/」时要替换成完整命令，不能追加", () => {
-  const { editor } = load();
-  editor.setText("/");
-  const out = editor.claimCommand("/btw ");
-  assert.equal(out, "/btw ", "必须替换掉用户敲的那个斜杠");
-  assert.equal(editor.getText(), "/btw ", "界面上不能出现两个斜杠");
-});
-
-test("认领命令：草稿是已敲的过滤词时要整段替换", () => {
-  const { editor } = load();
-  editor.setText("/bt");
-  editor.claimCommand("/btw ");
-  assert.equal(editor.getText(), "/btw ", "用户敲的 /bt 应由完整命令取代");
-});
-
-test("认领命令：草稿为空时直接放进完整命令", () => {
-  const { editor } = load();
-  editor.setText("");
-  editor.claimCommand("/btw ");
-  assert.equal(editor.getText(), "/btw ");
-});
-
-test("认领命令：普通文字不被动（只认领以 / 开头的情况）", () => {
-  const { editor } = load();
-  editor.setText("你好");
-  editor.claimCommand("/btw ");
-  assert.equal(editor.getText(), "你好 /btw ", "不是命令引导符时按普通插入处理");
-});
-
-test("认领命令后光标必须落在末尾（用户接着打字，不该跳回开头）", () => {
-  const { editor } = load();
-  editor.setText("/");
-  editor.claimCommand("/btw ");
-  assert.equal(editor.getText(), "/btw ");
-  assert.ok(editor.caretAtEnd(), "认领之后光标要落在末尾");
-});
-
-test("认领之后命令那段会被染色（它与插入是同一条视觉路径）", () => {
-  const { editor, el } = load();
-  editor.setText("/");
-  editor.claimCommand("/btw ");
-  assert.equal(tokenText(el), "/btw");
-});
+// 命令认领与光标保持的测试在 window-rich-input-caret.test.mjs
+// （本文件顶到 500 行上限后按职责拆出去，替身共用 tests/helpers/rich-input-double.mjs）
 
 // ─────────────────────────────────────────────────────────────
 // 三、占位提示（参数引导）

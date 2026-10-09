@@ -283,11 +283,77 @@ async function main() {
     || slashCount !== 1
     || input3.caret !== "末尾";
 
-  const anyBad = path1Bad || path2Bad || path3Bad;
+  /*
+   * ── 路径 4：连续输入时不能把光标甩回开头 ──────────────────────
+   *
+   * 用户报：「第一个字符可以正常输入，接着光标就直接跳到最前面」
+   * （截图里输入框是 `kxxxxxxx/btw x` —— 后面敲的字全插到了开头）。
+   *
+   * 根因是重绘：`paint()` 每次输入都清空子节点重建，而重建会摧毁选区，
+   * 浏览器随后把光标放到重建后的默认位置（开头）。
+   *
+   * 模拟方式：逐字把内容改成 k、kx、kxx…，每步都**读回光标位置**。
+   * 只要有一跳光标不在末尾，就说明重建又发生了。
+   */
+  await run(`
+    (function () {
+      const i = document.getElementById("input");
+      i.innerHTML = "";
+      i.dispatchEvent(new Event("input", { bubbles: true }));
+    })()
+  `);
+  await new Promise((r) => setTimeout(r, 250));
+
+  const CARET_EXPR = `
+    (function () {
+      const i = document.getElementById("input");
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return "无选区";
+      const r = sel.getRangeAt(0);
+      const pre = r.cloneRange();
+      pre.selectNodeContents(i);
+      pre.setEnd(r.endContainer, r.endOffset);
+      const at = pre.toString().length;
+      return at === i.innerText.length ? "末尾" : ("位置 " + at);
+    })()
+  `;
+
+  const typing = [];
+  let text = "";
+  for (const ch of "kxxxxxxx") {
+    text += ch;
+    // 在末尾追加字符（模拟用户接着敲），并把光标停在末尾
+    await run(`
+      (function () {
+        const i = document.getElementById("input");
+        const t = ${JSON.stringify(text)};
+        const first = i.firstChild;
+        if (first && first.nodeType === 3) first.textContent = t;
+        else i.appendChild(document.createTextNode(t));
+        const r = document.createRange();
+        r.selectNodeContents(i);
+        r.collapse(false);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        i.dispatchEvent(new Event("input", { bubbles: true }));
+      })()
+    `);
+    const where = await run(CARET_EXPR);
+    typing.push(where);
+  }
+
+  const contentAfterTyping = await run("document.getElementById('input').innerText");
+  const allAtEnd = typing.every((w) => w === "末尾");
+  say(`路径4 连续输入 "kxxxxxxx"：光标轨迹 ${typing.join(" → ")}`);
+  say(`  最终内容：${JSON.stringify(contentAfterTyping)}（期望 "kxxxxxxx"）`);
+  const path4Bad = !allAtEnd || contentAfterTyping !== "kxxxxxxx";
+
+  const anyBad = path1Bad || path2Bad || path3Bad || path4Bad;
   say(
     anyBad
-      ? `结论：有不符预期的路径（路径1=${path1Bad} 路径2=${path2Bad} 路径3=${path3Bad}）`
-      : "结论：三条路径都符合预期（点菜单只插入、面板里需要参数的只插入不执行）",
+      ? `结论：有不符预期的路径（路径1=${path1Bad} 路径2=${path2Bad} 路径3=${path3Bad} 路径4=${path4Bad}）`
+      : "结论：四条路径都符合预期（插入不发送、认领不重复、连续输入光标不跳）",
   );
   if (pageErrors.length > 0) {
     say(`页面报错 ${pageErrors.length} 条：`);
