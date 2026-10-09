@@ -43,7 +43,10 @@ const preloadText = read("preload.cjs");
  * 批次 C 把纯渲染拆到 render.js 之后，只扫 app.js 的断言会全部误报
  * （那是布局变化，不是契约变化）。按职责拆文件是要求，不是违约。
  */
-const rendererAll = ["app.js", "render.js", "palette.js", "panels.js", "bridge-client.js"]
+const rendererAll = [
+  "app.js", "render.js", "palette.js", "panels.js", "bridge-client.js",
+  "bridge-capabilities.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js",
+]
   .map((f) => read(join("renderer", f)))
   .join("\n");
 
@@ -214,11 +217,18 @@ test("脚本加载顺序：各模块先定义、app.js 最后装配", () => {
   const tags = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(
     tags,
-    ["bridge-capabilities.js", "bridge-client.js", "follow.js", "stream.js", "add-menu.js", "render.js", "palette.js", "panels.js", "overlays.js", "app.js"],
+    ["bridge-capabilities.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "render.js", "palette.js", "panels.js", "overlays.js", "app.js"],
     "顺序错了会在启动时抛 ReferenceError（现象是「窗口在、什么都没接上」）",
   );
   // app.js 必须最后：它是装配层，要用到前面每个模块的命名空间
   assert.equal(tags[tags.length - 1], "app.js", "app.js 必须在最后加载");
+
+  // menu-icons.js 必须排在 add-menu.js 之前：后者要用前者的图标与分组表，
+  // 顺序反了的现象是「＋菜单没有图标、且少了目标/计划两行」（不会报错）
+  assert.ok(
+    tags.indexOf("menu-icons.js") < tags.indexOf("add-menu.js"),
+    "menu-icons.js 必须在 add-menu.js 之前加载",
+  );
 });
 
 test("--shadow-pad 必须等于主进程的 SHADOW_PAD（否则阴影被硬切）", () => {

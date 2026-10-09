@@ -532,6 +532,36 @@ body.whale {
   flex: 0 0 auto;
 }
 
+/*
+  菜单行的图标（文件 / 目标 / 计划 / 反馈 / 压缩 / 权限 / 下载日志）。
+  数据来自 menu-icons.js —— 与 DSH 主窗口同一套 path。
+
+  尺寸走 svg 自己的 width/height（与主窗口一致：多数 16、计划与反馈 14），
+  所以这里只负责对齐与配色，不写死宽高（写了会把 14 那两行撑大）。
+*/
+.ov-row .ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--ink3);
+}
+
+.ov-row .ico svg {
+  display: block;
+}
+
+/* 悬停时图标跟着正文一起变深，否则「行亮了、图标还是灰的」 */
+.ov-row:hover .ico,
+.ov-row.on .ico {
+  color: var(--ink2);
+}
+
+/* 灰色行（不可用）不许有 hover 反馈：不假装能用 */
+.ov-row.grey .ico {
+  color: var(--ink-disabled);
+}
+
 .ov-row.grey {
   color: var(--ink-disabled);
   cursor: not-allowed;

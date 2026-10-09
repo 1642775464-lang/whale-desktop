@@ -1,7 +1,7 @@
 /**
  * ＋ 菜单（与主窗口的＋号菜单对齐）
  *
- * 职责：渲染 ＋ 浮层的内容 —— 上传拖拽区、文件引用（`@`）、宿主指令列表；
+ * 职责：渲染 ＋ 浮层的内容 —— 上传拖拽区、分组菜单（添加 / 指令，带图标）、
  *       以及文件搜索。
  * 所属层：小窗（whale-window/renderer）
  *
@@ -10,10 +10,13 @@
  *      而「引用文件 / 插入指令」与权限、模型那几个浮层是两类操作）。
  *   2. overlays.js 装不下它了（500 行上限，强制 14）。
  *
- * 两条纪律：
- *   · **内容全部来自宿主**：指令走 `/whale/commands`（宿主真命令表），
- *     文件走 `/whale/files`（即宿主 fileReferences）。一条都不硬编码，
- *     宿主加了命令/换目录自动跟着变。
+ * 三条纪律：
+ *   · **命令本体全部来自宿主**：走 `/whale/commands`（宿主真命令表），
+ *     文件走 `/whale/files`（即宿主 fileReferences）。宿主加了命令会自动
+ *     出现在「指令」末尾，一条都不硬编码。
+ *   · **分组与图标来自 menu-icons.js**（机械提取的 DSH 主窗口数据）：
+ *     宿主 RPC 不返回分组与图标（那是 DSH 客户端按 definitionId 绑的），
+ *     所以这两样必须另有来源，不能靠猜。
  *   · 点击一律**插进输入框待发送**（用户裁定 A），不是立即执行——
  *     与主窗口的 `@` / `/` 语义一致，也不会误发消息。
  *
@@ -34,6 +37,7 @@
    * @param {() => void} deps.onPickFiles 打开文件选择器
    * @param {(files: Array<File>) => void} deps.onFiles 收到文件
    * @param {() => void} [deps.close] 关闭浮层
+   * @param {() => void} [deps.onOpenModel] 打开模型浮层（「模型」行用）
    * @param {(text: string) => object} deps.row 用共享的两栏行渲染
    * @param {(text: string) => object} deps.note 用共享的空态行渲染
    * @returns {{ renderAdd: Function, renderFileSearch: Function }}
@@ -87,20 +91,123 @@
     /**
      * ＋ 浮层：与主窗口的＋号菜单对齐。
      *
-     * 主窗口那份是分组菜单（文件 / 目标 / 计划 / 反馈 /（指令组）…），
-     * 而小窗原先只有一个拖拽上传区 —— 用户报「＋号交互内容和主窗口没有对齐」。
+     * 主窗口那份是分组菜单：「添加」（文件 / 目标 / 计划 / 反馈）
+     * +「指令」（压缩 / 权限 / 模型 / 下载日志 / …），每行带图标、
+     * 本地化的标题与说明。小窗原先只有一个拖拽上传区，后来补了「文件」
+     * 与平铺的指令列表 —— 用户报「目标/计划还是缺失的，而且也没有图标」。
+     *
+     * 为什么不能只平铺宿主命令表：
+     *   主窗口把 goal / plan / feedback 这三条从「指令」里**提出来**
+     *   放进「添加」组，还给了中文标题和图标。而宿主的 `/whale/commands`
+     *   返回的是扁平的 `{name, description, hint}`，既没有分组也没有图标
+     *   （图标与中文标题是宿主 GUI 按内置命令标识绑定的，不在 RPC 里）。
+     *   所以分组与图标必须由 menu-icons.js 提供，命令本体仍走宿主表。
+     *
+     * @param {string[]} list 宿主返回的命令清单
      */
+    function renderSections(list) {
+      const icons = global.WhaleMenuIcons;
+      const byName = new Map();
+      list.forEach(function (cmd) {
+        if (typeof cmd?.name === "string" && cmd.name !== "") byName.set(cmd.name, cmd);
+      });
+
+      const sections = Array.isArray(icons?.SECTIONS) ? icons.SECTIONS : [];
+      if (sections.length === 0) {
+        // 图标模块没到（脚本加载顺序被改动、或那一行被删）时的降级路径：
+        // 退回「文件 + 平铺指令」。宁可少图标，也不能让整个＋菜单变空——
+        // 那会表现为「点＋什么都没出来」，比缺图标难查得多。
+        dom.ovBody.appendChild(row("文件", "引用工作区文件", null, {
+          onClick() { renderFileSearch(""); },
+        }));
+        if (list.length > 0) {
+          dom.ovBody.appendChild(groupLabel("指令"));
+          list.forEach(function (cmd) { dom.ovBody.appendChild(menuRow(cmd.name, cmd, undefined)); });
+        }
+        return;
+      }
+
+      // 「文件」不是宿主命令（它是引用工作区文件的入口，走本地文件搜索）
+      if (!byName.has("file")) byName.set("file", null);
+
+      const placed = new Set();
+      sections.forEach(function (section) {
+        const rows = Array.isArray(section.rows) ? section.rows : [];
+        const present = rows.filter(function (name) {
+          return byName.has(name) || name === "model";
+        });
+        if (present.length === 0) return;
+        dom.ovBody.appendChild(groupLabel(section.label));
+        present.forEach(function (name) {
+          placed.add(name);
+          dom.ovBody.appendChild(menuRow(name, byName.get(name), icons));
+        });
+      });
+
+      // 宿主里还有、但主窗口没列进这两个分组的命令（btw / mnemon / 将来新增的）
+      // 统一收在「指令」末尾 —— 用户此前裁定：不硬编码，宿主加了命令要自动跟出来。
+      const rest = list.filter(function (cmd) {
+        return typeof cmd?.name === "string" && !placed.has(cmd.name);
+      });
+      if (rest.length > 0) {
+        if (!sections.some(function (s) { return s.name === "commands"; })) {
+          dom.ovBody.appendChild(groupLabel("指令"));
+        }
+        rest.forEach(function (cmd) {
+          dom.ovBody.appendChild(menuRow(cmd.name, cmd, null));
+        });
+      }
+    }
+
+    /**
+     * 渲染一个菜单行。
+     *
+     * 标题优先用主窗口的中文标题（icons.LABELS），没有才退回命令名；
+     * 说明优先用中文说明，退回宿主给的描述（btw / mnemon 这类宿主自带中文的
+     * 命令就落在这条路上）。
+     *
+     * ⚠️ **内置命令（有中文说明的那几条）不拼 hint**。主窗口对它们只显示
+     * 本地化说明——「反馈」右边是「发送关于当前会话的反馈」，不是
+     * 「…（<text>）」；「权限」也不带 `<preset>`。早先一律拼 hint，
+     * 于是小窗比主窗口多出一截 `（<text>）`，看着像两边的文案对不上。
+     * 其余命令没有中文说明，hint 是用户唯一能知道「后面要填什么」的来源，保留。
+     *
+     * @param {string} name 命令名（也是菜单行标识）
+     * @param {{description?: string, hint?: string}|null} cmd 宿主命令（file 行为 null）
+     * @param {object|undefined} icons 图标模块（可能未加载）
+     */
+    function menuRow(name, cmd, icons) {
+      const localizedLabel = icons?.LABELS?.[name];
+      const localizedDesc = icons?.DESCRIPTIONS?.[name];
+      const label = localizedLabel ?? name;
+      const isBuiltin = typeof localizedDesc === "string";
+      const base = localizedDesc ?? cmd?.description ?? "";
+      const desc = `${base}${!isBuiltin && cmd?.hint ? `（${cmd.hint}）` : ""}`;
+
+      const opts = {};
+      const icon = typeof icons?.iconOf === "function" ? icons.iconOf(name) : "";
+      if (icon !== "") opts.icon = icon;
+
+      if (name === "file") {
+        opts.onClick = function () { renderFileSearch(""); };
+      } else if (name === "model") {
+        // 模型不走斜杠命令（它是客户端浮层），点开交给上层
+        opts.onClick = function () {
+          if (typeof deps.onOpenModel === "function") deps.onOpenModel();
+          else close();
+        };
+      } else {
+        opts.onClick = function () { insertIntoInput(`/${name}`); close(); };
+      }
+      return row(label, desc, null, opts);
+    }
+
     async function renderAdd() {
       dom.ovTitle.textContent = "添加";
       dom.ovBody.innerHTML = "";
       dom.ovBody.appendChild(uploadZone());
 
-      // 「文件」：进搜索（插入 @路径 待发送）
-      dom.ovBody.appendChild(row("文件", "引用工作区文件", null, {
-        onClick() { renderFileSearch(""); },
-      }));
-
-      // 指令组：走宿主真命令表
+      // 指令走宿主真命令表
       const commands = await clientOf().listCommands();
       // 判据是「已经切到**别的**浮层」而不是「必须等于 add」——
       // renderAdd 也可能被直接调用（测试、或将来别的入口），
@@ -109,20 +216,12 @@
       if (now !== null && now !== "add") return;
 
       const list = Array.isArray(commands) ? commands : [];
-      if (list.length === 0) {
+      const icons = global.WhaleMenuIcons;
+      if (list.length === 0 && icons === undefined) {
         dom.ovBody.appendChild(note("读不到指令清单（宿主未提供或该会话没有可用命令）"));
         return;
       }
-      dom.ovBody.appendChild(groupLabel("指令"));
-      list.forEach(function (cmd) {
-        const name = cmd?.name;
-        if (typeof name !== "string" || name === "") return;
-        // 右侧显示宿主的说明；有 hint 时补上「要填什么」，用户才知道后面接参数
-        const desc = `${cmd.description ?? ""}${cmd.hint ? `（${cmd.hint}）` : ""}`;
-        dom.ovBody.appendChild(row(name, desc, null, {
-          onClick() { insertIntoInput(`/${name}`); close(); },
-        }));
-      });
+      renderSections(list);
     }
 
     /**

@@ -66,7 +66,7 @@ function fakeDom() {
   return dom;
 }
 
-/** 在沙箱里加载 overlays.js。 */
+/** 在沙箱里加载 add-menu.js（及其依赖 menu-icons.js）。 */
 function loadOverlays(deps) {
   const dom = fakeDom();
   const sandbox = { window: {}, console: { warn: () => {}, log: () => {} } };
@@ -76,7 +76,17 @@ function loadOverlays(deps) {
   w.console = sandbox.console;
   w.document = dom.__document;
   createContext(sandbox);
-  // ＋ 菜单已按业务域拆成独立模块（overlays.js 装不下它了）
+  /**
+   * 脚本清单必须与真实 index.html 一致。
+   *
+   * ⚠️ 环境坑：拆文件后沙箱漏加载某个脚本，会让被测模块「功能静默少一半」，
+   * 而报错只会说「某项没渲染」，指不出是沙箱没加载。
+   * add-menu.js 依赖 menu-icons.js（图标与分组表都在那里），
+   * 真实页面在它之前加载，这里就必须同样先加载。
+   */
+  runInContext(readFileSync(join(RENDERER, "menu-icons.js"), "utf8"), sandbox, {
+    filename: "menu-icons.js",
+  });
   runInContext(readFileSync(join(RENDERER, "add-menu.js"), "utf8"), sandbox, {
     filename: "add-menu.js",
   });
@@ -98,10 +108,19 @@ function loadOverlays(deps) {
     ],
   };
 
-  // 行的渲染由 overlays 提供（同一套两栏行，视觉才一致）；测试里用等价替身
+  // 行的渲染由 overlays 提供（同一套两栏行，视觉才一致）；测试里用等价替身。
+  // 替身必须覆盖产品真实用到的能力，包括 `opts.icon`（图标走 innerHTML）——
+  // 否则「图标没渲染」这类回归在测试里根本看不见。
   function makeRow(label, desc, value, opts) {
     const node = el();
     node.className = "ov-row";
+    if (opts && typeof opts.icon === "string" && opts.icon !== "") {
+      node.className = "ov-row has-ico";
+      const ico = el();
+      ico.className = "ico";
+      ico.innerHTML = opts.icon;
+      node.appendChild(ico);
+    }
     const name = el();
     name.textContent = label;
     node.appendChild(name);
@@ -154,9 +173,15 @@ test("＋ 浮层要列出宿主的指令（走真命令表，不硬编码）", a
   const { dom, api } = loadOverlays();
   await api.renderAdd();
 
+  // ⚠️ 内置命令（goal/plan/feedback/compact/permission/export）显示的是
+  // 主窗口的**中文标题**，不是命令名 —— 所以按标题找。
+  // 未列进主窗口分组的宿主命令（btw / mnemon）保留命令名。
   const text = textsOf(dom).join(" | ");
-  for (const name of ["btw", "compact", "export", "feedback", "goal", "mnemon", "permission", "plan"]) {
-    assert.ok(text.includes(name), `指令 ${name} 必须出现在＋浮层里（实际：${text}）`);
+  for (const label of ["目标", "计划", "反馈", "压缩", "权限", "下载日志"]) {
+    assert.ok(text.includes(label), `指令「${label}」必须出现在＋浮层里（实际：${text}）`);
+  }
+  for (const name of ["btw", "mnemon"]) {
+    assert.ok(text.includes(name), `宿主命令 ${name} 必须出现在＋浮层里（实际：${text}）`);
   }
 });
 
@@ -199,9 +224,153 @@ test("指令点一下是**插进输入框**而不是立即执行（与主窗口�
   const { dom, api } = loadOverlays({ onInsertText: (t) => { inserted = t; } });
   await api.renderAdd();
 
-  const row = rowsOf(dom).find((r) => (r.children ?? []).some((c) => c.textContent === "compact"));
-  assert.ok(row !== undefined, "要能找到 compact 这一行");
+  // 「压缩」是 compact 的主窗口中文标题
+  const row = rowsOf(dom).find((r) => labelOf(r) === "压缩");
+  assert.ok(row !== undefined, "要能找到「压缩」这一行");
   row.click();
 
   assert.equal(inserted, "/compact", "点指令应把 /命令 插进输入框，由用户补参数再发送");
+});
+
+// ─────────────────────────────────────────────────────────────
+// 用户报：「小窗输入框里目标/计划这两个还是缺失的，而且也没有图标」
+// ─────────────────────────────────────────────────────────────
+
+/** 浮层里所有的分组标题文字。 */
+function groupsOf(dom) {
+  return (dom.ovBody.children ?? [])
+    .filter((c) => c.className === "ov-group")
+    .map((c) => c.textContent);
+}
+
+/** 某一行的标签（第一栏 span 的文字，跳过图标容器）。 */
+function labelOf(row) {
+  const spans = (row.children ?? []).filter((c) => c.className !== "ico");
+  return spans.length > 0 ? spans[0].textContent : "";
+}
+
+test("＋菜单分「添加」「指令」两组，行序与主窗口一致", async () => {
+  const { dom, api } = loadOverlays();
+  await api.renderAdd();
+
+  assert.deepEqual(groupsOf(dom), ["添加", "指令"], "分组标题必须是 添加 / 指令");
+
+  const labels = rowsOf(dom).map(labelOf);
+  // 「添加」组的四行必须在「指令」组之前
+  const iGoal = labels.indexOf("目标");
+  const iPlan = labels.indexOf("计划");
+  const iCompact = labels.indexOf("压缩");
+  assert.ok(iGoal !== -1, `缺「目标」行（实际：${labels.join(" / ")}）`);
+  assert.ok(iPlan !== -1, `缺「计划」行（实际：${labels.join(" / ")}）`);
+  assert.ok(iGoal < iCompact, "「目标」必须在「指令」组之前");
+  assert.ok(iPlan < iCompact, "「计划」必须在「指令」组之前");
+});
+
+test("「目标」「计划」「反馈」显示的是主窗口的中文标题与中文说明", async () => {
+  const { dom, api } = loadOverlays();
+  await api.renderAdd();
+
+  const rows = rowsOf(dom);
+  const find = (label) => rows.find((r) => labelOf(r) === label);
+
+  const goal = find("目标");
+  assert.ok(goal !== undefined, "缺「目标」行");
+  assert.ok(
+    (goal.children ?? []).some((c) => c.textContent === "设置或查看长期任务目标"),
+    "「目标」的说明要显示主窗口的中文说明",
+  );
+
+  const plan = find("计划");
+  assert.ok(plan !== undefined, "缺「计划」行");
+  assert.ok(
+    (plan.children ?? []).some((c) => c.textContent === "进入或退出计划模式"),
+    "「计划」的说明要显示主窗口的中文说明",
+  );
+
+  const feedback = find("反馈");
+  assert.ok(feedback !== undefined, "缺「反馈」行");
+  assert.ok(
+    (feedback.children ?? []).some((c) => c.textContent === "发送关于当前会话的反馈"),
+    "「反馈」的说明要显示主窗口的中文说明",
+  );
+});
+
+test("菜单行真的带上了图标（不是只有文字）", async () => {
+  const { dom, api } = loadOverlays();
+  await api.renderAdd();
+
+  const rows = rowsOf(dom);
+  const find = (label) => rows.find((r) => labelOf(r) === label);
+
+  for (const label of ["文件", "目标", "计划", "反馈", "压缩", "权限", "下载日志"]) {
+    const r = find(label);
+    assert.ok(r !== undefined, `缺「${label}」行`);
+    const ico = (r.children ?? []).find((c) => c.className === "ico");
+    assert.ok(ico !== undefined, `「${label}」行没有图标容器`);
+    assert.match(String(ico.innerHTML), /^<svg\b/, `「${label}」的图标不是 svg`);
+    assert.match(String(ico.innerHTML), /viewBox="0 0 16 16"/, `「${label}」的 viewBox 不对`);
+  }
+});
+
+test("「模型」行也带图标与主窗口文案（它不在宿主命令表里，但仍要齐）", async () => {
+  const { dom, api } = loadOverlays();
+  await api.renderAdd();
+
+  const row = rowsOf(dom).find((r) => labelOf(r) === "模型");
+  assert.ok(row !== undefined, "缺「模型」行");
+
+  const ico = (row.children ?? []).find((c) => c.className === "ico");
+  assert.ok(ico !== undefined, "「模型」行没有图标");
+  assert.match(String(ico.innerHTML), /stroke-miterlimit="10"/, "「模型」的图标不该丢属性");
+
+  const desc = (row.children ?? []).find((c) => c.className === "v");
+  assert.equal(desc?.textContent, "选择本会话使用的模型", "「模型」的说明要显示主窗口文案");
+});
+
+test("宿主新增的命令会自动落在「指令」组末尾（不硬编码）", async () => {
+  const { dom, api } = loadOverlays();
+  await api.renderAdd();
+
+  const labels = rowsOf(dom).map(labelOf);
+  // btw / mnemon 不在主窗口那两个分组里，必须仍然出现（收在指令组末尾）
+  assert.ok(labels.includes("btw"), `宿主命令 btw 必须出现（实际：${labels.join(" / ")}）`);
+  assert.ok(labels.includes("mnemon"), `宿主命令 mnemon 必须出现（实际：${labels.join(" / ")}）`);
+  const iCompact = labels.indexOf("压缩");
+  assert.ok(labels.indexOf("btw") > iCompact, "未列出的命令要排在「指令」组末尾");
+});
+
+test("点「目标」也是插进输入框待发送（不是立即进计划模式）", async () => {
+  let inserted = null;
+  const { dom, api } = loadOverlays({ onInsertText: (t) => { inserted = t; } });
+  await api.renderAdd();
+
+  const rows = rowsOf(dom);
+  const goal = rows.find((r) => labelOf(r) === "目标");
+  assert.ok(goal !== undefined, "缺「目标」行");
+  goal.click();
+
+  assert.equal(inserted, "/goal", "点「目标」应把 /goal 插进输入框，等用户补目标再发");
+});
+
+test("内置命令的说明不拼 hint（与主窗口文案逐字一致）", async () => {
+  const { dom, api } = loadOverlays();
+  await api.renderAdd();
+
+  const rows = rowsOf(dom);
+  const descOf = (label) => {
+    const r = rows.find((x) => labelOf(x) === label);
+    const v = (r?.children ?? []).find((c) => c.className === "v");
+    return v?.textContent ?? "";
+  };
+
+  // 宿主给的 hint 是 <text> / <preset>，主窗口不显示它们
+  assert.equal(descOf("反馈"), "发送关于当前会话的反馈", "「反馈」的说明不该带（<text>）");
+  assert.equal(
+    descOf("权限"),
+    "切换权限预设（沙箱模式与审批策略）",
+    "「权限」的说明不该带（<preset>）",
+  );
+
+  // 未列进主窗口分组的宿主命令仍要带 hint —— 那是用户唯一能知道要填什么的来源
+  assert.match(descOf("btw"), /（旁问内容）/, "btw 这类没有中文说明的命令要保留 hint");
 });

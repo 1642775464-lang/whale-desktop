@@ -180,6 +180,8 @@
     onPickFiles: () => fileInput.click(),
     onFiles: (files) => overlays.addFiles(files),
     close: () => overlays.close(),
+    // 「模型」行不走斜杠命令（它是客户端浮层），点开与顶栏的模型键同一条路
+    onOpenModel: () => overlays.renderModel(),
     row: (label, desc, value, opts) => overlays.sharedRow(label, desc, value, opts),
     note: (text) => overlays.sharedNote(text),
   });

@@ -87,11 +87,28 @@
       open(name);
     }
 
-    /** 渲染一行「左名右说明」。 */
+    /**
+     * 渲染一行「图标 + 左名 + 右说明」。
+     *
+     * `opts.icon` 是一段内联 svg 字符串（来自 menu-icons.js，机械生成的
+     * 可信内容）。这里用 innerHTML 塞进去：图标是 SVG，用 textContent
+     * 会原样显示成一堆标签文本。**只允许传自己生成的那份数据**，
+     * 不要把它接到任何用户输入上。
+     *
+     * 没有图标时不占位（row 保持原有的两栏结构），
+     * 这样权限/模型那几个没有图标的浮层不会有奇怪的左缩进。
+     */
     function row(label, desc, value, opts) {
       const o = opts ?? {};
       const el = global.document.createElement("div");
       el.className = o.className ?? "ov-row";
+      if (typeof o.icon === "string" && o.icon !== "") {
+        el.classList.add("has-ico");
+        const ico = global.document.createElement("span");
+        ico.className = "ico";
+        ico.innerHTML = o.icon;
+        el.appendChild(ico);
+      }
       const n = global.document.createElement("span");
       n.textContent = label;
       el.appendChild(n);
