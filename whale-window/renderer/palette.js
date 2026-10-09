@@ -54,6 +54,17 @@
         label: name,
         desc: desc || "",
         command: `/${name}`,
+        /*
+         * 参数声明（`null` 表示这条命令不需要参数）。
+         *
+         * ⚠️ 这一项**必须带出来**，它是「该不该直接执行」的唯一判据。
+         * 用户报「选择某个指令就直接被发送出去了」：主窗口按命令类型分流
+         * （见 DSH 的决策表：带 input 的进入等待参数态、弹窗类打开弹窗、
+         * 其余才直接执行），而小窗原先一律直接执行 ——
+         * 于是 /btw 这种要填参数的命令一点就被执行掉了。
+         * 丢掉这个字段，上层就无从判断，只能继续一律执行。
+         */
+        hint: c.hint ?? null,
       };
     });
   }
@@ -87,7 +98,8 @@
    *
    * @param {object} deps
    * @param {object} deps.dom {panel, query, list, input}
-   * @param {(command: string) => void} deps.onPick 选中一条可用命令时回调
+   * @param {(command: string, item?: object) => void} deps.onPick 选中一条可用命令时回调
+   *        第二个参数是整条条目（含 `hint`），调用方据此判断该执行还是该插入待补参数
    * @param {(msg: string) => void} [deps.onUnavailable] 点了灰色项时回调（用于如实提示）
    * @returns {object} 控制器
    */
@@ -142,7 +154,14 @@
             return;
           }
           close();
-          onPick(c.command);
+          /*
+           * 把**整条条目**交出去，而不只是命令字符串。
+           *
+           * 上层要靠 `hint` 判断这条命令是否需要参数 —— 需要的话不能直接执行，
+           * 应当把命令插进输入框等用户补参数（主窗口的 leadingInput 语义）。
+           * 只传命令字符串就把这个判断逼到上层去猜。
+           */
+          onPick(c.command, c);
         });
         dom.list.appendChild(row);
       });
@@ -230,7 +249,8 @@
         const first = items.filter(function (c) { return c.command !== null; })[0];
         if (first !== undefined) {
           close();
-          onPick(first.command);
+          // 与点击同一条路：整条条目交出去（见 render 里的说明）
+          onPick(first.command, first);
         }
         return true;
       }

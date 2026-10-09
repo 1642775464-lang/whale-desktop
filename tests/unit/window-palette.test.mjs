@@ -177,3 +177,62 @@ test("菜单项顺序固定，且「按需确认」是灰项", () => {
 test("「更多」含三个窗口动作", () => {
   assert.deepEqual(idsOf(Array.from(panels.MORE_ITEMS)), ["minimize", "reload", "quit"]);
 });
+
+// ─────────────────────────────────────────────────────────────
+// 面板里的条目：「需要参数」的命令不能被直接执行
+//
+// 用户报：「选择某个指令就直接被发送出去了」（他点的是斜杠候选面板里的条目）。
+// 主窗口的语义是**按命令类型分流**（见 DSH 的决策表）：
+//   带参数声明的 → 进入等待参数态；弹窗类 → 打开弹窗；其余 → 才直接执行。
+// 而小窗的面板原先**一律直接执行** —— 于是 /btw 这种要填参数的命令
+// 一点就被执行掉了，用户感受就是「被发送出去了」。
+// ─────────────────────────────────────────────────────────────
+
+test("宿主命令转成面板条目时要保留参数声明（否则无从判断该不该直接执行）", () => {
+  const list = palette.fromHost([
+    { name: "btw", description: "根据当前上下文回答", hint: "旁问内容" },
+    { name: "compact", description: "压缩以上对话内容", hint: null },
+  ]);
+
+  const btw = list.find((c) => c.label === "btw");
+  const compact = list.find((c) => c.label === "compact");
+  assert.ok(btw !== undefined && compact !== undefined, "两条都要转出来");
+
+  assert.equal(btw.hint, "旁问内容", "带参数的命令必须把 hint 带出来");
+  assert.equal(compact.hint, null, "不带参数的命令 hint 为 null（表示可直接执行）");
+
+  // 但**候选值**不变：它仍是可直接用的命令行
+  assert.equal(btw.command, "/btw");
+  assert.equal(compact.command, "/compact");
+});
+
+test("不需要参数的命令：面板条目照常可直接执行", () => {
+  const list = palette.fromHost([{ name: "compact", description: "压缩", hint: null }]);
+  assert.equal(list[0].command, "/compact");
+  assert.equal(list[0].hint, null);
+});
+
+test("app.js 必须按参数声明分流（需要参数的不能直接执行）", () => {
+  const appJs = readFileSync(join(RENDERER, "app.js"), "utf8");
+  // onPick 要能拿到第二条参数（整条条目），否则它拿不到 hint
+  assert.match(
+    appJs,
+    /onPick\(command, item\)/,
+    "onPick 必须接收整条条目 —— 只给命令字符串就无从判断是否需要参数",
+  );
+  assert.match(
+    appJs,
+    /inputArea\.pick\(/,
+    "分流交给 input-area 的 pick（它与「插入 + 参数引导」是同一件事）",
+  );
+
+  // 分流本体：带 hint 的插入、其余交给执行回调
+  const inputArea = readFileSync(join(RENDERER, "input-area.js"), "utf8");
+  assert.match(inputArea, /pick\(command, item, run\)/, "input-area 必须实现 pick");
+  assert.match(
+    inputArea,
+    /item\?\.hint[\s\S]{0,220}editor\.insert\(/,
+    "带参数声明的命令必须插进输入框等用户补参数（主窗口的 leadingInput 语义），" +
+    "而不是被直接执行掉",
+  );
+});

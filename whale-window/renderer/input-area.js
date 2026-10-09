@@ -180,8 +180,35 @@
       rememberToken,
       /** 从宿主命令表补齐全部写法（要在会话就绪后调）。 */
       rememberHostCommands,
+      /**
+       * 选中一条命令：**按类型分流**，不是一律执行。
+       *
+       * 复刻主窗口的决策表（见 DSH 命令包）：
+       *   带参数声明的 → 进入等待参数态（插进输入框，等用户补完再发）；
+       *   其余         → 交回上层去执行。
+       *
+       * 用户报「选择某个指令就直接被发送出去了」——他点的是候选面板里的条目。
+       * 原先一律执行，于是 `/btw` 这种要填参数的命令一点就被执行掉了；
+       * 主窗口不是这个行为。
+       *
+       * @param {string} command 命令行（含前导斜杠）
+       * @param {{hint?: (string|null)}|undefined} item 面板条目（带参数声明）
+       * @param {(cmd: string) => void} run 真正执行命令的回调（上层注入）
+       * @returns {"inserted"|"executed"}
+       */
+      pick(command, item, run) {
+        if (typeof item?.hint === "string" && item.hint !== "") {
+          // 需要参数：插进输入框（带上尾空格），并提示该写什么
+          const inserted = editor.insert(`${command} `);
+          showArgHint(item.hint, inserted);
+          return "inserted";
+        }
+        if (typeof run === "function") run(command);
+        return "executed";
+      },
       showArgHint,
-    };  }
+    };
+  }
 
   global.WhaleInputArea = { DEFAULT_PLACEHOLDER, createInputArea };
 })(typeof window !== "undefined" ? window : globalThis);

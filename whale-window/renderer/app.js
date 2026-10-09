@@ -114,9 +114,18 @@
       // 富文本没有 .value，面板靠这个取值（见 palette.js 的 sync）
       inputText: () => inputArea.getText(),
     },
-    onPick(command) {
-      client.command(command).then((out) => {
-        if (!out.ok) global.console.warn(`命令失败：${out.code}`);
+    /*
+     * 选中一条命令：**按类型分流**，不是一律执行。
+     *
+     * 复刻主窗口的决策表：带参数的进入等待参数态，其余才直接执行。
+     * 用户报「选择某个指令就直接被发送出去了」——他点的是候选面板里的条目。
+     * 决策实现在 input-area.js 的 pick（它与「插入 + 参数引导」是同一件事）。
+     */
+    onPick(command, item) {
+      inputArea.pick(command, item, (cmd) => {
+        client.command(cmd).then((out) => {
+          if (!out.ok) global.console.warn(`命令失败：${out.code}`);
+        });
       });
     },
     onUnavailable: notifyUnavailable,
