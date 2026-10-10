@@ -42,6 +42,24 @@
   box-sizing: border-box;
 }
 
+/*
+ * `hidden` 属性必须真的隐藏，**不因元素自己写了 display 而失效**。
+ *
+ * ⚠️ 这是本文件反复踩的一个坑：`[hidden]` 是浏览器默认样式里的
+ * `display: none`，**优先级最低** —— 只要元素自己写了 `display: flex/block`，
+ * 它就被覆盖，于是 `el.hidden = true` 设了也照样显示。
+ *
+ * 本文件里原来有 9 处逐元素的 `xxx[hidden]{display:none}` 补丁，
+ * 而每加一个可隐藏元素都要记得配一条 —— 漏了就出现
+ * 「点了关闭关不掉」（侧边栏真踩，见 sidebar 那节的注释）。
+ * 与其继续补特例，不如在这里一次定死：**统一强制**，新增元素不必再记。
+ *
+ * 现有那些逐元素补丁保留（无害），将来清理时它们可以删。
+ */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -141,12 +159,22 @@ body.whale {
   font-size: 12.5px;
 }
 
+/*
+ * ⚠️ 这条**必需**：`[hidden]` 的默认 `display:none` 会被上面那句
+ * `display: flex` 覆盖 —— 于是 `sidebar.hidden = true` 设了也照样显示，
+ * 表现为「点 × 关不掉」（真实踩过）。
+ * 本文件其它每个可隐藏元素都配了同样的规则（status / slash / menu-box …）。
+ */
+.sidebar[hidden] {
+  display: none;
+}
+
 .sb-head {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 6px;
+  padding: 8px 8px 6px 12px;
 }
 
 .sb-title {
@@ -154,15 +182,31 @@ body.whale {
   font-size: 12px;
 }
 
+/*
+ * 关闭按钮。
+ *
+ * ⚠️ 点击区域必须够大：实测过一版 `padding: 2px 4px; font-size: 15px`
+ * 只有 **17×19 px** —— 用户点偏一点就"没反应"，报成「点叉关不上」。
+ * 现在用 28×28 的目标尺寸（图标 16px + 四周 padding），
+ * 既是可点区域也是无障碍最小目标。
+ *
+ * `-webkit-app-region: no-drag` 是保险：顶栏整条是拖拽区，
+ * 万一将来侧边栏头部跟拖拽区重叠，没有这句会变成"点了在拖窗口"。
+ */
 .sb-close {
+  width: 28px;
+  height: 28px;
   border: 0;
   background: transparent;
-  color: var(--ink-disabled);
+  color: var(--ink2);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1;
-  padding: 2px 4px;
-  border-radius: 5px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  -webkit-app-region: no-drag;
 }
 
 .sb-close:hover {
@@ -222,6 +266,29 @@ body.whale {
   overflow-y: auto;
   padding: 0 8px 10px;
   border-top: 1px solid #f3f5fa;
+}
+
+/* 工作区分组标题：站得比会话行高一级，一眼看出分组 */
+.sb-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 9px 8px 3px;
+  font-size: 11px;
+  color: var(--ink-disabled);
+  letter-spacing: 0.2px;
+}
+
+.sb-group > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-group-n {
+  flex: 0 0 auto;
+  font-size: 10.5px;
 }
 
 .sb-row {
@@ -344,6 +411,11 @@ body.whale {
   flex-direction: column;
   min-height: 0;          /* flex 子元素要能收缩，否则列表撑破窗口 */
   background: #fcfcfe;
+}
+
+/* 同上：不配这条的话 `hidden` 会被 display:flex 覆盖，技能页关不掉 */
+.skills-view[hidden] {
+  display: none;
 }
 
 .sv-head {

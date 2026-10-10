@@ -380,9 +380,19 @@
       return get(`/whale/skills?sessionId=${encodeURIComponent(sessionId)}`);
     }
 
-    /** 会话的可见性清单（不唤醒冷会话）。 */
+    /**
+     * 会话的可见性清单（不唤醒冷会话）。
+     *
+     * ⚠️ 返回值**规整成 `{ok, sessions}`**（与 `skills()` 的 `{ok, data}` 不同）。
+     * 调用方（侧边栏）直接消费 sessions；让它自己剥一层 `data` 的话，
+     * 谁忘了剥就静默拿到 undefined —— 表现为「会话列表是空的」。
+     * 真窗口实测踩过：侧边栏显示「没有可见的会话」，而桥其实返回了 55 条。
+     */
     function sessionList() {
-      return get("/whale/session/list");
+      return get("/whale/session/list").then(function (out) {
+        if (!out.ok) return { ok: false, code: out.code, message: out.message };
+        return { ok: true, sessions: Array.isArray(out.data?.sessions) ? out.data.sessions : [] };
+      });
     }
 
     /** 断开增量流。 */

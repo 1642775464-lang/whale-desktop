@@ -65,7 +65,14 @@
         sbSkills: dom.sbSkills,
         sbSessions: dom.sbSessions,
       },
-      getSessions: () => client.getState().sessions ?? [],
+      /*
+       * ⚠️ 会话清单**自己拉**，不读 `state.sessions`。
+       *
+       * `state.sessions` 来自 `/whale/hud`，只有折叠器里那几条、
+       * 且**没有工作区字段**；而侧边栏要按工作区分组、要列出全部会话。
+       * 用户报的「工作区与会话列表没加载」就是数据源选错了。
+       */
+      fetchSessions: () => client.sessionList(),
       getCurrentId: () => client.getState().sessionId,
       onSwitch(sessionId) {
         client.activate(sessionId).then((out) => {

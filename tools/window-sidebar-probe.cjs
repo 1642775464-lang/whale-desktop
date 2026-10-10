@@ -58,18 +58,29 @@ const READ = `(() => {
   const list = document.getElementById("sbSessions");
   const view = document.getElementById("skillsView");
   const rows = list ? Array.from(list.children) : [];
+  /*
+   * ⚠️ 判可见性要读 **computed display**，不能读 .hidden 属性。
+   *
+   * .hidden 只说明「作者设了这个属性」，不说明「它真的被隐藏了」——
+   * [hidden] 的默认 display:none 会被元素自己的 display:flex 覆盖。
+   * 探针原先读 .hidden，于是在「点 × 关不掉」的真 bug 面前**全绿**。
+   * 这正是「程序化全绿、用户点不动」的来源。
+   *
+   * （注意本段在模板字面量里，**不能出现反引号**，否则会把字符串截断。）
+   */
+  const shown = (el) => el !== null && getComputedStyle(el).display !== "none";
   return {
-    sidebarOpen: bar ? !bar.hidden : null,
+    sidebarOpen: bar ? shown(bar) : null,
+    sidebarHiddenAttr: bar ? bar.hidden : null,
     rowCount: rows.length,
     rows: rows.map((r) => ({
       text: r.textContent || "",
       cls: r.className || "",
     })),
-    skillsOpen: view ? !view.hidden : null,
+    skillsOpen: view ? shown(view) : null,
     skillsCount: (document.getElementById("svCount") || {}).textContent,
     skillsRows: Array.from(document.getElementById("svList") ? document.getElementById("svList").children : []).length,
-    streamHidden: document.getElementById("stream") ? document.getElementById("stream").hidden : null,
-    sessionId: null,
+    streamHidden: document.getElementById("stream") ? !shown(document.getElementById("stream")) : null,
   };
 })()`;
 
@@ -115,6 +126,9 @@ async function main() {
 
   say("=== 1) 初始状态 ===");
   let st = await run(READ);
+  /** 后面判定要用的两个观察值（跨步骤保留）。 */
+  let rowsSeen = 0;
+  let skillsSeen = 0;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 false）`);
   say(`  技能页打开：${st.skillsOpen}（期望 false）`);
 
@@ -123,6 +137,7 @@ async function main() {
   await run(`document.getElementById("btnSideLeft").click()`);
   await new Promise((r) => setTimeout(r, 400));
   st = await run(READ);
+  rowsSeen = st.rowCount;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 true）`);
   say(`  会话行数：${st.rowCount}`);
   for (const row of st.rows.slice(0, 6)) {
@@ -130,10 +145,41 @@ async function main() {
   }
 
   say("");
+  say("=== 2.5) 用**真鼠标**点侧边栏右上角「×」 ===");
+  /*
+   * ⚠️ 必须用真鼠标事件，不能用 element.click()。
+   *
+   * 这两者的差别正是「程序化全绿、用户点不动」的来源：
+   *   · element.click() 直接派发事件，**跳过命中测试**——
+   *     元素被别的层盖住、或落在 -webkit-app-region: drag 里，它照样"成功"；
+   *   · 真鼠标要经过命中测试与拖拽区判定，问题才会暴露。
+   * 用户报「点叉关不上」，而 element.click() 一直是通的 —— 就用这个复现。
+   */
+  const box = await run(`(() => {
+    const r = document.getElementById("sbClose").getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), w: Math.round(r.width), h: Math.round(r.height) };
+  })()`);
+  say(`  × 的屏幕坐标：(${box.x}, ${box.y})  尺寸 ${box.w}×${box.h}`);
+  win.webContents.sendInputEvent({ type: "mouseMove", x: box.x, y: box.y });
+  win.webContents.sendInputEvent({ type: "mouseDown", x: box.x, y: box.y, button: "left", clickCount: 1 });
+  win.webContents.sendInputEvent({ type: "mouseUp", x: box.x, y: box.y, button: "left", clickCount: 1 });
+  await new Promise((r) => setTimeout(r, 500));
+  st = await run(READ);
+  say(`  真鼠标点后，侧边栏打开：${st.sidebarOpen}（期望 false）`);
+  const realMouseClosed = st.sidebarOpen === false;
+
+  // 重新打开，继续后面的步骤
+  await run(`document.getElementById("btnSideLeft").click()`);
+  await new Promise((r) => setTimeout(r, 400));
+  st = await run(READ);
+  say(`  再点顶栏按钮：${st.sidebarOpen}（期望 true）`);
+
+  say("");
   say("=== 3) 点「技能中心」 ===");
   await run(`document.getElementById("sbSkills").click()`);
   await new Promise((r) => setTimeout(r, 2500));
   st = await run(READ);
+  skillsSeen = st.skillsRows;
   say(`  技能页打开：${st.skillsOpen}（期望 true）`);
   say(`  计数：${st.skillsCount}`);
   say(`  列表行数：${st.skillsRows}`);
@@ -149,10 +195,19 @@ async function main() {
   say(`  消息流已恢复：${!st.streamHidden}（期望 true）`);
 
   // ── 判定 ──
+  /*
+   * ⚠️ 判定要看**真鼠标的结果**（realMouseClosed），不能只看后面程序化步骤的
+   * 结果 —— 用户报的就是「点叉关不上」，而那条只有真鼠标才测得出来。
+   */
   const problems = [];
-  if (st.sidebarOpen !== false && st.sidebarOpen !== true) problems.push("侧边栏状态读不到");
+  if (realMouseClosed !== true) {
+    problems.push("真鼠标点 × 没关上（用户报的「点叉关不上」）");
+  }
+  if (st.sidebarOpen !== false) problems.push("返回后侧边栏仍可见");
   if (st.skillsOpen !== false) problems.push("返回后技能页没关闭");
   if (st.streamHidden !== false) problems.push("返回后消息流没恢复");
+  if (skillsSeen === 0) problems.push("技能列表是空的（读不到或没渲染）");
+  if (rowsSeen === 0) problems.push("会话列表是空的（数据没进 state 或没渲染）");
 
   say("");
   if (pageErrors.length > 0) {

@@ -290,22 +290,62 @@ test("listSessions：走 session/list，参数名是 _request", async () => {
   assert.deepEqual(gateway.calls[0].args, { _request: {} }, "参数名是 _request");
 });
 
-test("listSessions：归一化会话行，缺字段给 null", async () => {
+test("listSessions：按 SessionSummary 的真实字段名归一化", async () => {
+  /*
+   * ⚠️ 字段名照宿主声明写，**不能凭印象**。
+   *
+   * `SessionSummary` 的真实字段（dsh-api-session-controller 的 typert.host.js）：
+   *   { agentAvailable, sessionId, updatedAt, running, blank,
+   *     parentSessionId?, origin?, cwd?, projections? }
+   *
+   * **它没有 `title`** —— 我第一版写了 `s.title`，结果 55 条会话标题全 null、
+   * 工作区也拿不到，界面上就是「会话列表没加载」。
+   * 这类字段名错误是**静默**的：请求成功、结构正常、字段全空。
+   */
   const gateway = fakeGateway({
-    sessions: [
-      { sessionId: "a", title: "会话甲", updatedAt: 1700000000000 },
-      { sessionId: "b" },
-      { title: "没有 id 的行" },
+    items: [
+      {
+        sessionId: "a", updatedAt: 200, cwd: "D:\\proj",
+        running: true, agentAvailable: true, blank: false,
+        projections: { values: { title: "会话甲" } },
+      },
+      { sessionId: "b", updatedAt: 100, cwd: null },
+      { updatedAt: 50 },   // 没有 sessionId → 整条丢掉（它切不过去）
     ],
   });
   const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
 
   const out = await bridge.listSessions();
   assert.equal(out.ok, true);
-  assert.deepEqual(out.sessions, [
-    { sessionId: "a", title: "会话甲", updatedAt: 1700000000000 },
-    { sessionId: "b", title: null, updatedAt: null },
-  ], "没有 sessionId 的行整条丢掉——它切不过去");
+  assert.equal(out.sessions.length, 2, "没有 sessionId 的行整条丢掉");
+  assert.deepEqual(out.sessions[0], {
+    sessionId: "a",
+    title: "会话甲",              // 标题在 projections.values.title 里
+    workspace: "D:\\proj",        // 工作区字段名是 cwd
+    updatedAt: 200,
+    running: true,
+    agentAvailable: true,
+    blank: false,
+    origin: null,
+  });
+  assert.equal(out.sessions[1].title, null, "取不到标题给 null，不编造");
+  assert.equal(out.sessions[1].workspace, null);
+});
+
+test("listSessions：按最近活动倒序（侧边栏直接消费，不必自己排）", async () => {
+  const bridge = createTypertBridge({
+    ctx: ctxWith({
+      typertGateway: fakeGateway({
+        items: [
+          { sessionId: "old", updatedAt: 100 },
+          { sessionId: "new", updatedAt: 900 },
+          { sessionId: "mid", updatedAt: 500 },
+        ],
+      }),
+    }),
+  });
+  const out = await bridge.listSessions();
+  assert.deepEqual(out.sessions.map((s) => s.sessionId), ["new", "mid", "old"]);
 });
 
 test("listSessions：宿主返回形状不同（items）时也能认", async () => {
@@ -313,7 +353,10 @@ test("listSessions：宿主返回形状不同（items）时也能认", async () 
     ctx: ctxWith({ typertGateway: fakeGateway({ items: [{ sessionId: "x" }] }) }),
   });
   const out = await bridge.listSessions();
-  assert.deepEqual(out.sessions, [{ sessionId: "x", title: null, updatedAt: null }]);
+  assert.equal(out.sessions.length, 1);
+  assert.equal(out.sessions[0].sessionId, "x");
+  assert.equal(out.sessions[0].title, null, "缺字段给 null 而不是 undefined");
+  assert.equal(out.sessions[0].blank, false, "布尔字段缺省给 false");
 });
 
 test("listSessions：失败时不返空清单冒充「没有会话」", async () => {

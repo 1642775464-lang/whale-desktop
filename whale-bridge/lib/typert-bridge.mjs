@@ -208,14 +208,49 @@ export function createTypertBridge({ ctx }) {
     const raw = Array.isArray(out.value?.sessions)
       ? out.value.sessions
       : (Array.isArray(out.value?.items) ? out.value.items : []);
+
+    /*
+     * ⚠️ 字段名必须照 `SessionSummary` 的**真实声明**写。
+     *
+     * 实测声明（dsh-api-session-controller 的 typert.host.js）：
+     *   { agentAvailable, sessionId, updatedAt, running, blank,
+     *     parentSessionId?, origin?, cwd?, projections? }
+     *
+     * **它没有 `title`** —— 我第一版凭印象写了 `s.title`，
+     * 结果 55 条会话标题全是 null、工作区也拿不到，界面上就是
+     * 「会话列表没加载」。字段名对不上是**静默**故障：
+     * 请求成功、结构正常、只是每个字段都是空的。
+     *
+     * 标题在 `projections` 里（SessionProjectionHints），工作区就是 `cwd`。
+     */
     const sessions = raw
       .filter((s) => s !== null && typeof s === "object")
-      .map((s) => ({
-        sessionId: typeof s.sessionId === "string" ? s.sessionId : null,
-        title: typeof s.title === "string" && s.title !== "" ? s.title : null,
-        updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : null,
-      }))
+      .map((s) => {
+        const proj = s.projections !== null && typeof s.projections === "object"
+          ? s.projections
+          : {};
+        const values = proj.values !== null && typeof proj.values === "object"
+          ? proj.values
+          : {};
+        const title = [s.title, values.title, proj.title]
+          .find((v) => typeof v === "string" && v !== "");
+        return {
+          sessionId: typeof s.sessionId === "string" ? s.sessionId : null,
+          title: title ?? null,
+          // 工作区：SessionSummary 的字段名是 cwd（宿主 UI 也按它分组）
+          workspace: typeof s.cwd === "string" && s.cwd !== "" ? s.cwd : null,
+          updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : null,
+          running: s.running === true,
+          agentAvailable: s.agentAvailable === true,
+          // blank 是「空会话」（刚建、还没内容），界面上要能区分
+          blank: s.blank === true,
+          origin: typeof s.origin === "string" ? s.origin : null,
+        };
+      })
       .filter((s) => s.sessionId !== null);
+
+    // 按最近活动倒序：调用方（侧边栏）直接消费，不必自己再排
+    sessions.sort((l, r) => (r.updatedAt ?? 0) - (l.updatedAt ?? 0));
     return { ok: true, sessions };
   }
 
