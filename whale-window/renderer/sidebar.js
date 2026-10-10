@@ -83,6 +83,8 @@
     let sessions = [];
     /** 上一次拉取失败的原因；有值时界面显示它而不是「没有会话」。 */
     let loadError = null;
+    /** 降级标记：清单是**回退数据**（不完整），要如实告知用户。 */
+    let degraded = null;
     /** 唤醒中的会话 id → 已等待秒数（与 panels 同口径）。 */
     const waking = Object.create(null);
     /** 新建中的标记：连点两下不能建两个会话。 */
@@ -181,6 +183,17 @@
           dom.sbSessions.appendChild(sessionRow(s));
         });
       });
+
+      /*
+       * 降级说明放**最后**（列表下方）：会话仍能看能切，
+       * 但不能假装数据完整 —— 标题/工作区可能缺，数量可能不全。
+       */
+      if (degraded !== null) {
+        const note = global.document.createElement("div");
+        note.className = "sb-note";
+        note.textContent = `清单不完整（${degraded}）：仅显示已加载的会话`;
+        dom.sbSessions.appendChild(note);
+      }
     }
 
     /** 拉清单并重绘。 */
@@ -189,14 +202,17 @@
         if (out !== null && out !== undefined && out.ok === true) {
           sessions = Array.isArray(out.sessions) ? out.sessions : [];
           loadError = null;
+          degraded = typeof out.degraded === "string" && out.degraded !== "" ? out.degraded : null;
         } else {
           // 失败保留旧清单，但把原因显示出来（不静默变空）
           loadError = (out && out.code) ? String(out.code) : "unknown";
+          degraded = null;
         }
         renderSessions();
         return out;
       }).catch(function (err) {
         loadError = err && err.message ? err.message : "network";
+        degraded = null;
         renderSessions();
       });
     }

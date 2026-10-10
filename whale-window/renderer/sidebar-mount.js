@@ -70,9 +70,22 @@
        *
        * `state.sessions` 来自 `/whale/hud`，只有折叠器里那几条、
        * 且**没有工作区字段**；而侧边栏要按工作区分组、要列出全部会话。
-       * 用户报的「工作区与会话列表没加载」就是数据源选错了。
+       *
+       * 但 `session/list` 可能**整体失败**：实测宿主报
+       * `SESSION_QUERY_SOURCE_CONFLICT`（它自己两条观察的 header 不一致，
+       * 属于宿主侧的数据状态问题）。那时**回退到 hud 里那份** ——
+       * 虽然只有部分会话、缺标题与工作区，但至少能看、能切，
+       * 比整块空白强（降级原则：宁可局部失效不整体崩溃）。
+       * 回退要**标记降级**，让界面说明原因，不假装数据完整。
        */
-      fetchSessions: () => client.sessionList(),
+      fetchSessions: () => client.sessionList().then((out) => {
+        if (out.ok) return out;
+        const fallback = client.getState().sessions ?? [];
+        if (fallback.length > 0) {
+          return { ok: true, sessions: fallback, degraded: out.code };
+        }
+        return out;   // 回退也没数据：如实报错
+      }),
       getCurrentId: () => client.getState().sessionId,
       onSwitch(sessionId) {
         client.activate(sessionId).then((out) => {

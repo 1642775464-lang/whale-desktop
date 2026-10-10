@@ -335,6 +335,17 @@ body.whale {
   font-size: 11.5px;
 }
 
+/* 降级说明：清单不完整时放在列表下方，明显区分于会话行 */
+.sb-note {
+  margin: 8px 4px 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff8e6;
+  color: #8a6d1f;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
 .brand-dot {
   width: 7px;
   height: 7px;
