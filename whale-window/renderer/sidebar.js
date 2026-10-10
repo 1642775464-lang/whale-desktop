@@ -42,6 +42,11 @@
   /**
    * 把会话按工作区归组，保持「组内按最近活动倒序」。
    *
+   * ⚠️ 分组用桥给的 **`workspaceTitle`**（来自 Workspace registry 的登记标题），
+   * 而不是从 `workspace` 路径里猜最后一段 —— 登记标题才是主窗口显示的那个，
+   * 两者不一定相同（注册表里可以起任意标题）。
+   * 拿不到登记标题时才退回路径猜测。
+   *
    * @param {Array<object>} sessions
    * @returns {Array<{workspace: string, cwd: string|null, sessions: Array<object>}>}
    */
@@ -50,14 +55,43 @@
     const index = Object.create(null);
     sessions.forEach(function (s) {
       const cwd = typeof s.workspace === "string" && s.workspace !== "" ? s.workspace : null;
-      const key = cwd ?? "(未标注工作区)";
+      const title = typeof s.workspaceTitle === "string" && s.workspaceTitle !== ""
+        ? s.workspaceTitle
+        : workspaceNameOf(cwd);
+      // 用工作区 id 分组（同名工作区不该被合并）；没有 id 时退回标题
+      const key = typeof s.workspaceId === "string" && s.workspaceId !== "" ? s.workspaceId : title;
       if (index[key] === undefined) {
-        index[key] = { workspace: workspaceNameOf(cwd), cwd, sessions: [] };
+        index[key] = { workspace: title, cwd, sessions: [] };
         groups.push(index[key]);
       }
       index[key].sessions.push(s);
     });
     return groups;
+  }
+
+  /**
+   * 一条会话该不该出现在侧边栏里。
+   *
+   * 判据照**主窗口**（`dsh-client-ui-workspace` 的 `sessionVisible`）：
+   *
+   *     if (session.blank && session.id !== current) return false;
+   *     default: return !archived.has(session.id);
+   *
+   * 抽成纯函数是为了能直接单测 —— 用户报的「数目根本不对、多出来一堆
+   * 空壳」就是因为这条判据漏了 blank，而它埋在渲染循环里时测不到。
+   *
+   * @param {object} session 会话行（含 `blank` / `archived`）
+   * @param {string|null} currentId 当前会话 id
+   * @param {boolean} archivedKnown 归档判据是否拿到（拿不到就不按归档过滤）
+   * @returns {boolean} 是否显示
+   */
+  function sessionVisible(session, currentId, archivedKnown) {
+    if (session === null || typeof session !== "object") return false;
+    // 归档：只在我们**确实知道**归档状态时才隐藏（宁可多列不可误藏）
+    if (archivedKnown === true && session.archived === true) return false;
+    // 空会话：当前那个例外（用户可能正停在刚建的空会话上）
+    if (session.blank === true && session.sessionId !== currentId) return false;
+    return true;
   }
 
   /**
@@ -185,21 +219,20 @@
       }
 
       /*
-       * 归档会话**不列出来**。
-       *
-       * `session/list` 的 SessionSummary 不带归档状态，桥会额外查
-       * `workspaceRegistry.archivedSessionIds` 并给每行标 `archived`。
-       * 用户报过「你把已归档的会话也读进去了」—— 归档意味着「我不看了」，
-       * 列出来就是噪音。
-       *
-       * ⚠️ 判据拿不到时（`archivedKnown === false`）**不隐藏任何东西**：
-       * 宁可多列，也不要把用户的会话凭空藏掉。
+       * 可见性判据在纯函数 `sessionVisible` 里（照主窗口的同名规则），
+       * 这里只负责分类统计 + 渲染 + 如实说明隐藏了多少。
        */
+      const currentId = deps.getCurrentId();
       const hiddenArchived = [];
+      let hiddenBlank = 0;
       const visible = [];
       sessions.forEach(function (s) {
+        if (sessionVisible(s, currentId, archivedKnown)) {
+          visible.push(s);
+          return;
+        }
         if (archivedKnown === true && s.archived === true) hiddenArchived.push(s);
-        else visible.push(s);
+        else hiddenBlank += 1;
       });
 
       groupByWorkspace(visible).forEach(function (group) {
@@ -208,6 +241,17 @@
           dom.sbSessions.appendChild(sessionRow(s));
         });
       });
+
+      /*
+       * 空会话通常很多（宿主每次起窗都可能留一个），不逐个说明，
+       * 但要说清「有一批空会话没列」—— 否则用户会以为列表漏了。
+       */
+      if (hiddenBlank > 0) {
+        const note = global.document.createElement("div");
+        note.className = "sb-note";
+        note.textContent = `已略过 ${hiddenBlank} 个空会话`;
+        dom.sbSessions.appendChild(note);
+      }
 
       /*
        * 隐藏了几个要说出来 —— 否则用户会以为会话丢了。
@@ -344,5 +388,5 @@
     };
   }
 
-  global.WhaleSidebar = { createSidebar, groupByWorkspace, workspaceNameOf };
+  global.WhaleSidebar = { createSidebar, groupByWorkspace, workspaceNameOf, sessionVisible };
 })(typeof window !== "undefined" ? window : globalThis);

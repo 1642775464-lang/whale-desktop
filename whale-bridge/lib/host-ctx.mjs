@@ -14,6 +14,7 @@
 
 import { createHostCatalog } from "./host-catalog.mjs";
 import { createTypertBridge } from "./typert-bridge.mjs";
+import { readWorkspaceRegistry } from "./workspace-registry.mjs";
 
 /**
  * 探测一个宿主服务是否可用。
@@ -130,9 +131,12 @@ export function createHostAccess(ctx) {
    */
   const typert = createTypertBridge({
     ctx,
-    // 归档判据：`session/list` 的 SessionSummary 不带归档状态，
-    // 靠 workspaceRegistry 的 archivedSessionIds 补（见 host-catalog 注释）
-    archivedIdsOf: () => catalog.archivedSessionIds(),
+    /*
+     * 工作区归属与归档集合都来自注册表（读宿主的权威持久化）。
+     * 见 workspace-registry.mjs 的头注释：为什么必须用它，
+     * 以及为什么不能按会话的 cwd 反推归属。
+     */
+    registryOf: () => readWorkspaceRegistry(),
   });
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */
@@ -389,8 +393,6 @@ export function createHostAccess(ctx) {
     sessionEvents: catalog.sessionEvents,
     // 按名探测服务（`/whale/probe?services=a,b` 用）—— 只回答在不在
     serviceVisible: catalog.serviceVisible,
-    // 已归档会话的 id（侧边栏不列它们）
-    archivedSessionIds: catalog.archivedSessionIds,
     // Typert 远程调用（技能目录等侧边栏数据源；见 typert-bridge.mjs）
     typertAvailable: typert.available,
     invokeRemote: typert.invokeRemote,

@@ -50,12 +50,13 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
  *
  * @param {object} deps
  * @param {object} deps.ctx 宿主插件上下文
- * @param {() => {ok: boolean, ids: string[]}} [deps.archivedIdsOf]
- *        取「已归档会话 id」的判据。`session/list` 返回的 `SessionSummary`
- *        **不带归档状态**，而侧边栏不该列出归档会话 —— 由调用方注入这个依赖。
+ * @param {() => object} [deps.registryOf]
+ *        取工作区注册表（含每个工作区**登记的** `sessionIds` 与归档集合）。
+ *        `session/list` 只给会话行，**归属关系在注册表里** —— 按 cwd 反推
+ *        会把历史上所有在该目录跑过的会话都列出来（用户报的「数目不对」）。
  * @returns {object} Typert 调用能力
  */
-export function createTypertBridge({ ctx, archivedIdsOf }) {
+export function createTypertBridge({ ctx, registryOf }) {
   /** 网关服务**每次现取**（延迟解析；塞进 inject 会让插件在服务缺失时不启动）。 */
   function gatewayOf() {
     if (ctx === null || ctx === undefined) return undefined;
@@ -253,29 +254,61 @@ export function createTypertBridge({ ctx, archivedIdsOf }) {
       .filter((s) => s.sessionId !== null);
 
     /*
-     * 标记归档会话。
+     * 工作区归属与归档集合**都以注册表为准**。
      *
-     * ⚠️ `session/list` 的 `SessionSummary` **不含归档状态** —— 不额外查
-     * `workspaceRegistry.archivedSessionIds` 就会把归档会话一起列出来
-     * （用户报的「你把已归档的会话也读进去了」）。
+     * 用户报过「数目根本不对…多出来一堆空壳」：我原先按「会话的 cwd 等于
+     * 某目录」反推归属，于是把历史上所有在该目录跑过的会话都列了出来。
+     * 而主窗口的归属来自 Workspace registry —— 每个工作区有一份**显式登记的**
+     * `sessionIds`。两者数目自然对不上。
      *
-     * 判据取不到时**一律当未归档**（`archived=false`），由调用方决定是否隐藏：
-     * 宁可多列几条，也不要把用户的会话凭空藏掉。
+     * 归档集合与工作区归属在同一份注册表里（客户端 baseline 也是这么下发的：
+     * `installViews(baseline.items)` + `installArchived(baseline.archivedSessionIds)`）。
      */
-    const archived = typeof archivedIdsOf === "function" ? archivedIdsOf() : null;
-    const archivedIds = archived !== null && archived.ok === true ? archived.ids : [];
-    const archivedSet = new Set(archivedIds);
-    for (const s of sessions) {
+    const registry = typeof registryOf === "function" ? registryOf() : null;
+    const registryOk = registry !== null && registry.ok === true;
+
+    /** sessionId → 所属工作区（登记为准，一个会话只归一个工作区）。 */
+    const memberOf = new Map();
+    if (registryOk) {
+      for (const ws of registry.workspaces) {
+        for (const id of ws.sessionIds) {
+          if (!memberOf.has(id)) memberOf.set(id, ws);
+        }
+      }
+    }
+
+    /*
+     * 注册表读到时**只列登记在册的会话**；读不到时**不裁剪**
+     * （宁可多列，也不要把用户的会话凭空藏掉）。
+     */
+    const listed = registryOk
+      ? sessions.filter((s) => memberOf.has(s.sessionId))
+      : sessions;
+
+    for (const s of listed) {
+      const ws = memberOf.get(s.sessionId);
+      // 工作区用登记的那份（含标题），而不是会话自己的 cwd
+      s.workspaceId = ws !== undefined ? ws.id : null;
+      s.workspaceTitle = ws !== undefined ? ws.title : null;
+      s.workspacePath = ws !== undefined ? ws.path : (s.workspace ?? null);
+      s.isDefaultWorkspace = ws !== undefined ? ws.isDefault === true : false;
+    }
+
+    const archivedSet = new Set(registryOk ? registry.archivedIds : []);
+    for (const s of listed) {
       s.archived = archivedSet.has(s.sessionId);
     }
 
     // 按最近活动倒序：调用方（侧边栏）直接消费，不必自己再排
-    sessions.sort((l, r) => (r.updatedAt ?? 0) - (l.updatedAt ?? 0));
+    listed.sort((l, r) => (r.updatedAt ?? 0) - (l.updatedAt ?? 0));
     return {
       ok: true,
-      sessions,
-      // 让调用方知道「归档判据有没有拿到」：拿不到时不该按 false 隐藏
-      archivedKnown: archived !== null && archived.ok === true,
+      sessions: listed,
+      // 两个「判据有没有拿到」的标记。拿不到时调用方**不该**据此隐藏：
+      //   · archivedKnown 为 false → 不按归档隐藏
+      //   · registryKnown 为 false → 列表未按登记裁剪（但仍是全部可见会话）
+      archivedKnown: registryOk,
+      registryKnown: registryOk,
     };
   }
 

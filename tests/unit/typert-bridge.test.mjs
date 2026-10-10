@@ -318,47 +318,78 @@ test("listSessions：按 SessionSummary 的真实字段名归一化", async () =
   const out = await bridge.listSessions();
   assert.equal(out.ok, true);
   assert.equal(out.sessions.length, 2, "没有 sessionId 的行整条丢掉");
-  assert.deepEqual(out.sessions[0], {
-    sessionId: "a",
-    title: "会话甲",              // 标题在 projections.values.title 里
-    workspace: "D:\\proj",        // 工作区字段名是 cwd
-    updatedAt: 200,
-    running: true,
-    agentAvailable: true,
-    blank: false,
-    origin: null,
-    archived: false,              // 没注入归档判据 → 一律 false
-  });
-  assert.equal(out.archivedKnown, false, "没注入判据时如实说「判据没拿到」");
+  assert.equal(out.sessions[0].title, "会话甲");
+  assert.equal(out.sessions[0].workspacePath, "D:\\proj", "没有注册表时退回 cwd");
   assert.equal(out.sessions[1].title, null, "取不到标题给 null，不编造");
-  assert.equal(out.sessions[1].workspace, null);
+  assert.equal(out.sessions[1].workspacePath, null, "cwd 也没有时给 null");
+  assert.equal(out.archivedKnown, false, "没注入注册表时如实说「判据没拿到」");
 });
 
-test("listSessions：归档判据注入后，逐行标记 archived", async () => {
+test("listSessions：**只列注册表里登记在册的会话**（用户报的「数目不对」）", async () => {
   /*
-   * 用户报过「你把已归档的会话也读进去了」。
+   * ⚠️ 这条是用户报的核心问题。
    *
-   * `session/list` 的 SessionSummary **不含归档状态** —— 归档来自
-   * `workspaceRegistry.archivedSessionIds`（见 archived-session-gate.js：
-   * 它就是用 archived.includes(id) 判定）。所以桥要额外查、逐行标。
+   * 我原先按「会话的 cwd 等于某目录」反推归属 —— 于是把历史上所有在该目录
+   * 跑过的会话（含空壳、含早已不属于该工作区的）全列了出来，数目远大于
+   * 主窗口。主窗口的归属来自 Workspace registry：每个工作区有一份
+   * **显式登记的** sessionIds。
+   *
+   * 实测对照：注册表里「悬浮窗」工作区只登记了 **3 条**，
+   * 而按 cwd 反推能匹配出 8 条。
    */
   const bridge = createTypertBridge({
     ctx: ctxWith({
       typertGateway: fakeGateway({
         items: [
-          { sessionId: "keep", updatedAt: 300 },
-          { sessionId: "gone", updatedAt: 200 },
+          { sessionId: "in-ws", updatedAt: 300, cwd: "D:\\proj" },
+          { sessionId: "not-in-ws", updatedAt: 200, cwd: "D:\\proj" },   // cwd 相同但没登记
         ],
       }),
     }),
-    archivedIdsOf: () => ({ ok: true, ids: ["gone"] }),
+    registryOf: () => ({
+      ok: true,
+      workspaces: [{ id: "ws1", title: "项目", path: "D:\\proj", sessionIds: ["in-ws"], isDefault: false }],
+      archivedIds: [],
+      pinnedIds: [],
+    }),
   });
 
   const out = await bridge.listSessions();
-  assert.equal(out.archivedKnown, true, "判据拿到了");
+  assert.equal(out.sessions.length, 1, "没登记的会话不该出现");
+  assert.equal(out.sessions[0].sessionId, "in-ws");
+  assert.equal(out.sessions[0].workspaceTitle, "项目", "工作区用登记的那份（含标题）");
+  assert.equal(out.sessions[0].workspaceId, "ws1");
+  assert.equal(out.registryKnown, true);
+});
+
+test("listSessions：注册表读不到时不裁剪（宁可多列不可凭空藏）", async () => {
+  const bridge = createTypertBridge({
+    ctx: ctxWith({ typertGateway: fakeGateway({ items: [{ sessionId: "a" }, { sessionId: "b" }] }) }),
+    registryOf: () => ({ ok: false, workspaces: [], archivedIds: [], pinnedIds: [] }),
+  });
+  const out = await bridge.listSessions();
+  assert.equal(out.sessions.length, 2, "判据拿不到时如实列出全部，不裁剪");
+  assert.equal(out.registryKnown, false);
+  assert.equal(out.archivedKnown, false);
+});
+
+test("listSessions：归档集合来自注册表", async () => {
+  const bridge = createTypertBridge({
+    ctx: ctxWith({
+      typertGateway: fakeGateway({ items: [{ sessionId: "keep" }, { sessionId: "gone" }] }),
+    }),
+    registryOf: () => ({
+      ok: true,
+      workspaces: [{ id: "w", title: "W", path: null, sessionIds: ["keep", "gone"], isDefault: false }],
+      archivedIds: ["gone"],
+      pinnedIds: [],
+    }),
+  });
+  const out = await bridge.listSessions();
   const byId = Object.fromEntries(out.sessions.map((s) => [s.sessionId, s]));
   assert.equal(byId.keep.archived, false);
-  assert.equal(byId.gone.archived, true, "归档的要标出来，界面才好隐藏");
+  assert.equal(byId.gone.archived, true);
+  assert.equal(out.archivedKnown, true);
 });
 
 test("listSessions：归档判据拿不到时 archivedKnown=false（界面据此不隐藏）", async () => {
