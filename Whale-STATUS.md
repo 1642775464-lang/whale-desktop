@@ -1,6 +1,6 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v4.6
+- 文档版本：v4.7
 - 日期：2026-10-07
 - 状态：**一期与切片 7 全部完成并验收通过**——四个浮层、真上传、模型目录同步、小窗默认会话并跟随、唤起语义、＋号菜单对齐主窗口；647 测试全绿、七道闸门全过
 - 项目根：`D:\DEEPSEEK\悬浮窗`
@@ -198,6 +198,8 @@
 | 80 | **注入验证要撤到「真的没有防线」为止** | 撤掉全局 `[hidden]` 规则后探针仍全绿 —— 因为**逐元素那条还在兜底**。两条互为备份时必须**两条都撤**，才证明得了探针有效。第一次注入「没复现」时差点误判成「探针测不到」，实际是我注入得不彻底 |
 | 81 | **「整个查询失败」与「部分数据缺失」是两种故障，降级要区分** | 宿主 `session/list` 因**一条**会话的 header 冲突而**整体** 502（不是跳过那条）。此时若界面显示「没有会话」，用户会以为会话丢了。正确做法：**回退到另一份可用数据 + 如实标记降级**（本次回退到 `/whale/hud` 那份），既不整体崩、也不假装完整 |
 | 82 | **排查「界面数据不对」时先问：同一条通路在别处是否也坏** | 用户截图里**主窗口标题也是「(无标题会话)」** —— 这一眼就说明问题不在小窗，而在宿主共用的那条会话查询。**先找「别处是否同样异常」的证据，能立刻把范围从「我的代码」缩到「共用的数据源」**，省掉大量在小窗里瞎查的时间 |
+| 83 | **「数据源不带的字段」必须另找权威来源，别指望它顺手带上** | `session/list` 的 `SessionSummary` 没有归档字段，于是归档会话被一起列出来。归档的权威来源是 `ctx.workspaceRegistry.archivedSessionIds`（该判据在 `archived-session-gate.js` 里就是 `archived.includes(id)`）。**用某个数据源之前，先核它的字段表**；缺什么就去找那个字段的归属方，而不是「它没给就当没有」 |
+| 84 | **判据缺失时的默认值要选「宁可多显示」的那一侧** | 归档判据拿不到时返回 `ok:false`（而不是「没有归档的」），界面只在 `archivedKnown===true` 时才隐藏。两种失败不对等：多列只是噪音；误隐藏会让**用户的会话凭空少一截且不知为何**。同理，隐藏了几个要**显示出来**，否则用户以为会话丢了 |
 
 ---
 
@@ -2271,6 +2273,86 @@ projcache 里有 identity 且 `cwd` 与所在目录一致），
 
 ---
 
+## 六·三十二补、不再列出已归档的会话（2026-10-10）
+
+### 用户报告
+
+> 你把已归档的会话也读进去了
+
+### 根因：`session/list` 不带归档状态
+
+`SessionSummary` 的字段是
+`{ agentAvailable, sessionId, updatedAt, running, blank, parentSessionId?, origin?, cwd?, projections? }`
+—— **没有归档字段**。所以它会把归档会话一起返回，我照单全列就读进来了。
+
+归档的**权威来源**在 Workspace registry：
+
+```text
+ctx.workspaceRegistry.archivedSessionIds
+```
+
+依据是 `dsh-api-session-controller` 的 `archived-session-gate.js` ——
+它判定归档用的就是 `archived.includes(header.id)`。
+
+### 改法
+
+| 层 | 改动 |
+|---|---|
+| 桥 `host-catalog` | 新增 `archivedSessionIds()` 读那个数组 |
+| 桥 `typert-bridge` | `listSessions` 接受 `archivedIdsOf` 依赖，逐行标 `archived`，回传 `archivedKnown` |
+| 桥 `host-ctx` | 把 `catalog.archivedSessionIds` 接给 typert |
+| 桥 `handlers-sidebar` | `/whale/session/list` 回传 `archivedKnown` |
+| 渲染层 | 隐藏 `archived === true` 的行，显示「已隐藏 N 个归档会话」 |
+
+### 一个刻意的保守设计
+
+**归档判据拿不到时，一条也不隐藏。**
+
+`archivedSessionIds()` 取不到服务时返回 `ok:false`（不是「没有归档的」），
+`archivedKnown` 随之 false，渲染层只在 `archivedKnown === true` 时才隐藏。
+
+两种失败不对等：
+
+- 多列几个归档会话 → 只是噪音，用户看得见；
+- 判据缺失却照隐藏 → **用户的会话凭空少一截**，且他不知道为什么。
+
+同理，降级回退到 hud 数据时 `archivedKnown` 强制 false
+（那份数据没有归档标记，报 true 就是语义上撒谎）。
+隐藏了多少个也**显示出来** —— 不说明的话用户会以为会话丢了。
+
+### 顺带拆文件
+
+`host-ctx.test.mjs` 到 505 行（上限 500）。把「按名探测服务」与「归档判据」
+两组拆到 `host-ctx-metadata.test.mjs`（都属**宿主元数据读取**），
+两种假 ctx 抽到 `tests/helpers/host-ctx-double.mjs` 共用 —— 不各自复制。
+
+### 真窗口实测
+
+当时桥**尚未重启**，归档过滤还没生效，所以没有隐藏任何会话
+—— 正是「判据拿不到时不隐藏」的预期行为：
+
+```text
+会话行数：59
+  - "悬浮窗 8"                              [sb-group]
+  - "从PRD与原型重新实施项目 当前"            [sb-row]
+  - "Run local USER.md compaction now. 历史"  [sb-row]
+  - "Side: 解决这个一致把…问题 历史"          [sb-row]
+```
+
+**工作区与标题都已正常**（上一轮的字段名修复生效了）。
+重启宿主后归档会话会被隐藏并显示隐藏条数。
+
+### 状态
+
+```kv
+测试: 790 全绿（+6）
+闸门: 7 道全过
+提交: 5bfc3ee
+待用户操作: 重启宿主（让归档过滤生效）
+```
+
+---
+
 ## 七、版本沿革
 
 | 版本 | 日期 | 变更 |
@@ -2286,6 +2368,7 @@ projcache 里有 identity 且 `cwd` 与所在目录一致），
 | v1.8 | 2026-10-06 | **切片 6 完成，六片全部交付**（`aadf93a`）。页面右下角小鲸鱼按钮（挂 `shell.overlay`，单击并行拉起悬浮条与小窗）；桥侧按已确认的影响清单泛化 `windows.mjs`（TARGETS 表 + 复用按目标分开）。真宿主验收 E1–E6 全过，**走正规 `install_bundle` / `remove_bundle` 通道，0 个坑**（与切片 5 手工安装的 3 个坑形成对照）。图标改为机械注入（我第一版凭印象编了段鲸鱼 path，与真图标完全不同——PRD 早警告过「手抄会错」）。依赖扫描口径修正为「浏览器侧另算、但更严」（允许宿主模块表模块，禁止 node: 内置）。测试 502 全绿、七道闸门全过。卸载核对：依赖回 12、bundles 回 17、用户主题设置保留；记一条工具小缺口（`remove_bundle` 不删 `node_modules/` 下的符号链接） |
 | v1.9 | 2026-10-06 | **插件装回并长期保留**（用户要求「装」），进入日用阶段。用户在日用中发现并报出 **4 个缺陷**，全部修复且**逐项验收通过**：① 点鲸鱼只唤起不收起（PRD F2① 是切换语义）② 图标照抄源 svg 的 `fill="none"` → 看着透明 ③ 关窗时 `target` 被 HTTP 处理器静默丢掉 → `{ok:true,closed:0}`「成功但一个都没关」④ `align-items:baseline` 的行盒贴顶 → 数字偏上 6px。四个都做了注入验证的防线。新增 3 个量测工具（切换/绿环探针、居中量测探针、图标独立复核），预检补标题通路。记录三次「我以为」被证据纠正的过程。新增 4 项环境坑（27–30）。测试 520 全绿 |
 | v2.1 | 2026-10-07 | **切片 7 第二批（A/B/C）落地**：模型目录改走 `sessionController.modelCatalog()`（原先找的 `models` 服务宿主根本没注册 → 一直返回 0）、权限档位以 `permissionPresets` 为准（4 档含运行期注册的 `auto`）、新增第 24 条路由 `GET /whale/presets` 与两条上传路由（25/26）。小窗补齐四个浮层（权限/模型与思考强度/用量/＋真上传，含拖拽与粘贴）。**三个真因层层递进**：① 数据源找错 ② 数据源对了但**取太早**（sessionController 注册时机在桥之后）③ 把「还没就绪」**缓存成了永远**（环境坑 35）。另修掉 `btnPerm` 被绑定两次导致两次 toggle 互相抵消（浮层永远打不开）。新增坑 31–35。测试 583 全绿 |
+| v4.7 | 2026-10-10 | **侧边栏不再列出已归档的会话**（`5bfc3ee`）：用户报「你把已归档的会话也读进去了」。根因：`SessionSummary` **没有归档字段**，`session/list` 会把归档会话一起返回。归档权威来源是 `ctx.workspaceRegistry.archivedSessionIds`（依据 `archived-session-gate.js` 用它做 `archived.includes(header.id)` 判定）。改法：host-catalog 新增 `archivedSessionIds()`；typert 的 `listSessions` 接受 `archivedIdsOf` 依赖并逐行标 `archived`、回传 `archivedKnown`；渲染层隐藏 `archived===true` 并显示「已隐藏 N 个归档会话」。**刻意的保守设计**：判据拿不到时**一条也不隐藏**（`ok:false` 而非「没有归档的」）—— 多列只是噪音，误隐藏会让用户的会话凭空少一截；降级回退 hud 数据时 `archivedKnown` 强制 false（那份没有归档标记，报 true 是语义撒谎）。顺带把 `host-ctx.test.mjs`（505 行超限）的「探测服务/归档判据」拆到 `host-ctx-metadata.test.mjs`，假 ctx 抽到 `tests/helpers/host-ctx-double.mjs` 共用。真窗口实测：59 行、「悬浮窗 8」分组与真实标题均正常（**工作区与标题已修好**）。测试 790 全绿 |
 | v4.6 | 2026-10-10 | **根因在宿主：会话查询整体冲突**（`4a9b45a`）：用户报「没有工作区、没有项目分组、会话标题也没有、数量不对」—— 四个现象同一个根因。`GET /whale/session/list` 实测 **502 `SESSION_QUERY_SOURCE_CONFLICT`**（连测 3 次，持续态）：`dsh-session-query` 的 `assertSessionHeadersCompatible` 比较同一会话两次观察（`cwd`/`createdAt`/`parentSession`/`isSeeded`/`delegationDepth`），**任一不一致就抛错**，于是**整个清单查询失败**而非跳过那条。**证据：用户截图里主窗口标题也是「(无标题会话)」** —— 同一条通路，宿主机层面问题，不是小窗的 bug。本次做的是**不让它整体崩**：失败时回退到 `/whale/hud` 那份（能看能切），并在列表下方如实标降级「清单不完整（…）：仅显示已加载的会话」，不假装数据完整。连带：`skills/list` 同因报 `gateway/internal`。**没有改宿主的落盘数据**（那是用户数据）。建议重启宿主；仍冲突则需单独处理 `session-29eea3d1`（10/05 旧会话）。真窗口实测降级态：27 行，「悬浮窗 1」分组与「从PRD与原型重新实施项目」标题均正确渲染 |
 | v4.5 | 2026-10-10 | **修用户报的两处**（`a18ca5c`）：①「点 × 关不上」根因在 CSS 不在点击 —— `[hidden]` 的默认 `display:none` **会被元素自己的 `display:flex` 覆盖**（优先级最低），我给 `.sidebar` 写了 flex 却漏配 `[hidden]` 规则；本文件原有 **9 处**逐元素补丁，说明这坑踩过多次。改为统一强制 `[hidden]{display:none !important}`；顺带把 × 点击区从 **17×19px 扩到 28×28px**。②「工作区与会话列表没加载」是**三个原因叠加**：字段名猜错（`SessionSummary` 没有 `title`，标题在 `projections.values.title`、**工作区是 `cwd`**，凭印象写 `s.title` 导致 55 条全空 —— 静默故障）、数据源选错（读 `/whale/hud` 的 `state.sessions`，只有折叠器几条且无工作区字段，改为自己拉 `/whale/session/list` 并按工作区分组）、剥错一层（`sessionList()` 返回 `{ok,data}` 而侧边栏读 `out.sessions`，规整为 `{ok,sessions}`）。**探针为什么没抓到**：原先读 `el.hidden` 属性（只说明"设了"），改为读 computed display 后注入验证立刻复现 —— 且必须**两条 `[hidden]` 规则都撤**才暴露（互为备份）。真窗口复测：56 行（1 分组 + 55 会话）、「当前」标签正确命中、真鼠标点 × 关得上 |
 | v4.4 | 2026-10-10 | **左侧边栏落地**（`d0870f3` 桥侧 + `d199fed` 渲染层）：用户选 C（先做会话类 + 技能中心）。真窗口实测通过：点顶栏侧边栏按钮 → 打开并显示会话清单（含三档标签）；点技能中心 → 技能页 213/213 条、侧边栏收起、消息流隐藏；点返回 → 恢复。**顺带修掉一个既有缺陷**：`state.sessions` **从未被赋值**（`fetchActiveSessionId` 只设 sessionId），于是 `getState().sessions` 恒为 undefined，侧边栏与 ☰ 菜单的会话列表**永远显示「没有可见的会话」** —— 这个缺陷单元测试发现不了（契约测试只扫源码不跑界面），是加侧边栏时在真窗口暴露的。app.js 曾涨到 596 行，按职责拆出 `sidebar.js`（控制器）/ `sidebar-mount.js`（装配）/ `skills-view.js`（技能页）/ `dom-table.js`（DOM 清单），回到 464 行 —— **拆而不放宽**。两个设计：技能页与消息流**并列**（切换只改 hidden，不丢滚动位置、输入区仍可用）；读不到数据时**显示原因不给空列表**。待重启：「新会话」走 `d0870f3` 的桥路由，晚于宿主最后一次启动（实测 `/whale/session/list` 仍 404） |
