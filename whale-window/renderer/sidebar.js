@@ -219,20 +219,22 @@
       }
 
       /*
-       * 可见性判据在纯函数 `sessionVisible` 里（照主窗口的同名规则），
-       * 这里只负责分类统计 + 渲染 + 如实说明隐藏了多少。
+       * 可见性判据在纯函数 `sessionVisible` 里（照主窗口的同名规则）。
+       *
+       * ⚠️ **不显示「略过 N 个空会话 / 隐藏 N 个归档会话」这类说明**。
+       *
+       * 用户明确要求去掉它们：「这个不需要显示出来」。理由也成立 ——
+       * 过滤是我们的**正常行为**（主窗口同样这么做），不是异常。
+       * 把它报成一行提示，等于每次开侧边栏都在提醒用户「有些东西你没看到」，
+       * 那是噪音，而且会让人以为列表不完整。
+       *
+       * 仍然会出声的只剩**真正的异常**：
+       *   · 读不到清单（loadError）→ 显示原因，因为那是故障；
+       *   · 降级到回退数据（degraded）→ 说明数据可能不全。
        */
       const currentId = deps.getCurrentId();
-      const hiddenArchived = [];
-      let hiddenBlank = 0;
-      const visible = [];
-      sessions.forEach(function (s) {
-        if (sessionVisible(s, currentId, archivedKnown)) {
-          visible.push(s);
-          return;
-        }
-        if (archivedKnown === true && s.archived === true) hiddenArchived.push(s);
-        else hiddenBlank += 1;
+      const visible = sessions.filter(function (s) {
+        return sessionVisible(s, currentId, archivedKnown);
       });
 
       groupByWorkspace(visible).forEach(function (group) {
@@ -241,28 +243,6 @@
           dom.sbSessions.appendChild(sessionRow(s));
         });
       });
-
-      /*
-       * 空会话通常很多（宿主每次起窗都可能留一个），不逐个说明，
-       * 但要说清「有一批空会话没列」—— 否则用户会以为列表漏了。
-       */
-      if (hiddenBlank > 0) {
-        const note = global.document.createElement("div");
-        note.className = "sb-note";
-        note.textContent = `已略过 ${hiddenBlank} 个空会话`;
-        dom.sbSessions.appendChild(note);
-      }
-
-      /*
-       * 隐藏了几个要说出来 —— 否则用户会以为会话丢了。
-       * 与降级说明一样，都是「不假装数据完整」的一部分。
-       */
-      if (hiddenArchived.length > 0) {
-        const note = global.document.createElement("div");
-        note.className = "sb-note";
-        note.textContent = `已隐藏 ${hiddenArchived.length} 个归档会话`;
-        dom.sbSessions.appendChild(note);
-      }
 
       /*
        * 降级说明放**最后**（列表下方）：会话仍能看能切，

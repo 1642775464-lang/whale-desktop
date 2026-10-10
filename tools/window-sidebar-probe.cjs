@@ -77,6 +77,13 @@ const READ = `(() => {
       text: r.textContent || "",
       cls: r.className || "",
     })),
+    /*
+     * 提示行（目前只用于降级说明）与工作区分组数。
+     * 提示行的判据：正常过滤（空会话 / 归档）**不该**产生它 ——
+     * 用户明确要求过「这些不用显示出来」。
+     */
+    noteCount: rows.filter((r) => r.className === "sb-note").length,
+    groupCount: rows.filter((r) => r.className === "sb-group").length,
     skillsOpen: view ? shown(view) : null,
     skillsCount: (document.getElementById("svCount") || {}).textContent,
     skillsRows: Array.from(document.getElementById("svList") ? document.getElementById("svList").children : []).length,
@@ -126,9 +133,10 @@ async function main() {
 
   say("=== 1) 初始状态 ===");
   let st = await run(READ);
-  /** 后面判定要用的两个观察值（跨步骤保留）。 */
+  /** 后面判定要用的观察值（跨步骤保留）。 */
   let rowsSeen = 0;
   let skillsSeen = 0;
+  let notesSeen = 0;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 false）`);
   say(`  技能页打开：${st.skillsOpen}（期望 false）`);
 
@@ -138,8 +146,10 @@ async function main() {
   await new Promise((r) => setTimeout(r, 400));
   st = await run(READ);
   rowsSeen = st.rowCount;
+  notesSeen = st.noteCount;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 true）`);
-  say(`  会话行数：${st.rowCount}`);
+  say(`  会话行数：${st.rowCount}（含 ${st.groupCount} 个工作区分组标题）`);
+  say(`  提示行数：${st.noteCount}（正常应为 0 —— 过滤不该出提示）`);
   for (const row of st.rows.slice(0, 6)) {
     say(`    - "${row.text}"  [${row.cls}]`);
   }
@@ -208,6 +218,12 @@ async function main() {
   if (st.streamHidden !== false) problems.push("返回后消息流没恢复");
   if (skillsSeen === 0) problems.push("技能列表是空的（读不到或没渲染）");
   if (rowsSeen === 0) problems.push("会话列表是空的（数据没进 state 或没渲染）");
+  /*
+   * 正常过滤**不该**出提示行。
+   * 用户明确要求过「这些不用显示出来」（已略过 N 个空会话 / 已隐藏 N 个归档会话）——
+   * 那条断言钉住它，防止以后又被加回来。
+   */
+  if (notesSeen !== 0) problems.push(`出现了 ${notesSeen} 行提示（正常过滤不该出提示）`);
 
   say("");
   if (pageErrors.length > 0) {
