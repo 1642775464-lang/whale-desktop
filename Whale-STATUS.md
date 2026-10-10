@@ -1,6 +1,6 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v4.0
+- 文档版本：v4.1
 - 日期：2026-10-07
 - 状态：**一期与切片 7 全部完成并验收通过**——四个浮层、真上传、模型目录同步、小窗默认会话并跟随、唤起语义、＋号菜单对齐主窗口；647 测试全绿、七道闸门全过
 - 项目根：`D:\DEEPSEEK\悬浮窗`
@@ -185,6 +185,8 @@
 | 67 | **同一份数据被两处各自解释顺序，迟早不一致** | 「最近一次会话」曾同时由两处解释：桥按 Map 插入顺序输出清单，小窗按「清单第一项」当默认。插入顺序与最近活动无关，于是首次打开进错会话。**顺序、优先级这类口径只能有一处定义**（本次收敛到桥的 `hudSnapshot` 排序），下游只消费不重排 |
 | 68 | **「宿主有没有这个能力」只能实测，不能靠读包推断** | 用户要的三项侧边栏内容，我从 DSH 包里静态分析出候选服务名（`taskBoard` / `skills`），但**能不能真的 `ctx.get()` 到**是运行时事实。所以先给桥加「按名探测」能力（`/whale/probe?services=`），一次重启后反复验 —— 比每验一个名字就改一次代码、重启一次宿主省得多。**遇到这类「装了才知道」的问题，先造探测手段，再逐个验** |
 | 69 | **第三方插件的能力边界要看它 `inject` 什么、`provide` 什么** | 判断「桥能不能取到某插件的数据」，读它的 `inject` 列表最快：`dsh-client-ui-task-board` 有 `ctx.provide("taskBoard")` → 桥可试；`dsh-im-connect` 的 inject 里**没有自己提供的服务**、只注入 `webServer` → 说明它走自注册 HTTP 路由 + 自己写盘，通路完全不同。**同一个界面上的几个入口，底层通路可能差很远，不能按同一套方案套** |
+| 70 | **「服务存在」≠「能拿到数据」——必须看它的方法** | 实测 `taskBoard` 服务**在**，但只暴露 `registerExtension` / `isExtensionEnabled` 两个方法，**根本没有「列任务」** —— 它是给别的插件注册扩展的注册表，不是数据源。若只探测「服务在不在」就下结论，会得出完全错误的可行性判断。**探测到服务后必须再看它的方法集**（本次靠读 `ctx.provide(...)` 的实参才发现） |
+| 71 | **DSH 插件数据的三条通路，可用性差别很大** | ① Cordis 服务（`ctx.get`，桥能直接拿，但要有读方法）；② **typert 远程端点**（`skills` 目录就是这种，宿主侧入口是 `ctx.typertGateway`，需「生成的调用描述符」）；③ **插件自注册 HTTP 路由**（`/api/task-board`、`/api/dsh-im-connect/*`）——实测**需浏览器登录凭证**，桥作为宿主内插件没有，此路不通。**先判断目标数据走哪条路，再定方案** |
 
 ---
 
@@ -1913,6 +1915,57 @@ btnMin → btnPin → btnSideLeft → 色块 → tbTitle → btnFolder → btnSi
 
 ---
 
+## 六·二十六补、侧边栏三项的实测结论（2026-10-10）
+
+用户重启宿主后，用上一轮新增的按名探测能力实测。
+
+### 服务探测结果
+
+```text
+taskBoard      ok 在        skills       ok 在
+typertGateway  ok 在        webServer    ok 在
+connection     ok 在        credentials  ok 在
+goals          ok 在        tools        ok 在
+imConnect      no 不在      channels     no 不在
+```
+
+### 但「服务在」不等于「能拿到数据」
+
+| 项目 | 实测 | 结论 |
+|---|---|---|
+| 新会话 | `sessionController` 有 `create` | ok 可直接做 |
+| 会话列表 / 切换 / 工作区 | 桥已有 | ok 已实现 |
+| **任务看板** | `taskBoard` 服务**只暴露** `registerExtension` / `isExtensionEnabled` | no **无读取方法** —— 它是给别的插件注册扩展用的注册表 |
+| **技能中心** | `skills` 在，但类型定义写明是 *"Session-addressed, cold-readable skill catalog **Remote**"* | warn 是 typert **远程**端点，不是普通服务方法 |
+| **频道** | 无对外服务；只有 HTTP `/api/dsh-im-connect/*` | no 端点需**登录凭证** |
+
+### 关键发现：`typertGateway` 在
+
+`@deepseek-ai/dsh-api-gateway` 的宿主入口 `ctx.typertGateway` **探测为在**。
+它是宿主侧的 Typert RPC 入口 —— 技能目录、任务看板、频道若都通过 typert
+暴露，**桥可以用这一个入口统一取数**。
+
+难点：严格模式从 `ctx.typert.local` 读**生成的调用描述符**，
+桥要发起调用需要拿到这些描述符。
+
+### HTTP 路不通的原因（实测响应体）
+
+```text
+/api/task-board                → 401 "unauthorized"
+/api/dsh-im-connect/channels   → 401 {"ok":false,"error":"请先登录 DSH / Sign in to DSH first"}
+```
+
+栅栏实现在 `dsh-client-connection`：判据是 **Host 头**（loopback / LAN IP /
+声明的 `trustedHosts` 可过）。但这两个端点返回的是**各自的鉴权拒绝**，
+不是统一栅栏 —— 也就是说还需要**浏览器会话凭证**，桥作为宿主内插件没有。
+
+### 待定
+
+`typertGateway` 是三项的统一希望，但「怎么拿到调用描述符」是独立的技术问题，
+需要单独攻。**未定之前不承诺这三项能做成。**
+
+---
+
 ## 七、版本沿革
 
 | 版本 | 日期 | 变更 |
@@ -1928,6 +1981,7 @@ btnMin → btnPin → btnSideLeft → 色块 → tbTitle → btnFolder → btnSi
 | v1.8 | 2026-10-06 | **切片 6 完成，六片全部交付**（`aadf93a`）。页面右下角小鲸鱼按钮（挂 `shell.overlay`，单击并行拉起悬浮条与小窗）；桥侧按已确认的影响清单泛化 `windows.mjs`（TARGETS 表 + 复用按目标分开）。真宿主验收 E1–E6 全过，**走正规 `install_bundle` / `remove_bundle` 通道，0 个坑**（与切片 5 手工安装的 3 个坑形成对照）。图标改为机械注入（我第一版凭印象编了段鲸鱼 path，与真图标完全不同——PRD 早警告过「手抄会错」）。依赖扫描口径修正为「浏览器侧另算、但更严」（允许宿主模块表模块，禁止 node: 内置）。测试 502 全绿、七道闸门全过。卸载核对：依赖回 12、bundles 回 17、用户主题设置保留；记一条工具小缺口（`remove_bundle` 不删 `node_modules/` 下的符号链接） |
 | v1.9 | 2026-10-06 | **插件装回并长期保留**（用户要求「装」），进入日用阶段。用户在日用中发现并报出 **4 个缺陷**，全部修复且**逐项验收通过**：① 点鲸鱼只唤起不收起（PRD F2① 是切换语义）② 图标照抄源 svg 的 `fill="none"` → 看着透明 ③ 关窗时 `target` 被 HTTP 处理器静默丢掉 → `{ok:true,closed:0}`「成功但一个都没关」④ `align-items:baseline` 的行盒贴顶 → 数字偏上 6px。四个都做了注入验证的防线。新增 3 个量测工具（切换/绿环探针、居中量测探针、图标独立复核），预检补标题通路。记录三次「我以为」被证据纠正的过程。新增 4 项环境坑（27–30）。测试 520 全绿 |
 | v2.1 | 2026-10-07 | **切片 7 第二批（A/B/C）落地**：模型目录改走 `sessionController.modelCatalog()`（原先找的 `models` 服务宿主根本没注册 → 一直返回 0）、权限档位以 `permissionPresets` 为准（4 档含运行期注册的 `auto`）、新增第 24 条路由 `GET /whale/presets` 与两条上传路由（25/26）。小窗补齐四个浮层（权限/模型与思考强度/用量/＋真上传，含拖拽与粘贴）。**三个真因层层递进**：① 数据源找错 ② 数据源对了但**取太早**（sessionController 注册时机在桥之后）③ 把「还没就绪」**缓存成了永远**（环境坑 35）。另修掉 `btnPerm` 被绑定两次导致两次 toggle 互相抵消（浮层永远打不开）。新增坑 31–35。测试 583 全绿 |
+| v4.1 | 2026-10-10 | **侧边栏三项的实测结论**（用户重启后实测）：服务探测显示 `taskBoard` / `skills` / `typertGateway` / `webServer` / `connection` 全部**在**。但**「服务在」不等于「能拿到数据」** —— `taskBoard` 只暴露 `registerExtension`/`isExtensionEnabled`（无读取方法，是给别的插件注册扩展用的注册表）；`skills` 的类型定义写明是 *"cold-readable skill catalog **Remote**"*（typert 远程端点，不是普通服务方法）；频道无对外服务，只有 HTTP `/api/dsh-im-connect/*`。HTTP 路实测返回 `401 unauthorized` 与 `401 请先登录 DSH` —— 栅栏在 `dsh-client-connection`（判据是 Host 头），但这两个端点返回的是**各自的鉴权拒绝**，需浏览器会话凭证，桥没有。**关键希望：`ctx.typertGateway` 在**（宿主侧 Typert RPC 入口），三项若都走 typert 可用它统一取数，难点是要拿到「生成的调用描述符」。未攻克前不承诺这三项能做成 |
 | v4.0 | 2026-10-10 | **侧边栏可行性勘查 + 桥新增按名探测服务**（`a1031c9`）：用户要小窗左侧边栏装主窗口的内容（新会话/自动化任务/技能中心/任务/频道），并裁定**先验证那三项能不能取到数据**。勘查结论：会话类与新会话桥可直接做（`sessionController.create`）；技能中心候选服务名 `skills`（`dsh-client-ui-skill-explorer` 的 inject）；任务看板候选 `taskBoard`（`dsh-client-ui-task-board` 的 `ctx.provide(TASK_BOARD_SERVICE_NAME)`，常量就是 `"taskBoard"`）；**频道无对外服务**（`dsh-im-connect` 只注入 `webServer` 自注册 HTTP 路由，数据写盘在 `~/.dsh/dsh-im-connect/`），通路与另两项不同。新增 `GET /whale/probe?services=a,b` 按名探测（一次重启后可反复验），`serviceVisible` 只回答在不在、不读内容不调方法，服务名限常规标识符。**测试当场抓到真实缺陷**：输出对象原用 `{}`，赋 `out["__proto__"]` 会改原型而非建属性（结论丢掉 + 原型污染入口），改 `Object.create(null)`；注入验证换回 `{}` 立刻红。测试 761 全绿 |
 | v3.9 | 2026-10-10 | **顶栏重排：加三个图标**（`683f727`）：用户要求「中间区域为会话标题，左侧依次是最小化、置顶、打开左侧边栏；右侧改为文件夹与打开右侧边栏两个图标；先把图标做上，下一步再明确交互」。改后顺序：`btnMin → btnPin → btnSideLeft → 色块 → tbTitle → btnFolder → btnSideRight → btnMenu`（「中间为标题」靠既有 `.tb-title{flex:1 1 auto;text-align:center}` 自然成立）。三个新图标：左右侧边栏各为「外框 + 靠对应边的竖线」，文件夹一笔轮廓；外框用 `<path>` 而非 `<rect>`（避开全局 `rect{fill:none}` 陷阱 5）。**两个如实说明的待定项**：① ☰ 保留（它承载 F8 菜单，删它等于删功能，用户说交互下一步再定）；② 三个新图标当前无交互（app.js 未接绑定）。新增 `tools/window-topbar-probe.cjs` 读真窗口实际渲染结果（契约测试扫源码证明不了「真的画出来」）。两条注入验证：删图标 → 齐全与顺序都红；把左图标移到标题右侧 → 只有顺序那条红。测试 757 全绿 |
 | v3.8 | 2026-10-10 | **移除语音键与顶栏齿轮**（`8db5776`）：用户在截图上指出两处要去掉（我看不到箭头所指，请他勾选确认）—— 语音输入键（灰色麦克风，标注「暂未实现」）与顶栏齿轮（侧边工作台）。改动：index.html 删两个按钮、app.js 同步删 `btnGear` 的 dom 引用与点击绑定（**删按钮必须同时删引用**，否则 `$()` 拿到 null 抛 TypeError 会让后面所有绑定一行都不执行 —— 本项目踩过）、契约测试顶栏六元素→五元素且两条都加「已移除」断言、探针 ids 同步。顺带修了一条守死代码的断言：原「灰色项不得有 hover」只守 `.cbtn.grey`，而语音按钮是它唯一使用者，已改为守 `.mi.grey` 与 `.ov-row.grey`。两个方向的注入验证（加回按钮）各自变红。测试 756 全绿 |
