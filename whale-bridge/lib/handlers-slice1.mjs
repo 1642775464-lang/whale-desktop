@@ -39,13 +39,29 @@ function overview() {
  *
  * 报告宿主各服务是否可用。**不抛错**：服务全缺也返回 200 与全 false，
  * 由调用方判断（降级原则：宁可局部失效不整体崩溃）。
+ *
+ * 支持 `?services=a,b,c` **按名探测**：只回答「在不在」，不读内容。
+ * 加这个是因为「桥能不能拿到某个功能的数据」只能实测回答，
+ * 而没有它时每验一个服务名都要改代码再重启宿主。
+ *
+ * @param {object} ctx
+ * @param {object} ctx.host
+ * @param {URLSearchParams} [ctx.query]
  */
-function probe({ host }) {
+function probe({ host, query }) {
+  const wanted = (query?.get("services") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+
   return {
     ok: true,
     name: BRIDGE_NAME,
     version: BRIDGE_VERSION,
     host: host.probe(),
+    ...(wanted.length > 0 && typeof host.serviceVisible === "function"
+      ? { services: host.serviceVisible(wanted) }
+      : {}),
   };
 }
 

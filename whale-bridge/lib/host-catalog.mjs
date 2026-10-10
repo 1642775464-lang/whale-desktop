@@ -344,6 +344,40 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
     };
   }
 
+  /**
+   * 按名探测宿主服务是否可见。
+   *
+   * 为什么需要它：`availability()` 只报固定的几个 —— 而「桥能不能拿到
+   * 某个功能的数据」是要**实测**才能回答的问题。没有这个能力时，
+   * 每验一个服务名都得改一次代码再重启宿主。
+   *
+   * 只回答「在不在」，不读内容、不调用方法 —— 是只读诊断，
+   * 不会因为探测而改变宿主状态。
+   *
+   * @param {Array<string>} names 要探测的服务名
+   * @returns {Record<string, boolean>}
+   */
+  function serviceVisible(names) {
+    /*
+     * ⚠️ 输出对象必须用 `Object.create(null)`。
+     *
+     * 用普通对象时，给 `out["__proto__"]` 赋值会去**改原型**而不是建一个属性，
+     * 于是「这个服务不存在」这个结论会丢掉 —— 而且这是个原型污染入口。
+     * 测试（非法名一律报 false）抓到了这一点。
+     */
+    const out = Object.create(null);
+    for (const name of Array.isArray(names) ? names : []) {
+      if (typeof name !== "string" || name === "") continue;
+      // 服务名只允许常规标识符：挡住把探测接口当成任意属性读取器用
+      if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)) {
+        out[name] = false;
+        continue;
+      }
+      out[name] = optionalService(ctx, name) !== undefined;
+    }
+    return out;
+  }
+
   return {
     modelCatalog,
     fileReferences,
@@ -351,6 +385,7 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
     selectModel,
     sessionEvents,
     permissionPresets,
+    serviceVisible,
     uploadFile,
     uploadImages,
     availability,

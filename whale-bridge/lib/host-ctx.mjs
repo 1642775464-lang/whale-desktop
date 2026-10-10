@@ -372,6 +372,8 @@ export function createHostAccess(ctx) {
     fileReferences: catalog.fileReferences,
     recentSessions: catalog.recentSessions,
     sessionEvents: catalog.sessionEvents,
+    // 按名探测服务（`/whale/probe?services=a,b` 用）—— 只回答在不在
+    serviceVisible: catalog.serviceVisible,
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,
