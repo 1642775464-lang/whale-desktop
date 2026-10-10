@@ -142,7 +142,12 @@ async function sessionList({ host }) {
     err.status = 502;
     throw err;
   }
-  return { ok: true, sessions: out.sessions };
+  /*
+   * 带上 `archivedKnown`：界面据此决定「归档会话能不能安全隐藏」。
+   * 判据拿不到时（false）不该按「都没归档」把会话藏掉 ——
+   * 宁可多列，也不要凭空少一截。
+   */
+  return { ok: true, sessions: out.sessions, archivedKnown: out.archivedKnown === true };
 }
 
 /** 注册侧边栏数据源路由。 */

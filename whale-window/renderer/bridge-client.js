@@ -391,7 +391,12 @@
     function sessionList() {
       return get("/whale/session/list").then(function (out) {
         if (!out.ok) return { ok: false, code: out.code, message: out.message };
-        return { ok: true, sessions: Array.isArray(out.data?.sessions) ? out.data.sessions : [] };
+        return {
+          ok: true,
+          sessions: Array.isArray(out.data?.sessions) ? out.data.sessions : [],
+          // 归档判据有没有拿到：界面据此决定「能不能安全隐藏归档会话」
+          archivedKnown: out.data?.archivedKnown === true,
+        };
       });
     }
 

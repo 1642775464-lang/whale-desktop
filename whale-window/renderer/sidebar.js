@@ -85,6 +85,13 @@
     let loadError = null;
     /** 降级标记：清单是**回退数据**（不完整），要如实告知用户。 */
     let degraded = null;
+    /**
+     * 归档判据是否**拿到了**。
+     *
+     * `true` 时才按 `archived` 字段隐藏会话；`false` 时一律不隐藏 ——
+     * 判据拿不到就按「都没归档」处理的话，会把用户的会话凭空藏掉。
+     */
+    let archivedKnown = false;
     /** 唤醒中的会话 id → 已等待秒数（与 panels 同口径）。 */
     const waking = Object.create(null);
     /** 新建中的标记：连点两下不能建两个会话。 */
@@ -177,12 +184,41 @@
         return;
       }
 
-      groupByWorkspace(sessions).forEach(function (group) {
+      /*
+       * 归档会话**不列出来**。
+       *
+       * `session/list` 的 SessionSummary 不带归档状态，桥会额外查
+       * `workspaceRegistry.archivedSessionIds` 并给每行标 `archived`。
+       * 用户报过「你把已归档的会话也读进去了」—— 归档意味着「我不看了」，
+       * 列出来就是噪音。
+       *
+       * ⚠️ 判据拿不到时（`archivedKnown === false`）**不隐藏任何东西**：
+       * 宁可多列，也不要把用户的会话凭空藏掉。
+       */
+      const hiddenArchived = [];
+      const visible = [];
+      sessions.forEach(function (s) {
+        if (archivedKnown === true && s.archived === true) hiddenArchived.push(s);
+        else visible.push(s);
+      });
+
+      groupByWorkspace(visible).forEach(function (group) {
         dom.sbSessions.appendChild(groupHead(group));
         group.sessions.forEach(function (s) {
           dom.sbSessions.appendChild(sessionRow(s));
         });
       });
+
+      /*
+       * 隐藏了几个要说出来 —— 否则用户会以为会话丢了。
+       * 与降级说明一样，都是「不假装数据完整」的一部分。
+       */
+      if (hiddenArchived.length > 0) {
+        const note = global.document.createElement("div");
+        note.className = "sb-note";
+        note.textContent = `已隐藏 ${hiddenArchived.length} 个归档会话`;
+        dom.sbSessions.appendChild(note);
+      }
 
       /*
        * 降级说明放**最后**（列表下方）：会话仍能看能切，
@@ -203,6 +239,7 @@
           sessions = Array.isArray(out.sessions) ? out.sessions : [];
           loadError = null;
           degraded = typeof out.degraded === "string" && out.degraded !== "" ? out.degraded : null;
+          archivedKnown = out.archivedKnown === true;
         } else {
           // 失败保留旧清单，但把原因显示出来（不静默变空）
           loadError = (out && out.code) ? String(out.code) : "unknown";

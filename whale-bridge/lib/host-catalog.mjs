@@ -345,6 +345,38 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
   }
 
   /**
+   * 读**已归档**的会话 id 清单。
+   *
+   * ⚠️ 为什么必须单独读它：`session/list`（Typert）返回的 `SessionSummary`
+   * **不含归档状态**，所以它会连归档会话一起列出来 —— 用户报的
+   * 「你把已归档的会话也读进去了」就是这个原因。
+   *
+   * 归档状态的权威来源是 Workspace registry：
+   *   `ctx.workspaceRegistry.archivedSessionIds`
+   * （见 `dsh-api-session-controller` 的 `archived-session-gate.js`：
+   *  它就是用 `archived.includes(header.id)` 判定「这个会话被归档了」。）
+   *
+   * 取不到时返回**空数组**并带 `ok:false`：调用方据此**不要**隐藏任何会话
+   * （宁可多列也不要把用户的会话凭空藏掉）。
+   *
+   * @returns {{ok: boolean, ids: string[]}}
+   */
+  function archivedSessionIds() {
+    const registry = optionalService(ctx, "workspaceRegistry");
+    if (registry === undefined) return { ok: false, ids: [] };
+    try {
+      const raw = registry.archivedSessionIds;
+      if (!Array.isArray(raw)) return { ok: false, ids: [] };
+      return {
+        ok: true,
+        ids: raw.filter((id) => typeof id === "string" && id !== ""),
+      };
+    } catch {
+      return { ok: false, ids: [] };
+    }
+  }
+
+  /**
    * 按名探测宿主服务是否可见。
    *
    * 为什么需要它：`availability()` 只报固定的几个 —— 而「桥能不能拿到
@@ -386,6 +418,7 @@ export function createHostCatalog({ ctx, getSession, attachments }) {
     sessionEvents,
     permissionPresets,
     serviceVisible,
+    archivedSessionIds,
     uploadFile,
     uploadImages,
     availability,

@@ -82,7 +82,12 @@
         if (out.ok) return out;
         const fallback = client.getState().sessions ?? [];
         if (fallback.length > 0) {
-          return { ok: true, sessions: fallback, degraded: out.code };
+          /*
+           * ⚠️ archivedKnown 必须为 **false**：hud 那份数据没有归档标记，
+           * 若报 true 会把所有会话当成「已归档判据已拿到」而按字段隐藏 ——
+           * 而那些字段根本不存在，等于没隐藏；更糟的是语义上撒谎。
+           */
+          return { ok: true, sessions: fallback, degraded: out.code, archivedKnown: false };
         }
         return out;   // 回退也没数据：如实报错
       }),

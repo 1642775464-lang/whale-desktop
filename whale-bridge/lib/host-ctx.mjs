@@ -128,7 +128,12 @@ export function createHostAccess(ctx) {
    * 它们的 HTTP 端点要浏览器会话凭证（桥没有），而服务本身没有读方法。
    * 详见 typert-bridge.mjs 的头注释。
    */
-  const typert = createTypertBridge({ ctx });
+  const typert = createTypertBridge({
+    ctx,
+    // 归档判据：`session/list` 的 SessionSummary 不带归档状态，
+    // 靠 workspaceRegistry 的 archivedSessionIds 补（见 host-catalog 注释）
+    archivedIdsOf: () => catalog.archivedSessionIds(),
+  });
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */
   function safe(fn, fallback) {
@@ -384,6 +389,8 @@ export function createHostAccess(ctx) {
     sessionEvents: catalog.sessionEvents,
     // 按名探测服务（`/whale/probe?services=a,b` 用）—— 只回答在不在
     serviceVisible: catalog.serviceVisible,
+    // 已归档会话的 id（侧边栏不列它们）
+    archivedSessionIds: catalog.archivedSessionIds,
     // Typert 远程调用（技能目录等侧边栏数据源；见 typert-bridge.mjs）
     typertAvailable: typert.available,
     invokeRemote: typert.invokeRemote,

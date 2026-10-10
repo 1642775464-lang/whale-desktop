@@ -327,9 +327,54 @@ test("listSessions：按 SessionSummary 的真实字段名归一化", async () =
     agentAvailable: true,
     blank: false,
     origin: null,
+    archived: false,              // 没注入归档判据 → 一律 false
   });
+  assert.equal(out.archivedKnown, false, "没注入判据时如实说「判据没拿到」");
   assert.equal(out.sessions[1].title, null, "取不到标题给 null，不编造");
   assert.equal(out.sessions[1].workspace, null);
+});
+
+test("listSessions：归档判据注入后，逐行标记 archived", async () => {
+  /*
+   * 用户报过「你把已归档的会话也读进去了」。
+   *
+   * `session/list` 的 SessionSummary **不含归档状态** —— 归档来自
+   * `workspaceRegistry.archivedSessionIds`（见 archived-session-gate.js：
+   * 它就是用 archived.includes(id) 判定）。所以桥要额外查、逐行标。
+   */
+  const bridge = createTypertBridge({
+    ctx: ctxWith({
+      typertGateway: fakeGateway({
+        items: [
+          { sessionId: "keep", updatedAt: 300 },
+          { sessionId: "gone", updatedAt: 200 },
+        ],
+      }),
+    }),
+    archivedIdsOf: () => ({ ok: true, ids: ["gone"] }),
+  });
+
+  const out = await bridge.listSessions();
+  assert.equal(out.archivedKnown, true, "判据拿到了");
+  const byId = Object.fromEntries(out.sessions.map((s) => [s.sessionId, s]));
+  assert.equal(byId.keep.archived, false);
+  assert.equal(byId.gone.archived, true, "归档的要标出来，界面才好隐藏");
+});
+
+test("listSessions：归档判据拿不到时 archivedKnown=false（界面据此不隐藏）", async () => {
+  /*
+   * ⚠️ 判据拿不到时**不能**按「都没归档」处理 —— 那会让界面以为
+   * 「已确认没有归档的」，而实际是「根本不知道」。
+   * 界面的纪律是：只有 archivedKnown 为 true 才隐藏。
+   */
+  const bridge = createTypertBridge({
+    ctx: ctxWith({ typertGateway: fakeGateway({ items: [{ sessionId: "x" }] }) }),
+    archivedIdsOf: () => ({ ok: false, ids: [] }),
+  });
+
+  const out = await bridge.listSessions();
+  assert.equal(out.archivedKnown, false);
+  assert.equal(out.sessions[0].archived, false, "判据没有时不标记");
 });
 
 test("listSessions：按最近活动倒序（侧边栏直接消费，不必自己排）", async () => {

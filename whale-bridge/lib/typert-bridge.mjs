@@ -50,9 +50,12 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
  *
  * @param {object} deps
  * @param {object} deps.ctx 宿主插件上下文
+ * @param {() => {ok: boolean, ids: string[]}} [deps.archivedIdsOf]
+ *        取「已归档会话 id」的判据。`session/list` 返回的 `SessionSummary`
+ *        **不带归档状态**，而侧边栏不该列出归档会话 —— 由调用方注入这个依赖。
  * @returns {object} Typert 调用能力
  */
-export function createTypertBridge({ ctx }) {
+export function createTypertBridge({ ctx, archivedIdsOf }) {
   /** 网关服务**每次现取**（延迟解析；塞进 inject 会让插件在服务缺失时不启动）。 */
   function gatewayOf() {
     if (ctx === null || ctx === undefined) return undefined;
@@ -249,9 +252,31 @@ export function createTypertBridge({ ctx }) {
       })
       .filter((s) => s.sessionId !== null);
 
+    /*
+     * 标记归档会话。
+     *
+     * ⚠️ `session/list` 的 `SessionSummary` **不含归档状态** —— 不额外查
+     * `workspaceRegistry.archivedSessionIds` 就会把归档会话一起列出来
+     * （用户报的「你把已归档的会话也读进去了」）。
+     *
+     * 判据取不到时**一律当未归档**（`archived=false`），由调用方决定是否隐藏：
+     * 宁可多列几条，也不要把用户的会话凭空藏掉。
+     */
+    const archived = typeof archivedIdsOf === "function" ? archivedIdsOf() : null;
+    const archivedIds = archived !== null && archived.ok === true ? archived.ids : [];
+    const archivedSet = new Set(archivedIds);
+    for (const s of sessions) {
+      s.archived = archivedSet.has(s.sessionId);
+    }
+
     // 按最近活动倒序：调用方（侧边栏）直接消费，不必自己再排
     sessions.sort((l, r) => (r.updatedAt ?? 0) - (l.updatedAt ?? 0));
-    return { ok: true, sessions };
+    return {
+      ok: true,
+      sessions,
+      // 让调用方知道「归档判据有没有拿到」：拿不到时不该按 false 隐藏
+      archivedKnown: archived !== null && archived.ok === true,
+    };
   }
 
   return { available, invokeRemote, listSkills, createSession, listSessions };
