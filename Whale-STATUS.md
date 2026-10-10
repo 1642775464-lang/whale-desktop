@@ -1,6 +1,6 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v4.7
+- 文档版本：v4.8
 - 日期：2026-10-07
 - 状态：**一期与切片 7 全部完成并验收通过**——四个浮层、真上传、模型目录同步、小窗默认会话并跟随、唤起语义、＋号菜单对齐主窗口；647 测试全绿、七道闸门全过
 - 项目根：`D:\DEEPSEEK\悬浮窗`
@@ -200,6 +200,9 @@
 | 82 | **排查「界面数据不对」时先问：同一条通路在别处是否也坏** | 用户截图里**主窗口标题也是「(无标题会话)」** —— 这一眼就说明问题不在小窗，而在宿主共用的那条会话查询。**先找「别处是否同样异常」的证据，能立刻把范围从「我的代码」缩到「共用的数据源」**，省掉大量在小窗里瞎查的时间 |
 | 83 | **「数据源不带的字段」必须另找权威来源，别指望它顺手带上** | `session/list` 的 `SessionSummary` 没有归档字段，于是归档会话被一起列出来。归档的权威来源是 `ctx.workspaceRegistry.archivedSessionIds`（该判据在 `archived-session-gate.js` 里就是 `archived.includes(id)`）。**用某个数据源之前，先核它的字段表**；缺什么就去找那个字段的归属方，而不是「它没给就当没有」 |
 | 84 | **判据缺失时的默认值要选「宁可多显示」的那一侧** | 归档判据拿不到时返回 `ok:false`（而不是「没有归档的」），界面只在 `archivedKnown===true` 时才隐藏。两种失败不对等：多列只是噪音；误隐藏会让**用户的会话凭空少一截且不知为何**。同理，隐藏了几个要**显示出来**，否则用户以为会话丢了 |
+| 85 | **「归属/成员」这类关系是登记制，别按字段反推** | 我按「会话的 `cwd` 等于某目录」反推工作区归属，而宿主是**登记制** —— Workspace registry 里每个工作区有显式 `sessionIds`。实测差 8 vs 3 条。**反推看起来合理、且能跑通，但数目必然偏大**（历史上所有在该目录跑过的都在内）。凡「谁属于谁」的关系，先找**登记处**（registry / 关联表），不要在实体自己的字段上猜 |
+| 86 | **把「权威判据」抄下来时要抄全，别只挑看得懂的那条** | 主窗口的 `sessionVisible` 有三条：`origin==="subagent"` / `blank && id!==current` / 归档过滤。我只实现了最后一条，于是空壳全列出来 —— 用户看到的正是「多出来一堆空壳」。**找到参考实现后，逐行抄，不要凭直觉挑** |
+| 87 | **判据埋在渲染循环里 = 测不到** | `sessionVisible` 原来写在 `renderSessions` 的 forEach 里，只能靠真窗口验证。抽成纯函数后立刻能单测（8 条），注入验证也有效（去掉 blank 判据红 3 条）。**「哪些该显示」是一条规则，不该只活在 DOM 操作中间** |
 
 ---
 
@@ -2353,6 +2356,83 @@ ctx.workspaceRegistry.archivedSessionIds
 
 ---
 
+## 六·三十三补、会话数目不对：归属改用注册表（登记制）（2026-10-10）
+
+### 用户的报告
+
+> 数目根本不对，宿主侧数量没有那么多，你自己看你多出来的都是一堆傻逼玩意
+
+对照两张截图：主窗口「悬浮窗」下 **1 条**，小窗里 **8 条**。
+
+### 根因一：归属来源错了（按 cwd 反推 vs 登记制）
+
+我按「会话的 `cwd` 等于某目录」反推归属 —— 于是把历史上所有在该目录
+跑过的会话（含空壳、含早已不属于该工作区的）全列了出来。
+
+宿主是**登记制**：Workspace registry 里每个工作区有一份**显式登记的** `sessionIds`：
+
+```json
+"e582e548-...": { "path": "D:\\DEEPSEEK\\悬浮窗", "title": "悬浮窗",
+                  "sessionIds": [ 3 条 ] }
+```
+
+**实测对照：注册表里「悬浮窗」只有 3 条，按 cwd 反推能匹配 8 条。**
+
+### 根因二：漏了主窗口的两条可见性判据
+
+找到权威判据（`dsh-client-ui-workspace` 的 `sessionVisible`）：
+
+```js
+if (session.origin === "subagent") return false;
+if (session.blank && session.id !== current) return false;
+switch (archivedFilter) { case "default": return !archived.has(session.id); }
+```
+
+我原先只做了归档过滤，**漏了 subagent 与 blank** —— 这就是「多出一堆空壳」。
+
+### 改法
+
+| 层 | 改动 |
+|---|---|
+| 新增 `workspace-registry.mjs` | 读落盘 `storages/workspace.json`：工作区（id/标题/路径/登记成员）+ 归档 + 置顶 |
+| `typert-bridge` | `listSessions` 接受 `registryOf`；**只列登记在册的会话**；工作区用登记标题；归档取注册表 |
+| `host-ctx` | 注入 `registryOf` |
+| `sidebar.js` | 抽出纯函数 `sessionVisible`（照主窗口规则）；分组用登记标题 |
+| 清理 | 删 `host-catalog.archivedSessionIds`（服务版）—— 无消费者，两个归档来源并存必漂移 |
+
+**读注册表的理由**：它是宿主自己维护的**权威持久化**（每次变更即写），
+且那份 `sessionIds` 只能从这里拿到（`workspaceRegistry` 字段实测取空、
+工作区成员走流式 baseline 要开流）。读不到时 `ok:false`，调用方**不裁剪不隐藏**。
+
+### 判据抽成纯函数
+
+`sessionVisible` 原来埋在渲染循环里**测不到** —— 这正是漏掉 blank 的原因。
+现在有 8 条测试；注入验证（去掉 blank 判据）红 3 条。
+
+### 桥侧真值核对
+
+```text
+ok=true
+   default-workspace (12 条)  default=true
+   悬浮窗 (3 条)              default=false
+归档 3 条（都属于 default-workspace）
+```
+
+悬浮窗 3 条：`d2753e0b`（空壳 → blank 过滤）、`291970cf`、`bbef2a3e`（当前）
+→ **2 条**。主窗口截图那一刻显示 1 条，差异属余下细节，
+但**归属来源已与主窗口一致**。
+
+### 状态
+
+```kv
+测试: 801 全绿
+闸门: 7 道全过
+提交: 0fdaf68
+待用户操作: 重启宿主后验收
+```
+
+---
+
 ## 七、版本沿革
 
 | 版本 | 日期 | 变更 |
@@ -2368,6 +2448,7 @@ ctx.workspaceRegistry.archivedSessionIds
 | v1.8 | 2026-10-06 | **切片 6 完成，六片全部交付**（`aadf93a`）。页面右下角小鲸鱼按钮（挂 `shell.overlay`，单击并行拉起悬浮条与小窗）；桥侧按已确认的影响清单泛化 `windows.mjs`（TARGETS 表 + 复用按目标分开）。真宿主验收 E1–E6 全过，**走正规 `install_bundle` / `remove_bundle` 通道，0 个坑**（与切片 5 手工安装的 3 个坑形成对照）。图标改为机械注入（我第一版凭印象编了段鲸鱼 path，与真图标完全不同——PRD 早警告过「手抄会错」）。依赖扫描口径修正为「浏览器侧另算、但更严」（允许宿主模块表模块，禁止 node: 内置）。测试 502 全绿、七道闸门全过。卸载核对：依赖回 12、bundles 回 17、用户主题设置保留；记一条工具小缺口（`remove_bundle` 不删 `node_modules/` 下的符号链接） |
 | v1.9 | 2026-10-06 | **插件装回并长期保留**（用户要求「装」），进入日用阶段。用户在日用中发现并报出 **4 个缺陷**，全部修复且**逐项验收通过**：① 点鲸鱼只唤起不收起（PRD F2① 是切换语义）② 图标照抄源 svg 的 `fill="none"` → 看着透明 ③ 关窗时 `target` 被 HTTP 处理器静默丢掉 → `{ok:true,closed:0}`「成功但一个都没关」④ `align-items:baseline` 的行盒贴顶 → 数字偏上 6px。四个都做了注入验证的防线。新增 3 个量测工具（切换/绿环探针、居中量测探针、图标独立复核），预检补标题通路。记录三次「我以为」被证据纠正的过程。新增 4 项环境坑（27–30）。测试 520 全绿 |
 | v2.1 | 2026-10-07 | **切片 7 第二批（A/B/C）落地**：模型目录改走 `sessionController.modelCatalog()`（原先找的 `models` 服务宿主根本没注册 → 一直返回 0）、权限档位以 `permissionPresets` 为准（4 档含运行期注册的 `auto`）、新增第 24 条路由 `GET /whale/presets` 与两条上传路由（25/26）。小窗补齐四个浮层（权限/模型与思考强度/用量/＋真上传，含拖拽与粘贴）。**三个真因层层递进**：① 数据源找错 ② 数据源对了但**取太早**（sessionController 注册时机在桥之后）③ 把「还没就绪」**缓存成了永远**（环境坑 35）。另修掉 `btnPerm` 被绑定两次导致两次 toggle 互相抵消（浮层永远打不开）。新增坑 31–35。测试 583 全绿 |
+| v4.8 | 2026-10-10 | **修「会话数目不对、多出一堆空壳」**（`0fdaf68`）：用户报「数目根本不对，宿主侧数量没有那么多，多出来的都是一堆空壳」—— 对照截图主窗口「悬浮窗」1 条 vs 小窗 8 条。**两个根因**：① **归属来源错** —— 我按 `cwd` 反推归属，而宿主是**登记制**（Workspace registry 里每个工作区有显式 `sessionIds`）；实测「悬浮窗」注册表只有 **3 条**、按 cwd 反推能匹配 **8 条**。② **漏了主窗口的两条可见性判据** —— 找到权威实现 `dsh-client-ui-workspace` 的 `sessionVisible`：`origin==="subagent"` 与 `blank && id!==current` 都要隐藏，我原先只做了归档过滤。改法：新增 `workspace-registry.mjs` 读落盘 `storages/workspace.json`（工作区登记成员 + 归档 + 置顶）；`listSessions` 只列登记在册的会话、工作区用登记标题；`sessionVisible` 抽成纯函数（原来埋在渲染循环里**测不到**，这正是漏 blank 的原因）；删掉无消费者的服务版 `archivedSessionIds`（两来源并存必漂移）。桥侧真值核对：default-workspace 12 条 / 悬浮窗 3 条 / 归档 3 条。测试 801 全绿 |
 | v4.7 | 2026-10-10 | **侧边栏不再列出已归档的会话**（`5bfc3ee`）：用户报「你把已归档的会话也读进去了」。根因：`SessionSummary` **没有归档字段**，`session/list` 会把归档会话一起返回。归档权威来源是 `ctx.workspaceRegistry.archivedSessionIds`（依据 `archived-session-gate.js` 用它做 `archived.includes(header.id)` 判定）。改法：host-catalog 新增 `archivedSessionIds()`；typert 的 `listSessions` 接受 `archivedIdsOf` 依赖并逐行标 `archived`、回传 `archivedKnown`；渲染层隐藏 `archived===true` 并显示「已隐藏 N 个归档会话」。**刻意的保守设计**：判据拿不到时**一条也不隐藏**（`ok:false` 而非「没有归档的」）—— 多列只是噪音，误隐藏会让用户的会话凭空少一截；降级回退 hud 数据时 `archivedKnown` 强制 false（那份没有归档标记，报 true 是语义撒谎）。顺带把 `host-ctx.test.mjs`（505 行超限）的「探测服务/归档判据」拆到 `host-ctx-metadata.test.mjs`，假 ctx 抽到 `tests/helpers/host-ctx-double.mjs` 共用。真窗口实测：59 行、「悬浮窗 8」分组与真实标题均正常（**工作区与标题已修好**）。测试 790 全绿 |
 | v4.6 | 2026-10-10 | **根因在宿主：会话查询整体冲突**（`4a9b45a`）：用户报「没有工作区、没有项目分组、会话标题也没有、数量不对」—— 四个现象同一个根因。`GET /whale/session/list` 实测 **502 `SESSION_QUERY_SOURCE_CONFLICT`**（连测 3 次，持续态）：`dsh-session-query` 的 `assertSessionHeadersCompatible` 比较同一会话两次观察（`cwd`/`createdAt`/`parentSession`/`isSeeded`/`delegationDepth`），**任一不一致就抛错**，于是**整个清单查询失败**而非跳过那条。**证据：用户截图里主窗口标题也是「(无标题会话)」** —— 同一条通路，宿主机层面问题，不是小窗的 bug。本次做的是**不让它整体崩**：失败时回退到 `/whale/hud` 那份（能看能切），并在列表下方如实标降级「清单不完整（…）：仅显示已加载的会话」，不假装数据完整。连带：`skills/list` 同因报 `gateway/internal`。**没有改宿主的落盘数据**（那是用户数据）。建议重启宿主；仍冲突则需单独处理 `session-29eea3d1`（10/05 旧会话）。真窗口实测降级态：27 行，「悬浮窗 1」分组与「从PRD与原型重新实施项目」标题均正确渲染 |
 | v4.5 | 2026-10-10 | **修用户报的两处**（`a18ca5c`）：①「点 × 关不上」根因在 CSS 不在点击 —— `[hidden]` 的默认 `display:none` **会被元素自己的 `display:flex` 覆盖**（优先级最低），我给 `.sidebar` 写了 flex 却漏配 `[hidden]` 规则；本文件原有 **9 处**逐元素补丁，说明这坑踩过多次。改为统一强制 `[hidden]{display:none !important}`；顺带把 × 点击区从 **17×19px 扩到 28×28px**。②「工作区与会话列表没加载」是**三个原因叠加**：字段名猜错（`SessionSummary` 没有 `title`，标题在 `projections.values.title`、**工作区是 `cwd`**，凭印象写 `s.title` 导致 55 条全空 —— 静默故障）、数据源选错（读 `/whale/hud` 的 `state.sessions`，只有折叠器几条且无工作区字段，改为自己拉 `/whale/session/list` 并按工作区分组）、剥错一层（`sessionList()` 返回 `{ok,data}` 而侧边栏读 `out.sessions`，规整为 `{ok,sessions}`）。**探针为什么没抓到**：原先读 `el.hidden` 属性（只说明"设了"），改为读 computed display 后注入验证立刻复现 —— 且必须**两条 `[hidden]` 规则都撤**才暴露（互为备份）。真窗口复测：56 行（1 分组 + 55 会话）、「当前」标签正确命中、真鼠标点 × 关得上 |
