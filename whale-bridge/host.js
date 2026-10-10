@@ -16,6 +16,7 @@ import { registerSliceOneRoutes, BRIDGE_NAME, BRIDGE_VERSION } from "./lib/handl
 import { registerSliceTwoRoutes } from "./lib/handlers-slice2.mjs";
 import { registerSliceThreeReadRoutes } from "./lib/handlers-slice3-read.mjs";
 import { registerSliceThreeWriteRoutes } from "./lib/handlers-slice3-write.mjs";
+import { registerSidebarRoutes } from "./lib/handlers-sidebar.mjs";
 import { close, createBridgeServer, listen, PORT, HOST } from "./lib/server.mjs";
 import { validateRouteTable } from "./lib/routes.mjs";
 import { createEventPipeline } from "./lib/events.mjs";
@@ -185,6 +186,8 @@ export async function apply(ctx, options = {}) {
   // 避免出现「路由已注册但依赖还没装上」的中间态
   registerSliceThreeReadRoutes({ bridge });
   registerSliceThreeWriteRoutes();
+  // 侧边栏数据源（技能中心等）——走 Typert，见 handlers-sidebar.mjs
+  registerSidebarRoutes();
 
   const server = createBridgeServer({ host, bridge, log });
 

@@ -13,6 +13,7 @@
  */
 
 import { createHostCatalog } from "./host-catalog.mjs";
+import { createTypertBridge } from "./typert-bridge.mjs";
 
 /**
  * 探测一个宿主服务是否可用。
@@ -119,6 +120,15 @@ export function createHostAccess(ctx) {
    * （这两个服务由启动顺序在桥之后的插件提供，缓存会永远取不到，真实踩过）。
    */
   const catalog = createHostCatalog({ ctx, getSession, attachments });
+
+  /**
+   * Typert 远程调用（走 `ctx.typertGateway`）。
+   *
+   * 这是「技能中心 / 任务看板 / 频道」三项的唯一通路 ——
+   * 它们的 HTTP 端点要浏览器会话凭证（桥没有），而服务本身没有读方法。
+   * 详见 typert-bridge.mjs 的头注释。
+   */
+  const typert = createTypertBridge({ ctx });
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */
   function safe(fn, fallback) {
@@ -374,6 +384,10 @@ export function createHostAccess(ctx) {
     sessionEvents: catalog.sessionEvents,
     // 按名探测服务（`/whale/probe?services=a,b` 用）—— 只回答在不在
     serviceVisible: catalog.serviceVisible,
+    // Typert 远程调用（技能目录等侧边栏数据源；见 typert-bridge.mjs）
+    typertAvailable: typert.available,
+    invokeRemote: typert.invokeRemote,
+    listSkills: typert.listSkills,
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,
