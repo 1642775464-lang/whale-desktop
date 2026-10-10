@@ -54,6 +54,14 @@ export function createSessionFold(sessionId) {
     tail: [],
     unknownTypes: 0,
     eventsSeen: 0,
+    /**
+     * 种子从**宿主持久层**读到的「最近活动」时间（epoch ms）。
+     *
+     * 用途：决定会话清单的排序（最近一次在前）。小窗首次打开、
+     * 桥还没给活跃指针时，会退回清单第一项当默认会话 —— 顺序错了就进错会话。
+     * 取不到为 null（不给 0：界面上「0」与「没有值」含义不同）。
+     */
+    seededUpdatedAt: null,
   };
 }
 

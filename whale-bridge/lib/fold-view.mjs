@@ -44,10 +44,33 @@ export function snapshotOf(foldSet, sessionId, now, resolveTitle = undefined) {
   }
 
   const speed = speedAt(fold.samples, now);
+  /*
+   * 最近活动时间：取两个来源里**较新的那个**。
+   *
+   * 为什么需要它：小窗首次打开、桥还没给出活跃指针时，`follow.js` 会
+   * 「退回清单第一项」当作默认会话。而清单若是按**插入顺序**输出的，
+   * 第一项就不是最近一次 —— 用户报的「首次打开进的会话和最近一次不匹配」
+   * 正是这个原因（实测插入顺序第一条最后活动 21:44，第二条 01:29）。
+   *
+   * 为什么是「取较新」而不是「种子优先」：
+   *   · `seededUpdatedAt` 来自**宿主持久层**，是冷会话唯一的来源
+   *     （冷会话没有事件，lastUsageAt 可能是旧的或没有）；
+   *   · `lastUsageAt` 来自 **usage 事件**，活跃会话用它更实时；
+   *   · 两者语义不同但都是「这条会话最近有多新」的证据，
+   *     哪个更新就更能代表当下。只取其中之一都可能排错。
+   *
+   * 取不到给 null，不给 0：界面上「0」与「没有值」含义不同（投影纪律），
+   * 排序时 null 一律排最后（不是当成最早）。
+   */
+  const candidates = [fold.seededUpdatedAt, fold.lastUsageAt]
+    .filter(function (v) { return typeof v === "number"; });
+  const updatedAt = candidates.length === 0 ? null : Math.max.apply(null, candidates);
+
   return {
     sessionId: fold.sessionId,
     title,
     workspace: fold.workspace,
+    updatedAt,
     speed: {
       phase: fold.phase,
       // 非运行中一律报 0：静止时不假装能动
@@ -80,6 +103,28 @@ export function hudSnapshot(foldSet, meta) {
     const snap = snapshotOf(foldSet, sessionId, meta.now, meta.resolveTitle);
     if (snap !== null) sessions.push(snap);
   }
+
+  /*
+   * 按最近活动**倒序**输出。
+   *
+   * ⚠️ 不能用 Map 的插入顺序：那取决于哪条会话先被种进折叠器，
+   * 与「最近一次」无关。而小窗在拿不到活跃指针时会退回 `list[0]`
+   * 当作默认会话 —— 顺序错了，小窗首次打开就会进错会话（用户报的现象）。
+   *
+   * 排序口径收敛在这里一处：`follow.js` 的「清单第一项＝最近一次」假设
+   * 因此成立，界面上的会话列表顺序也随之正确，不必两处各排各的。
+   *
+   * 没有 updatedAt 的排最后（不是当成 0 —— 那会把「不知道」当成「最早」）。
+   */
+  sessions.sort(function (l, r) {
+    const lt = l.updatedAt;
+    const rt = r.updatedAt;
+    if (lt === null && rt === null) return 0;
+    if (lt === null) return 1;
+    if (rt === null) return -1;
+    return rt - lt;
+  });
+
   return {
     bridge: {
       version: meta.version,

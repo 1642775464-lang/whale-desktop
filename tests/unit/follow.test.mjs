@@ -93,6 +93,13 @@ test("首次进来（没有当前会话）→ 直接用指针", () => {
 });
 
 test("桥没给指针但有清单 → 退回清单第一项（与「默认最近一次」同口径）", () => {
+  /*
+   * ⚠️ 这条依赖一个**桥侧的前提**：`hudSnapshot` 保证 sessions 按
+   * 最近活动倒序，所以 `list[0]` 就是最近一次。
+   * 那个前提由 tests/unit/fold-view-order.test.mjs 守着。
+   * 若哪天有人改了桥的输出顺序（比如退回插入顺序），这里会静默进错会话 ——
+   * 用户报的「首次打开小窗进的会话不是最近一次」就是这么来的。
+   */
   const out = load().decideFollow({
     sessions: [{ sessionId: "first" }, { sessionId: "second" }],
     activeSessionId: null,

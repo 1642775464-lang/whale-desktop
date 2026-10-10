@@ -172,6 +172,17 @@ export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date
     if (typeof row?.cwd === "string" && row.cwd !== "" && fold.workspace === null) {
       fold.workspace = row.cwd;
     }
+    /*
+     * 把持久层的「最近活动」记下来。
+     *
+     * ⚠️ 必须记：宿主持久层是按 updatedAt 倒序给清单的，这一条的时间就是
+     * 「最近一次」的判据。折叠器自己只有 lastUsageAt（来自 usage 事件），
+     * 冷会话往往没有，于是快照里没有时间、清单只能退回插入顺序 ——
+     * 那正是「首次打开小窗进的会话不是最近一次」的根因。
+     */
+    if (typeof row?.updatedAt === "number") {
+      fold.seededUpdatedAt = row.updatedAt;
+    }
 
     let events;
     try {
