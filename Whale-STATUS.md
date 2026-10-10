@@ -1,6 +1,6 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v4.2
+- 文档版本：v4.3
 - 日期：2026-10-07
 - 状态：**一期与切片 7 全部完成并验收通过**——四个浮层、真上传、模型目录同步、小窗默认会话并跟随、唤起语义、＋号菜单对齐主窗口；647 测试全绿、七道闸门全过
 - 项目根：`D:\DEEPSEEK\悬浮窗`
@@ -189,6 +189,8 @@
 | 71 | **DSH 插件数据的三条通路，可用性差别很大** | ① Cordis 服务（`ctx.get`，桥能直接拿，但要有读方法）；② **typert 远程端点**（`skills` 目录就是这种，宿主侧入口是 `ctx.typertGateway`，需「生成的调用描述符」）；③ **插件自注册 HTTP 路由**（`/api/task-board`、`/api/dsh-im-connect/*`）——实测**需浏览器登录凭证**，桥作为宿主内插件没有，此路不通。**先判断目标数据走哪条路，再定方案** |
 | 72 | **typert 的 SRC 回退让桥不需要「生成的调用描述符」** | 网关严格模式读 `ctx.typert.local` 的生成描述符，但 `resolveDescriptor` 找不到时走 `resolveSrcDescriptor`：**遍历所有服务**，找带 `typertRemote` 绑定且 namespace/method 匹配的那个。所以宿主内插件（桥）可以绕过生成产物直接调远程方法 —— 这是「侧边栏三项」能做的关键。代价：SRC 只解析简单参数名、值须能安全表示为 JSON |
 | 73 | **typert 的 `namespace` 与 `method` 是两个字段，拼成 `"a/b"` 会伪装成「端点不存在」** | 网关内部 `endpointOf(namespace, method)` 自己拼 endpoint。传拼好的字符串会被当成 namespace → 报 `gateway/invocation-unavailable`（"no active Remote method exports this endpoint"）。**那个错误看起来像宿主没这个端点**，极易误判成「这项做不了」。排查这类「端点明明该在却报不存在」时，先核对是不是形状传错了 |
+| 74 | **Typert 只覆盖「声明了远程绑定」的插件，不是万能通路** | 实测：`dsh-api-session-controller` 有 `skills/list` 远程端点（通了，214 条）；而 `dsh-client-ui-task-board` 与 `@michengai/dsh-im-connect` 搜遍 `typertRemote`/`@Remote`/`bindTypertRemote` **一个都没有** —— 所以 Typert 只解决技能中心。**判断某插件是否支持 Typert，搜它的远程绑定标记最快**，比盲试端点可靠 |
+| 75 | **同一界面上的入口可能分别走三种通路，得逐个定方案** | 实测同一侧边栏：技能中心走 **Typert**（通了）；任务看板与频道**既无 Typert 也无服务读方法**，只有**落盘 JSON**（`~/.dsh/task-board/ledger-v2.json`、`~/.dsh/dsh-im-connect/*.json`）可读 —— 而读盘是**绕过宿主服务**的方案（宿主可能还没落盘、读到旧快照），属于要用户拍板的取舍，不是纯技术选择 |
 
 ---
 
@@ -2034,6 +2036,49 @@ SkillListValue   = { skills: [{ path?, name, description, whenToUse?, modelInvoc
 
 ---
 
+## 六·二十八补、Typert 实测通过；另两项的结论（2026-10-10）
+
+用户重启后实测。
+
+### 技能中心：实测通过
+
+```text
+GET /whale/skills?sessionId=session-bbef2a3e-...
+→ ok = true，技能数 = 214
+  accessibility-review   [可调]
+  advanced-evaluation    [可调]
+  ai-image-generation    [可调]
+  ...
+```
+
+**214 条真实技能、字段完整**，正是主窗口技能中心的数据。
+Typert 通路从「已实现未实测」变成**实测通过**。
+
+### 任务看板与频道：都没有 typert 端点
+
+搜两个包的 `typertRemote` / `@Remote` / `bindTypertRemote` —— **都没有**。
+也就是说 Typert 只能解决技能中心那一项。
+
+它们剩下的通路是**落盘文件**（桥在宿主进程内，有文件系统权限）：
+
+| 项目 | 落盘位置 | 实测内容 |
+|---|---|---|
+| 任务看板 | `~/.dsh/task-board/ledger-v2.json` | `schemaVersion:5`、`tasks: []`（**当前为空**）、`scheduler` |
+| 频道 | `~/.dsh/dsh-im-connect/channels.json` + `sessions.json` | 频道定义（微信账号）+ 会话映射（含标题「好了吗」、`updatedAt`） |
+
+⚠️ **读盘是绕过宿主服务的方案**，需要用户拍板：宿主可能还没落盘，
+读到的可能是稍旧的快照。**未拍板前不动手。**
+
+### 三项的最终结论
+
+| 项目 | 通路 | 状态 |
+|---|---|---|
+| 技能中心 | Typert `skills/list` | ok **实测通过**（214 条） |
+| 任务看板 | 无 typert；只有落盘 `ledger-v2.json` | warn 待用户拍板读盘 |
+| 频道 | 无 typert；只有落盘 `channels/sessions.json` | warn 待用户拍板读盘 |
+
+---
+
 ## 七、版本沿革
 
 | 版本 | 日期 | 变更 |
@@ -2049,6 +2094,7 @@ SkillListValue   = { skills: [{ path?, name, description, whenToUse?, modelInvoc
 | v1.8 | 2026-10-06 | **切片 6 完成，六片全部交付**（`aadf93a`）。页面右下角小鲸鱼按钮（挂 `shell.overlay`，单击并行拉起悬浮条与小窗）；桥侧按已确认的影响清单泛化 `windows.mjs`（TARGETS 表 + 复用按目标分开）。真宿主验收 E1–E6 全过，**走正规 `install_bundle` / `remove_bundle` 通道，0 个坑**（与切片 5 手工安装的 3 个坑形成对照）。图标改为机械注入（我第一版凭印象编了段鲸鱼 path，与真图标完全不同——PRD 早警告过「手抄会错」）。依赖扫描口径修正为「浏览器侧另算、但更严」（允许宿主模块表模块，禁止 node: 内置）。测试 502 全绿、七道闸门全过。卸载核对：依赖回 12、bundles 回 17、用户主题设置保留；记一条工具小缺口（`remove_bundle` 不删 `node_modules/` 下的符号链接） |
 | v1.9 | 2026-10-06 | **插件装回并长期保留**（用户要求「装」），进入日用阶段。用户在日用中发现并报出 **4 个缺陷**，全部修复且**逐项验收通过**：① 点鲸鱼只唤起不收起（PRD F2① 是切换语义）② 图标照抄源 svg 的 `fill="none"` → 看着透明 ③ 关窗时 `target` 被 HTTP 处理器静默丢掉 → `{ok:true,closed:0}`「成功但一个都没关」④ `align-items:baseline` 的行盒贴顶 → 数字偏上 6px。四个都做了注入验证的防线。新增 3 个量测工具（切换/绿环探针、居中量测探针、图标独立复核），预检补标题通路。记录三次「我以为」被证据纠正的过程。新增 4 项环境坑（27–30）。测试 520 全绿 |
 | v2.1 | 2026-10-07 | **切片 7 第二批（A/B/C）落地**：模型目录改走 `sessionController.modelCatalog()`（原先找的 `models` 服务宿主根本没注册 → 一直返回 0）、权限档位以 `permissionPresets` 为准（4 档含运行期注册的 `auto`）、新增第 24 条路由 `GET /whale/presets` 与两条上传路由（25/26）。小窗补齐四个浮层（权限/模型与思考强度/用量/＋真上传，含拖拽与粘贴）。**三个真因层层递进**：① 数据源找错 ② 数据源对了但**取太早**（sessionController 注册时机在桥之后）③ 把「还没就绪」**缓存成了永远**（环境坑 35）。另修掉 `btnPerm` 被绑定两次导致两次 toggle 互相抵消（浮层永远打不开）。新增坑 31–35。测试 583 全绿 |
+| v4.3 | 2026-10-10 | **Typert 实测通过；另两项结论**：重启后实测 `GET /whale/skills` → `ok:true`、**214 条真实技能**、字段完整，正是主窗口技能中心的数据 —— Typert 通路从「已实现未实测」变为**实测通过**。另搜 `task-board` 与 `im-connect` 两个包的 `typertRemote`/`@Remote`/`bindTypertRemote`，**都没有** typert 端点，即 Typert 只解决技能中心那一项。这两项剩下的通路是**落盘文件**：任务看板 `~/.dsh/task-board/ledger-v2.json`（实测 `tasks: []`，当前为空）、频道 `~/.dsh/dsh-im-connect/channels.json` + `sessions.json`（实测有频道定义与含标题的会话映射）。⚠️ **读盘是绕过宿主服务的方案**（宿主可能还没落盘、读到稍旧快照），需用户拍板后才动手 |
 | v4.2 | 2026-10-10 | **打通 Typert 通路**（`e21d301`）：用户选「先攻 typert」，攻通。突破口是网关的 **SRC 回退** —— `resolveDescriptor` 找不到生成的描述符时走 `resolveSrcDescriptor`，遍历所有服务找带 `typertRemote` 绑定且 namespace/method 匹配的，**于是桥不需要那份生成产物也能调用**。调用形状是 `invoke({ namespace, method, args })`，⚠️ namespace 与 method 必须**分开**（网关内部 `endpointOf` 自己拼；拼成 `"a/b"` 会被当成 namespace，报 `gateway/invocation-unavailable`，那错误看起来像「宿主没这个端点」，极易误判成「做不了」）。实测契约：`skills/list` + `{request:{sessionId}}` → `{skills:[{path?,name,description,whenToUse?,modelInvocable}]}`。交付 `typert-bridge.mjs`（只传三个字段、不替调用方声明 peer 身份、错误码原样回传）、`handlers-sidebar.mjs`（`GET /whale/skills`）、14 条测试。**失败不降级成空清单**（「读不到」与「真的没有」界面含义不同）。测试 775 全绿 |
 | v4.1 | 2026-10-10 | **侧边栏三项的实测结论**（用户重启后实测）：服务探测显示 `taskBoard` / `skills` / `typertGateway` / `webServer` / `connection` 全部**在**。但**「服务在」不等于「能拿到数据」** —— `taskBoard` 只暴露 `registerExtension`/`isExtensionEnabled`（无读取方法，是给别的插件注册扩展用的注册表）；`skills` 的类型定义写明是 *"cold-readable skill catalog **Remote**"*（typert 远程端点，不是普通服务方法）；频道无对外服务，只有 HTTP `/api/dsh-im-connect/*`。HTTP 路实测返回 `401 unauthorized` 与 `401 请先登录 DSH` —— 栅栏在 `dsh-client-connection`（判据是 Host 头），但这两个端点返回的是**各自的鉴权拒绝**，需浏览器会话凭证，桥没有。**关键希望：`ctx.typertGateway` 在**（宿主侧 Typert RPC 入口），三项若都走 typert 可用它统一取数，难点是要拿到「生成的调用描述符」。未攻克前不承诺这三项能做成 |
 | v4.0 | 2026-10-10 | **侧边栏可行性勘查 + 桥新增按名探测服务**（`a1031c9`）：用户要小窗左侧边栏装主窗口的内容（新会话/自动化任务/技能中心/任务/频道），并裁定**先验证那三项能不能取到数据**。勘查结论：会话类与新会话桥可直接做（`sessionController.create`）；技能中心候选服务名 `skills`（`dsh-client-ui-skill-explorer` 的 inject）；任务看板候选 `taskBoard`（`dsh-client-ui-task-board` 的 `ctx.provide(TASK_BOARD_SERVICE_NAME)`，常量就是 `"taskBoard"`）；**频道无对外服务**（`dsh-im-connect` 只注入 `webServer` 自注册 HTTP 路由，数据写盘在 `~/.dsh/dsh-im-connect/`），通路与另两项不同。新增 `GET /whale/probe?services=a,b` 按名探测（一次重启后可反复验），`serviceVisible` 只回答在不在、不读内容不调方法，服务名限常规标识符。**测试当场抓到真实缺陷**：输出对象原用 `{}`，赋 `out["__proto__"]` 会改原型而非建属性（结论丢掉 + 原型污染入口），改 `Object.create(null)`；注入验证换回 `{}` 立刻红。测试 761 全绿 |
