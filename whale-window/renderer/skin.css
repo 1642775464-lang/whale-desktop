@@ -125,6 +125,149 @@ body.whale {
   color: var(--brand);
 }
 
+/* ── 左侧边栏（顶栏左侧边栏按钮点开）────────────────── */
+.sidebar {
+  position: absolute;
+  top: 42px;            /* 从顶栏**下方**开始，不遮顶栏 —— 用户还要点按钮关它 */
+  left: 0;
+  bottom: 0;
+  width: 224px;
+  background: #fff;
+  border-right: 1px solid var(--line-soft);
+  box-shadow: 6px 0 18px rgba(30, 45, 90, 0.08);
+  z-index: 30;          /* 高于消息流与输入区 */
+  display: flex;
+  flex-direction: column;
+  font-size: 12.5px;
+}
+
+.sb-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+}
+
+.sb-title {
+  color: var(--ink2);
+  font-size: 12px;
+}
+
+.sb-close {
+  border: 0;
+  background: transparent;
+  color: var(--ink-disabled);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 5px;
+}
+
+.sb-close:hover {
+  background: #f2f4fa;
+  color: var(--ink);
+}
+
+.sb-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px 8px;
+}
+
+/*
+ * 两个入口：与会话行同一套 hover 反馈。
+ * ⚠️ `busy` 态（正在建会话）必须**没有** hover 变化 ——
+ * 有反馈会让用户以为还能再点，从而连点建出两个空会话。
+ */
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12.5px;
+}
+
+.sb-item svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  display: block;
+}
+
+.sb-item:hover {
+  background: #f2f4fa;
+}
+
+.sb-item.busy {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sb-item.busy:hover {
+  background: transparent;
+}
+
+.sb-sessions {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 8px 10px;
+  border-top: 1px solid #f3f5fa;
+}
+
+.sb-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.sb-row:hover {
+  background: #f2f4fa;
+}
+
+.sb-row > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 三档标签沿用 panels 的类名，规则与 ☰ 菜单里的会话列表一致 */
+.sb-row .st {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--ink-disabled);
+}
+
+.sb-row .st.cur {
+  color: var(--brand);
+}
+
+.sb-row .st.sw {
+  color: var(--ok);
+}
+
+.sb-empty {
+  padding: 10px 8px;
+  color: var(--ink-disabled);
+  font-size: 11.5px;
+}
+
 .brand-dot {
   width: 7px;
   height: 7px;
@@ -192,6 +335,104 @@ body.whale {
   flex-direction: column;
   gap: 11px;
   background: #fcfcfe;
+}
+
+/* ── 技能中心页面（与消息流并列，切换只改 hidden）──── */
+.skills-view {
+  flex: 1 1 auto;         /* 与 .stream 同位：显示时占满主区 */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;          /* flex 子元素要能收缩，否则列表撑破窗口 */
+  background: #fcfcfe;
+}
+
+.sv-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f3f5fa;
+}
+
+.sv-back {
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.sv-back:hover {
+  background: #eef2fd;
+}
+
+.sv-title {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.sv-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-disabled);
+}
+
+.sv-search {
+  flex: 0 0 auto;
+  margin: 8px 12px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 12px;
+  outline: none;
+}
+
+.sv-search:focus {
+  border-color: var(--brand);
+}
+
+.sv-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sv-row {
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #f0f2f8;
+}
+
+.sv-name {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.sv-tag {
+  float: right;
+  font-size: 10.5px;
+  color: var(--ink-disabled);
+}
+
+.sv-desc {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--ink2);
+  line-height: 1.5;
+}
+
+.sv-empty {
+  padding: 14px 10px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-disabled);
 }
 
 .empty {

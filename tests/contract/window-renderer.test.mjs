@@ -280,14 +280,30 @@ test("崩溃兜底页的脚本必须外链（CSP 会拦内联）", () => {
 });
 
 test("脚本加载顺序：各模块先定义、app.js 最后装配", () => {
+  /*
+   * ⚠️ 这个清单就是规格：新增或删除模块都要改这里，
+   * 否则会立刻红 —— 那正是它该起的作用（顺序错了会在启动时抛
+   * ReferenceError，现象是「窗口在、什么都没接上」，极难归因）。
+   */
   const tags = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(
     tags,
-    ["bridge-capabilities.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "rich-input.js", "input-area.js", "render.js", "palette.js", "panels.js", "overlays.js", "app.js"],
+    ["bridge-capabilities.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "rich-input.js", "input-area.js", "render.js", "palette.js", "panels.js", "sidebar.js", "skills-view.js", "sidebar-mount.js", "overlays.js", "dom-table.js", "app.js"],
     "顺序错了会在启动时抛 ReferenceError（现象是「窗口在、什么都没接上」）",
   );
   // app.js 必须最后：它是装配层，要用到前面每个模块的命名空间
   assert.equal(tags[tags.length - 1], "app.js", "app.js 必须在最后加载");
+
+  // sidebar.js 要用 panels.js 的 labelFor（会话三档标签只有一处实现）
+  assert.ok(
+    tags.indexOf("panels.js") < tags.indexOf("sidebar.js"),
+    "panels.js 必须在 sidebar.js 之前加载",
+  );
+  // skills-view.js 是主区页面，由 app.js 装配；它不依赖 overlays，但要在 app 之前
+  assert.ok(
+    tags.indexOf("skills-view.js") < tags.indexOf("app.js"),
+    "skills-view.js 必须在 app.js 之前加载",
+  );
 
   // menu-icons.js 必须排在 add-menu.js 之前：后者要用前者的图标与分组表，
   // 顺序反了的现象是「＋菜单没有图标、且少了目标/计划两行」（不会报错）

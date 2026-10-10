@@ -1,0 +1,126 @@
+/*
+ * 侧边栏装配
+ *
+ * 职责：把「左侧边栏」与「技能中心页面」接到客户端与 DOM 上
+ *       （点会话 → 切换/唤醒；点新会话 → 宿主建会话；点技能中心 → 拉目录）。
+ * 所属层：小窗（whale-window/renderer）
+ *
+ * 为什么从 app.js 拆出来（强制 14）：app.js 是总装配层，加上这两个
+ * 入口后超过 500 行上限。侧边栏是**一个业务域**（导航 + 会话切换 + 技能入口），
+ * 与 app.js 里其余的装配（输入框、命令面板、浮层）不是一类改动原因，
+ * 所以按域拆出，而不是放宽行数限制。
+ *
+ * 三条纪律：
+ *   1. 会话切换的**副作用**要说清：「可切换」直接切，「历史」先唤醒成功才切。
+ *   2. 新建会话是**写操作**（宿主会真的建一个）—— 连点必须挡住。
+ *   3. 读不到数据要**显示原因**，不给空列表 —— 「读不到」与「真的没有」
+ *      含义不同，混成一个会让用户以为数据丢了。
+ *
+ * 本文件是浏览器 script（不能 import），对外只暴露 window.WhaleSidebarMount。
+ */
+
+(function attachSidebarMount(global) {
+  "use strict";
+
+  /**
+   * 装配侧边栏与技能中心页面。
+   *
+   * @param {object} deps
+   * @param {object} deps.dom {stream, btnSideLeft, sidebar, sbClose, sbNew, sbSkills,
+   *                          sbSessions, skillsView, svBack, svCount, svSearch, svList}
+   * @param {object} deps.client 桥客户端（activate / resume / createSession / skills）
+   * @param {(msg: string) => void} [deps.notify] 如实提示
+   * @returns {object} {sidebar, skillsView}
+   */
+  function mount(deps) {
+    const dom = deps.dom;
+    const client = deps.client;
+    const notify = typeof deps.notify === "function" ? deps.notify : function () {};
+
+    /**
+     * 技能中心页面（侧边栏「技能中心」进入）。
+     *
+     * 与消息流**并列**：进入时只隐藏消息流，不动输入区 ——
+     * 用户随时还能说话，返回时消息流的滚动位置也不丢。
+     */
+    const skillsView = global.WhaleSkillsView.createSkillsView({
+      dom: {
+        view: dom.skillsView,
+        svBack: dom.svBack,
+        svCount: dom.svCount,
+        svSearch: dom.svSearch,
+        svList: dom.svList,
+      },
+      onBack() {
+        dom.stream.hidden = false;
+      },
+      onNotify: notify,
+    });
+
+    const sidebar = global.WhaleSidebar.createSidebar({
+      dom: {
+        sidebar: dom.sidebar,
+        sbClose: dom.sbClose,
+        sbNew: dom.sbNew,
+        sbSkills: dom.sbSkills,
+        sbSessions: dom.sbSessions,
+      },
+      getSessions: () => client.getState().sessions ?? [],
+      getCurrentId: () => client.getState().sessionId,
+      onSwitch(sessionId) {
+        client.activate(sessionId).then((out) => {
+          if (out.ok) return;
+          global.console.warn(`切换失败：${out.code}`);
+          notify(`切换会话失败（${out.code}）`);
+        });
+      },
+      onResume(sessionId) {
+        client.resume(sessionId).then((out) => {
+          if (out.ok) {
+            sidebar.markWoke(sessionId);
+            client.activate(sessionId);
+            return;
+          }
+          sidebar.markWakeFailed(sessionId);
+          global.console.warn(`唤醒失败：${out.code}`);
+          notify(`唤醒会话失败（${out.code}）`);
+        });
+      },
+      onNewSession() {
+        /*
+         * 建会话是**写操作**。侧边栏那边已挡住连点，
+         * 这里只负责把结果规整成 {ok, sessionId}。
+         */
+        return client.createSession().then((out) => {
+          if (!out.ok) return { ok: false, code: out.code };
+          return { ok: true, sessionId: out.raw?.sessionId ?? null };
+        });
+      },
+      onOpenSkills() {
+        const sessionId = client.getState().sessionId;
+        if (typeof sessionId !== "string" || sessionId === "") {
+          skillsView.showFailure("还没有会话，读不到技能目录");
+          dom.stream.hidden = true;
+          return;
+        }
+        client.skills(sessionId).then((out) => {
+          dom.stream.hidden = true;
+          if (out.ok) {
+            skillsView.show(out.data?.skills ?? []);
+            return;
+          }
+          // 读不到就是读不到 —— 显示原因，不显示空列表（会让用户以为技能丢了）
+          skillsView.showFailure(`读不到技能目录：${out.code}`);
+        });
+      },
+      onNotify: notify,
+    });
+
+    // 顶栏「打开左侧边栏」按钮
+    dom.btnSideLeft.addEventListener("click", () => sidebar.toggle());
+
+    return { sidebar, skillsView };
+  }
+
+  global.WhaleSidebarMount = { mount };
+})(typeof window !== "undefined" ? window : globalThis);

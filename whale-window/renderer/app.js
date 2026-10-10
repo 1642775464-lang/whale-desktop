@@ -14,52 +14,7 @@
 (function main(global) {
   "use strict";
 
-  const $ = function (id) { return global.document.getElementById(id); };
-
-  const dom = {
-    body: global.document.body,
-    win: $("win"),
-    topbar: $("topbar"),
-    btnMin: $("btnMin"),
-    btnPin: $("btnPin"),
-    btnMenu: $("btnMenu"),
-    tbTitle: $("tbTitle"),
-    shTitle: $("shTitle"),
-    shSub: $("shSub"),
-    stream: $("stream"),
-    status: $("status"),
-    statusText: $("statusText"),
-    dock: $("dock"),
-    dockHead: $("dockHead"),
-    dockProg: $("dockProg"),
-    dockList: $("dockList"),
-    input: $("input"),
-    btnPerm: $("btnPerm"),
-    btnSend: $("btnSend"),
-    // 输入区其余按钮（切片 7 第二批的浮层接线要用）
-    btnAdd: $("btnAdd"),
-    btnUsage: $("btnUsage"),
-    btnModel: $("btnModel"),
-    urFg: $("urFg"),
-    usagePct: $("usagePct"),
-    btnInfo: $("btnInfo"),
-    slashPanel: $("slashPanel"),
-    slashQuery: $("slashQuery"),
-    slashList: $("slashList"),
-    menuBox: $("menuBox"),
-    menuList: $("menuList"),
-    sessList: $("sessList"),
-    // 切片 7 第二批：输入区浮层与待上传清单
-    inputOverlay: $("inputOverlay"),
-    ovTitle: $("ovTitle"),
-    ovBody: $("ovBody"),
-    ovClose: $("ovClose"),
-    uplList: $("uplList"),
-    infoDrawer: $("infoDrawer"),
-    infoSession: $("infoSession"),
-    infoBridge: $("infoBridge"),
-    infoEvents: $("infoEvents"),
-  };
+  const dom = global.WhaleDomTable.createDomTable();
 
   /**
    * 权限档位的**启动占位值**。
@@ -262,6 +217,19 @@
       }
     },
     onUnavailable: notifyUnavailable,
+  });
+
+  /**
+   * 侧边栏与技能中心页面。
+   *
+   * 装配在 sidebar-mount.js（按业务域拆出，见那里的头注释）——
+   * app.js 只负责把 dom / client / 提示函数交给它，不需要持有返回值：
+   * 顶栏按钮的点击绑定就在 mount 内部完成。
+   */
+  global.WhaleSidebarMount.mount({
+    dom,
+    client,
+    notify: notifyUnavailable,
   });
 
   /**

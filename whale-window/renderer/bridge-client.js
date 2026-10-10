@@ -54,6 +54,11 @@
       renderedOffline: false,
       /** 当前会话 id。 */
       sessionId: null,
+      /*
+       * 可见会话清单（侧边栏与 ☰ 菜单的会话列表都读它）。
+       * 每次 `/whale/hud` 刷新时更新（见 fetchActiveSessionId）。
+       */
+      sessions: [],
       /** 会话标题。 */
       title: null,
       /** 工作区路径。 */
@@ -134,6 +139,16 @@
           return res.json();
         })
         .then(function (json) {
+          /*
+           * ⚠️ 会话清单必须**每次刷新都存进 state**。
+           *
+           * 原先这里只设 `state.sessionId`，从不设 `state.sessions` ——
+           * 于是 `getState().sessions` 恒为 undefined，侧边栏与 ☰ 菜单里的
+           * 会话列表**永远是空的**（真窗口实测：只显示「没有可见的会话」）。
+           * 那是既有缺陷，加侧边栏时才暴露出来。
+           */
+          state.sessions = Array.isArray(json.sessions) ? json.sessions : [];
+
           // 判定「该用哪个会话」交给纯函数（见 follow.js）：
           // 三种情况（跟过去 / 待机保持 / 清单里没有就不盲从）各有单测，
           // 规则只有一处实现，不必在网络流程里重复那套 if。
@@ -332,6 +347,44 @@
       return post("/whale/resume", { sessionId });
     }
 
+    /** 发一个 GET，结果规整成 {ok, code, data}（与 post 对称）。 */
+    function get(path) {
+      return global
+        .fetch(base + path)
+        .then(function (res) {
+          return res.json().catch(function () { return {}; });
+        })
+        .then(function (json) {
+          if (json && json.ok === true) return { ok: true, data: json };
+          const code = json && json.error && json.error.code ? json.error.code : "request-failed";
+          const message = json && json.error && json.error.message ? json.error.message : undefined;
+          return { ok: false, code, message };
+        })
+        .catch(function (err) {
+          return { ok: false, code: "network", message: err.message };
+        });
+    }
+
+    /**
+     * 新建一个会话（侧边栏「新会话」）。
+     *
+     * ⚠️ 这是**写操作**：会在宿主里真的建一个会话，然后宿主返回它的 id。
+     * 所以调用方要防重入（连点会建出两个空会话）—— 侧边栏那边已挡住。
+     */
+    function createSession(body) {
+      return post("/whale/session/create", body ?? {});
+    }
+
+    /** 读技能目录（侧边栏「技能中心」）。需按会话寻址。 */
+    function skills(sessionId) {
+      return get(`/whale/skills?sessionId=${encodeURIComponent(sessionId)}`);
+    }
+
+    /** 会话的可见性清单（不唤醒冷会话）。 */
+    function sessionList() {
+      return get("/whale/session/list");
+    }
+
     /** 断开增量流。 */
     function close() {
       if (pollHandle !== null) {
@@ -363,6 +416,9 @@
       close,
       command,
       connect,
+      createSession,
+      sessionList,
+      skills,
       fileReferences: capabilities.fileReferences,
       getState () { return state; },
       listCommands,
