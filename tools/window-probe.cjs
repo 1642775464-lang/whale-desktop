@@ -154,17 +154,40 @@ app.whenReady().then(async () => {
   const after = w.bounds();
   report.b4 = { dx: after.x - before.x, dy: after.y - before.y, sizeKept: after.width === before.width };
 
-  // ── 顶栏元素齐全（F2 五元素：齿轮已按用户要求移除）──
+  // ── 顶栏元素齐全（F2：齿轮已移除，新增三个图标）──
   report.topbar = await run(`(() => {
-    const ids = ["btnMin", "btnPin", "btnMenu", "tbTitle"];
+    const ids = ["btnMin", "btnPin", "btnSideLeft", "btnFolder", "btnSideRight", "btnMenu", "tbTitle"];
     const missing = ids.filter((id) => {
       const el = document.getElementById(id);
       return el === null || el.offsetWidth === 0;
     });
+
+    /*
+     * 三个新图标必须真的画出图形 —— 只查 offsetWidth 不够：
+     * path 为空时会得到一个「看得见但空白」的按钮，而那看起来像图标没加载。
+     * 所以逐个检查：有 svg、svg 里有 path、path 的 d 非空。
+     */
+    const iconProblems = [];
+    for (const id of ["btnSideLeft", "btnFolder", "btnSideRight"]) {
+      const el = document.getElementById(id);
+      const svg = el ? el.querySelector("svg") : null;
+      const paths = svg ? Array.from(svg.querySelectorAll("path")) : [];
+      if (!svg) { iconProblems.push(id + ": 没有 svg"); continue; }
+      if (paths.length === 0) { iconProblems.push(id + ": svg 里没有 path"); continue; }
+      if (paths.some((p) => !p.getAttribute("d"))) iconProblems.push(id + ": 有 path 但 d 为空");
+      // 尺寸必须真的渲染出来（0 表示被裁或未布局）
+      const box = svg.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) iconProblems.push(id + ": svg 尺寸为 0（没画出来）");
+    }
+
     return {
       missing,
+      iconProblems,
       brandDot: document.querySelector(".brand-dot") !== null,
       title: document.getElementById("tbTitle").textContent,
+      // 顶栏子元素的出现顺序（用户要求的布局就是顺序，值得打印出来核对）
+      order: Array.from(document.querySelector(".topbar").children)
+        .map((c) => c.id || c.className || c.tagName),
     };
   })()`);
 

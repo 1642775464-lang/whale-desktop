@@ -53,17 +53,52 @@ const rendererAll = [
 
 const hasId = (id) => new RegExp(`id="${id}"`).test(html);
 
-test("顶栏五元素齐全（F2）", () => {
+test("顶栏元素齐全（F2）", () => {
   /*
-   * 原为六元素，含 `btnGear`（侧边工作台，点了只提示未实现）。
-   * 用户要求去掉它，这里跟着改 —— 「元素齐全」的清单就是规格，
-   * 删了按钮不改清单会立刻红，那正是它该起的作用。
+   * 「元素齐全」的清单就是规格：删了按钮不改清单会立刻红，那正是它该起的作用。
+   * 变更史：六元素（含 btnGear）→ 删 btnGear 成五元素 →
+   * 用户要求加三个新图标（左右侧边栏、文件夹）成八元素。
+   *
+   * ⚠️ 新增的这三个**当前没有交互**（用户明确说「下一步再明确具体的交互内容」）。
+   * 它们先作为占位存在，等交互定了再接绑定。
    */
-  for (const id of ["btnMin", "btnPin", "btnMenu", "tbTitle"]) {
+  for (const id of ["btnMin", "btnPin", "btnSideLeft", "btnFolder", "btnSideRight", "btnMenu", "tbTitle"]) {
     assert.ok(hasId(id), `缺元素 #${id}`);
   }
   assert.match(html, /class="brand-dot"/, "工作区色块必须存在");
   assert.doesNotMatch(html, /id="btnGear"/, "侧边工作台按钮已按用户要求移除");
+});
+
+test("顶栏布局顺序：左组按钮 → 色块 → 标题 → 右组按钮", () => {
+  /*
+   * 用户明确的布局要求：
+   *   「顶栏中间区域为会话标题区域，左侧依次是最小化、置顶、
+   *     还要加一个打开左侧边栏的图标。右侧改为两个图标，
+   *     一个是文件夹图标，一个是打开右侧边栏图标」
+   *
+   * 顺序是这次需求的核心，所以按 **DOM 出现顺序**钉住，而不是只查「存在」。
+   * 只查存在的话，把侧边栏图标插到标题右边也照样绿 —— 那就不符合要求了。
+   */
+  const topbar = /<header class="topbar"[^>]*>([\s\S]*?)<\/header>/.exec(html);
+  assert.ok(topbar !== null, "找不到顶栏");
+
+  /*
+   * 提取「标记点」：既取 id，也取那个没有 id 的色块（它是 class）。
+   * ⚠️ 只写 `id="..."` 的正则匹配不到 `.brand-dot`（它只有 class）——
+   * 第一版就这么错了，断言会以为色块不在序列里。
+   */
+  const ids = [...topbar[1].matchAll(/id="([^"]+)"|class="(brand-dot)"/g)]
+    .map((m) => m[1] ?? m[2]);
+  assert.deepEqual(
+    ids,
+    ["btnMin", "btnPin", "btnSideLeft", "brand-dot", "tbTitle", "btnFolder", "btnSideRight", "btnMenu"],
+    "顶栏顺序：最小化 → 置顶 → 左侧边栏 → 色块 → 标题 → 文件夹 → 右侧边栏 → 更多",
+  );
+
+  // 标题必须夹在左右两组按钮之间 —— 「中间区域为会话标题」靠这个成立
+  const iTitle = ids.indexOf("tbTitle");
+  assert.ok(iTitle > ids.indexOf("btnSideLeft"), "标题要在左侧组之后");
+  assert.ok(iTitle < ids.indexOf("btnFolder"), "标题要在右侧组之前");
 });
 
 test("app.js 绑定的每个按钮都必须真的存在于 HTML", () => {
