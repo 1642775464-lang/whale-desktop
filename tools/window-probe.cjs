@@ -154,9 +154,9 @@ app.whenReady().then(async () => {
   const after = w.bounds();
   report.b4 = { dx: after.x - before.x, dy: after.y - before.y, sizeKept: after.width === before.width };
 
-  // ── 顶栏元素齐全（F2 六元素）──
+  // ── 顶栏元素齐全（F2 五元素：齿轮已按用户要求移除）──
   report.topbar = await run(`(() => {
-    const ids = ["btnMin", "btnPin", "btnGear", "btnMenu", "tbTitle"];
+    const ids = ["btnMin", "btnPin", "btnMenu", "tbTitle"];
     const missing = ids.filter((id) => {
       const el = document.getElementById(id);
       return el === null || el.offsetWidth === 0;

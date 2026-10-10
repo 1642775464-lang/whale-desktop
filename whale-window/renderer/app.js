@@ -22,7 +22,6 @@
     topbar: $("topbar"),
     btnMin: $("btnMin"),
     btnPin: $("btnPin"),
-    btnGear: $("btnGear"),
     btnMenu: $("btnMenu"),
     tbTitle: $("tbTitle"),
     shTitle: $("shTitle"),
@@ -354,7 +353,6 @@
 
     // 顶栏 ☰ = 菜单（F8）；「隐藏」走「更多 → 最小化」那条路
     dom.btnMenu.addEventListener("click", () => panels.toggleMenu());
-    dom.btnGear.addEventListener("click", () => notifyUnavailable("侧边工作台"));
 
     // 四个浮层键统一在 OVERLAY_BUTTONS 里接线（含权限键）。
     //

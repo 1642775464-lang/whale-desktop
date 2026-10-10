@@ -53,11 +53,17 @@ const rendererAll = [
 
 const hasId = (id) => new RegExp(`id="${id}"`).test(html);
 
-test("顶栏六元素齐全（F2）", () => {
-  for (const id of ["btnMin", "btnPin", "btnGear", "btnMenu", "tbTitle"]) {
+test("顶栏五元素齐全（F2）", () => {
+  /*
+   * 原为六元素，含 `btnGear`（侧边工作台，点了只提示未实现）。
+   * 用户要求去掉它，这里跟着改 —— 「元素齐全」的清单就是规格，
+   * 删了按钮不改清单会立刻红，那正是它该起的作用。
+   */
+  for (const id of ["btnMin", "btnPin", "btnMenu", "tbTitle"]) {
     assert.ok(hasId(id), `缺元素 #${id}`);
   }
   assert.match(html, /class="brand-dot"/, "工作区色块必须存在");
+  assert.doesNotMatch(html, /id="btnGear"/, "侧边工作台按钮已按用户要求移除");
 });
 
 test("app.js 绑定的每个按钮都必须真的存在于 HTML", () => {
@@ -110,14 +116,38 @@ test("会话标题行三元素齐全（F3），角标文案固定", () => {
 });
 
 test("输入区按钮组齐全（F6）", () => {
-  for (const id of ["btnAdd", "btnPerm", "btnUsage", "btnMore", "btnModel", "btnVoice", "btnSend"]) {
+  /*
+   * 原含 `btnVoice`（语音输入，标注「暂未实现」、点了没反应）。
+   * 用户要求去掉，这里跟着改。
+   */
+  for (const id of ["btnAdd", "btnPerm", "btnUsage", "btnMore", "btnModel", "btnSend"]) {
     assert.ok(hasId(id), `缺按钮 #${id}`);
   }
+  assert.doesNotMatch(html, /id="btnVoice"/, "语音按钮已按用户要求移除");
 });
 
 test("灰色项不得有 hover 反馈（规范 2：不假装能用）", () => {
-  assert.match(css, /\.cbtn\.grey:hover\s*\{[^}]*background:\s*#fff/s, "灰色按钮 hover 不该变色");
-  assert.match(css, /\.cbtn\.grey\s*\{[^}]*cursor:\s*not-allowed/s, "灰色按钮应给 not-allowed 光标");
+  /*
+   * ⚠️ 原先只断言 `.cbtn.grey` —— 那是语音按钮（唯一的 `.cbtn.grey` 使用者），
+   * 而语音按钮已按用户要求移除。守一个**已经没人用**的类，等于守死代码。
+   *
+   * 现在断言**页面上真正在用的**两类灰项：
+   *   · `.mi.grey`     —— 菜单里不可用的项（panels.js / palette.js）
+   *   · `.ov-row.grey` —— 浮层里读取失败的来源行（overlays.js）
+   * 断言钉在真正生效的那一环，产品换用别的类名时会立刻红。
+   */
+  for (const sel of ["mi", "ov-row"]) {
+    assert.match(
+      css,
+      new RegExp(`\\.${sel}\\.grey\\s*\\{[^}]*cursor:\\s*not-allowed`, "s"),
+      `.${sel}.grey 应给 not-allowed 光标`,
+    );
+    assert.match(
+      css,
+      new RegExp(`\\.${sel}\\.grey:hover\\s*\\{[^}]*background:\\s*transparent`, "s"),
+      `.${sel}.grey 的 hover 不该有背景变化（不假装能用）`,
+    );
+  }
 });
 
 test("发送键的 aria 约定（B7 判据按此读 DOM）", () => {
