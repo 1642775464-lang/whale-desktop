@@ -226,3 +226,101 @@ test("服务必须延迟解析：构造时网关还没就绪，之后就绪了�
   const out = await bridge.listSkills("s1");
   assert.equal(out.ok, true, "延迟解析后才真的能调");
 });
+
+// ── 新建会话 session/create ───────────────────────────
+
+test("createSession：走 session/create，request 至少给空对象", async () => {
+  /*
+   * 实测契约：SessionCreateRequest 的四个字段**全部可选**。
+   * 但网关会校验具名参数，`request` 这个键本身得存在 ——
+   * 传 undefined 会报参数不匹配（看起来像「宿主不认这个端点」，实为形状错）。
+   */
+  const gateway = fakeGateway({ sessionId: "new-1" });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
+
+  const out = await bridge.createSession();
+  assert.equal(out.ok, true);
+  assert.equal(gateway.calls[0].namespace, "session");
+  assert.equal(gateway.calls[0].method, "create");
+  assert.deepEqual(gateway.calls[0].args, { request: {} }, "不传时也要给 {request:{}}");
+  assert.equal(out.sessionId, "new-1");
+});
+
+test("createSession：传入的字段原样透传（workspaceId / cwd / agentPreset）", async () => {
+  const gateway = fakeGateway({ sessionId: "new-2", agentPreset: "standard" });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
+
+  const out = await bridge.createSession({ cwd: "/w", agentPreset: "standard" });
+  assert.deepEqual(gateway.calls[0].args, { request: { cwd: "/w", agentPreset: "standard" } });
+  assert.equal(out.agentPreset, "standard");
+});
+
+test("createSession：宿主说成功却没给 sessionId → 如实报错，不给空壳会话", async () => {
+  /*
+   * 没有 id 的会话是切不过去、也拉不到面板的。
+   * 若这里返回一个 ok 的空对象，界面会以为自己有了新会话 —— 那更糟。
+   */
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: fakeGateway({}) }) });
+  const out = await bridge.createSession();
+  assert.equal(out.ok, false);
+  assert.equal(out.code, "session/create-no-id");
+});
+
+test("createSession：网关失败时原样回传 code", async () => {
+  const err = Object.assign(new Error("boom"), { code: "session/writer-held" });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: fakeGateway(err) }) });
+  const out = await bridge.createSession();
+  assert.equal(out.ok, false);
+  assert.equal(out.code, "session/writer-held", "写锁争用这类原因必须让调用方看见");
+});
+
+// ── 会话清单 session/list ─────────────────────────────
+
+test("listSessions：走 session/list，参数名是 _request", async () => {
+  /*
+   * ⚠️ 宿主声明的参数名带下划线前缀（`_request`），不是 `request`。
+   * 网关按名校验，写成 request 会被拒 —— 而那个错误看起来像端点不存在。
+   */
+  const gateway = fakeGateway({ sessions: [] });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
+
+  await bridge.listSessions();
+  assert.equal(gateway.calls[0].namespace, "session");
+  assert.equal(gateway.calls[0].method, "list");
+  assert.deepEqual(gateway.calls[0].args, { _request: {} }, "参数名是 _request");
+});
+
+test("listSessions：归一化会话行，缺字段给 null", async () => {
+  const gateway = fakeGateway({
+    sessions: [
+      { sessionId: "a", title: "会话甲", updatedAt: 1700000000000 },
+      { sessionId: "b" },
+      { title: "没有 id 的行" },
+    ],
+  });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
+
+  const out = await bridge.listSessions();
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.sessions, [
+    { sessionId: "a", title: "会话甲", updatedAt: 1700000000000 },
+    { sessionId: "b", title: null, updatedAt: null },
+  ], "没有 sessionId 的行整条丢掉——它切不过去");
+});
+
+test("listSessions：宿主返回形状不同（items）时也能认", async () => {
+  const bridge = createTypertBridge({
+    ctx: ctxWith({ typertGateway: fakeGateway({ items: [{ sessionId: "x" }] }) }),
+  });
+  const out = await bridge.listSessions();
+  assert.deepEqual(out.sessions, [{ sessionId: "x", title: null, updatedAt: null }]);
+});
+
+test("listSessions：失败时不返空清单冒充「没有会话」", async () => {
+  const err = Object.assign(new Error("x"), { code: "gateway/invocation-unavailable" });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: fakeGateway(err) }) });
+  const out = await bridge.listSessions();
+  assert.equal(out.ok, false);
+  assert.equal(out.code, "gateway/invocation-unavailable");
+  assert.equal(out.sessions, undefined);
+});

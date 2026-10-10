@@ -388,6 +388,8 @@ export function createHostAccess(ctx) {
     typertAvailable: typert.available,
     invokeRemote: typert.invokeRemote,
     listSkills: typert.listSkills,
+    createSession: typert.createSession,
+    listSessionsViaTypert: typert.listSessions,
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,

@@ -152,5 +152,72 @@ export function createTypertBridge({ ctx }) {
     return { ok: true, skills };
   }
 
-  return { available, invokeRemote, listSkills };
+  /**
+   * 新建（或幂等收养）一个普通会话。
+   *
+   * 实测契约：`@Remote('create') create(request: SessionCreateRequest)`
+   *   `SessionCreateRequest = { workspaceId?, cwd?, sessionId?, agentPreset? }`（全部可选）
+   *   → `SessionCreateValue = { sessionId, agentPreset? }`
+   *
+   * ⚠️ 参数全可选，但**不能**把 `request` 传成 undefined ——
+   * 网关会校验具名参数，缺 `request` 会报参数不匹配。至少给 `{}`。
+   *
+   * @param {object} [request] 创建请求（可空）
+   * @returns {Promise<object>} `{ok, sessionId, agentPreset?}` 或失败
+   */
+  async function createSession(request) {
+    const out = await invokeRemote({
+      namespace: "session",
+      method: "create",
+      args: { request: request ?? {} },
+    });
+    if (!out.ok) return out;
+
+    const sessionId = out.value?.sessionId;
+    if (typeof sessionId !== "string" || sessionId === "") {
+      // 建成功了却没给 id —— 那不是能用的会话，如实报错而不是给个空壳
+      return { ok: false, code: "session/create-no-id", message: "宿主建了会话但没给 sessionId" };
+    }
+    return {
+      ok: true,
+      sessionId,
+      agentPreset: typeof out.value?.agentPreset === "string" ? out.value.agentPreset : null,
+    };
+  }
+
+  /**
+   * 读可见会话清单（`session/list`）。
+   *
+   * 实测契约：`@Remote('list') list(_request: SessionListRequest, signal)`
+   * —— 宿主注释写明「Read all visible Session rows **without resuming an Agent**」，
+   * 所以这条**不会唤醒冷会话**，适合侧边栏列清单。
+   *
+   * 与桥已有的 `recentSessions()`（走 `sessionController.list`）的区别：
+   * 那条给的是「最近会话」投影；这条是 Typert 侧的完整可见行。
+   *
+   * @returns {Promise<object>} `{ok, sessions}` 或失败
+   */
+  async function listSessions() {
+    const out = await invokeRemote({
+      namespace: "session",
+      method: "list",
+      args: { _request: {} },
+    });
+    if (!out.ok) return out;
+
+    const raw = Array.isArray(out.value?.sessions)
+      ? out.value.sessions
+      : (Array.isArray(out.value?.items) ? out.value.items : []);
+    const sessions = raw
+      .filter((s) => s !== null && typeof s === "object")
+      .map((s) => ({
+        sessionId: typeof s.sessionId === "string" ? s.sessionId : null,
+        title: typeof s.title === "string" && s.title !== "" ? s.title : null,
+        updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : null,
+      }))
+      .filter((s) => s.sessionId !== null);
+    return { ok: true, sessions };
+  }
+
+  return { available, invokeRemote, listSkills, createSession, listSessions };
 }

@@ -76,10 +76,81 @@ async function skills({ host, query }) {
   return { ok: true, skills: out.skills };
 }
 
+/**
+ * POST /whale/session/create —— 新建一个会话（侧边栏「新会话」）
+ *
+ * 走 Typert `session/create`，实测契约：
+ *   `request: { workspaceId?, cwd?, sessionId?, agentPreset? }`（全部可选）
+ *   → `{ sessionId, agentPreset? }`
+ *
+ * body 可空。**这是写操作**（会在宿主里真的建一个会话），
+ * 与同文件其余只读路由不同，调用方要知道这一点。
+ *
+ * @param {object} ctx
+ * @param {object} ctx.host
+ * @param {object} [ctx.body]
+ * @returns {Promise<object>}
+ */
+async function sessionCreate({ host, body }) {
+  if (typeof host.createSession !== "function") {
+    const err = new Error("桥未装配 createSession（typert 能力缺失）");
+    err.code = "session-create-unavailable";
+    err.status = 503;
+    throw err;
+  }
+
+  // 只透传宿主认得的字段；多传的会被网关的具名参数校验拒掉
+  const src = body !== null && typeof body === "object" ? body : {};
+  const request = {};
+  for (const key of ["workspaceId", "cwd", "sessionId", "agentPreset"]) {
+    if (typeof src[key] === "string" && src[key] !== "") request[key] = src[key];
+  }
+
+  const out = await host.createSession(request);
+  if (!out.ok) {
+    const err = new Error(out.message ?? "新建会话失败");
+    err.code = out.code ?? "session-create-failed";
+    err.status = 502;
+    throw err;
+  }
+  return { ok: true, sessionId: out.sessionId, agentPreset: out.agentPreset };
+}
+
+/**
+ * GET /whale/session/list —— 可见会话清单（不唤醒冷会话）
+ *
+ * 走 Typert `session/list`。宿主注释写明它「Read all visible Session rows
+ * without resuming an Agent」，所以这条**不会把冷会话唤醒**——
+ * 侧边栏列清单用它比逐个 inspect 安全。
+ *
+ * @param {object} ctx
+ * @param {object} ctx.host
+ * @returns {Promise<object>}
+ */
+async function sessionList({ host }) {
+  if (typeof host.listSessionsViaTypert !== "function") {
+    const err = new Error("桥未装配 listSessions（typert 能力缺失）");
+    err.code = "session-list-unavailable";
+    err.status = 503;
+    throw err;
+  }
+
+  const out = await host.listSessionsViaTypert();
+  if (!out.ok) {
+    const err = new Error(out.message ?? "读取会话清单失败");
+    err.code = out.code ?? "session-list-failed";
+    err.status = 502;
+    throw err;
+  }
+  return { ok: true, sessions: out.sessions };
+}
+
 /** 注册侧边栏数据源路由。 */
 export function registerSidebarRoutes() {
   register("GET", "/whale/skills", skills);
+  register("GET", "/whale/session/list", sessionList);
+  register("POST", "/whale/session/create", sessionCreate);
 }
 
 /** 本文件声明的路由数（供单测核对）。 */
-export const SIDEBAR_ROUTES = 1;
+export const SIDEBAR_ROUTES = 3;
