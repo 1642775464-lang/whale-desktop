@@ -28,6 +28,7 @@
  */
 
 import { applyEvent, ensureSession } from "./fold.mjs";
+import { fallbackSessionCatalog } from "./fallback-catalog.mjs";
 
 /** 空窗时的重试冷却（毫秒）。 */
 export const EMPTY_RETRY_MS = 60_000;
@@ -40,9 +41,18 @@ export const EMPTY_RETRY_MS = 60_000;
  * @param {object} deps.foldSet 折叠集
  * @param {(msg: string) => void} [deps.log]
  * @param {() => number} [deps.now] 取当前毫秒（便于单测控时间）
- * @returns {{ seedRecent: () => Promise<string|null>, ensureSeeded: (id: string) => Promise<boolean> }}
+ * @param {() => object} [deps.catalogOf] 注册表清单（fallbackSessionCatalog 的注入点，
+ *        单测可换假实现，避免读真实 ~/.dsh）
+ * @returns {{ seedRecent: () => Promise<string|null>, ensureSeeded: (id: string) => Promise<boolean>,
+ *            seedFromCatalog: (id: string) => Promise<boolean> }}
  */
-export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date.now() }) {
+export function createColdSeed({
+  host,
+  foldSet,
+  log = () => {},
+  now = () => Date.now(),
+  catalogOf = () => fallbackSessionCatalog(),
+}) {
   /** 已经种过的会话 id：持久层读取不便宜，同一会话只读一次。 */
   const seeded = new Set();
 
@@ -249,5 +259,43 @@ export function createColdSeed({ host, foldSet, log = () => {}, now = () => Date
     return seedOne(sessionId, row);
   }
 
-  return { ensureSeeded, seedRecent };
+  /**
+   * 种上**注册表清单里**的某条会话（`ensureSeeded` 的兜底）。
+   *
+   * ⚠️ 为什么需要它：`ensureSeeded` 走 `host.recentSessions()`
+   * （sessionController.list —— "All live sessions"），而实测**活会话
+   * 可能不在那份清单里**（e21d009d 是活会话、`getSession` 找得到，
+   * 但 `list` 不含它）→ ensureSeeded 返回 false → 折叠器没有它 →
+   * hud 清单缺它 → 小窗「点了无法切换」。
+   *
+   * 注册表清单（fallbackSessionCatalog）以宿主的注册表为准，
+   * **一定包含**登记在册的会话（含活会话），所以用它兜底最稳。
+   *
+   * @param {string} sessionId
+   * @returns {Promise<boolean>}
+   */
+  async function seedFromCatalog(sessionId) {
+    if (typeof sessionId !== "string" || sessionId === "") return false;
+    if (foldSet.sessions.has(sessionId)) return true;
+    let catalog;
+    try {
+      catalog = catalogOf();
+    } catch {
+      return false;
+    }
+    if (catalog.ok !== true) return false;
+    const row = catalog.sessions.filter((s) => s.sessionId === sessionId)[0];
+    if (row === undefined) return false;
+    // seedOne 读的是 row.cwd / row.title / row.updatedAt / row.running，
+    // fallback 行的字段名是 workspace（对齐 SessionSummary 的 cwd）
+    const ok = await seedOne(sessionId, {
+      title: row.title,
+      cwd: row.workspace,
+      updatedAt: row.updatedAt,
+      running: row.running,
+    });
+    return ok;
+  }
+
+  return { ensureSeeded, seedFromCatalog, seedRecent };
 }

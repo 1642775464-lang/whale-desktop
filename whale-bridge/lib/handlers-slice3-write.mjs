@@ -120,8 +120,25 @@ async function abort({ body, bridge }) {
 async function activate({ body, bridge }) {
   const result = bridge.hostActions.activate(body);
   if (result.ok === true) {
+    const sessionId = result.sessionId;
+    /*
+     * ⚠️ 先把目标会话**种进折叠器**（如果还没有）。
+     *
+     * 否则：hud 的 sessions 清单只含折叠器里的会话，冷会话 activate
+     * 后不在清单里 → 小窗的 decideFollow 按「清单里没有就不跟」拒绝
+     * 跟随 → 指针动了、界面纹丝不动（用户报的「点了无法切换」）。
+     *
+     * ensureSeeded 走宿主 live 清单，可能不含目标（实测活会话也会漏）；
+     * 失败时用注册表清单兜底（seedFromCatalog）。
+     */
+    if (bridge.seed !== undefined && typeof bridge.seed.ensureSeeded === "function") {
+      const ok = await bridge.seed.ensureSeeded(sessionId);
+      if (!ok && typeof bridge.seed.seedFromCatalog === "function") {
+        await bridge.seed.seedFromCatalog(sessionId);
+      }
+    }
     // 活跃会话指针挪过去：SSE 与快照都以它为准
-    bridge.foldSet.activeSessionId = result.sessionId;
+    bridge.foldSet.activeSessionId = sessionId;
     // ⚠️ 必须清掉「种子默认值」标记。
     // 这是**用户显式**的选择，要压过自动规则；不清的话，
     // 下一个产生事件的其他会话会把用户刚切过去的选择顶掉

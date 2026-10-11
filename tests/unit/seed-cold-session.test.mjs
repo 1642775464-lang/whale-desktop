@@ -493,3 +493,4 @@ test("持久层读取失败不能打断请求：seed 抛错被吞并返回 null"
   });
   assert.equal(await seed.seedRecent(), null, "种子失败要让调用方走降级，不是把异常冒到 HTTP 层");
 });
+

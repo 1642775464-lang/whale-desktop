@@ -94,16 +94,32 @@
       getCurrentId: () => client.getState().sessionId,
       onSwitch(sessionId) {
         client.activate(sessionId).then((out) => {
-          if (out.ok) return;
-          global.console.warn(`切换失败：${out.code}`);
-          notify(`切换会话失败（${out.code}）`);
+          if (!out.ok) {
+            global.console.warn(`切换失败：${out.code}`);
+            notify(`切换会话失败（${out.code}）`);
+            return;
+          }
+          /*
+           * ⚠️ activate 只挪了桥的活跃指针；小窗的标题/内容要等下一次
+           * 轮询（5 秒）才更新。用户报「点了没反应」正是这一秒的差距。
+           * 切完**主动刷新**，标题和面板立刻跟过去。
+           */
+          client.refresh();
         });
       },
       onResume(sessionId) {
         client.resume(sessionId).then((out) => {
           if (out.ok) {
             sidebar.markWoke(sessionId);
-            client.activate(sessionId);
+            client.activate(sessionId).then((act) => {
+              // 同 onSwitch：唤醒并激活后主动刷新，别让标题等下一轮
+              if (!act.ok) {
+                global.console.warn(`激活失败：${act.code}`);
+                notify(`激活会话失败（${act.code}）`);
+                return;
+              }
+              client.refresh();
+            });
             return;
           }
           sidebar.markWakeFailed(sessionId);
