@@ -15,6 +15,7 @@
 import { createHostCatalog } from "./host-catalog.mjs";
 import { createTypertBridge } from "./typert-bridge.mjs";
 import { readWorkspaceRegistry } from "./workspace-registry.mjs";
+import { fallbackSessionCatalog } from "./fallback-catalog.mjs";
 
 /**
  * 探测一个宿主服务是否可用。
@@ -137,6 +138,12 @@ export function createHostAccess(ctx) {
      * 以及为什么不能按会话的 cwd 反推归属。
      */
     registryOf: () => readWorkspaceRegistry(),
+    /*
+     * `session/list` 整体失败（宿主某条会话 header 冲突 → 502）时，
+     * 用注册表 + 投影缓存拼一份完整清单兜底。
+     * 见 fallback-catalog.mjs 的头注释。
+     */
+    fallbackOf: () => fallbackSessionCatalog(),
   });
 
   /** 安全调用：异常一律吞掉并返回兜底值（宁可局部失效不整体崩溃）。 */

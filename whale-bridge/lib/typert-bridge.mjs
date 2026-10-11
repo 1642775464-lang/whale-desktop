@@ -54,9 +54,13 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
  *        取工作区注册表（含每个工作区**登记的** `sessionIds` 与归档集合）。
  *        `session/list` 只给会话行，**归属关系在注册表里** —— 按 cwd 反推
  *        会把历史上所有在该目录跑过的会话都列出来（用户报的「数目不对」）。
+ * @param {() => object} [deps.fallbackOf]
+ *        `session/list` **整体失败**时的降级清单（注册表 + 投影缓存）。
+ *        宿主可能因一条会话的 header 冲突让整个批量查询 502，
+ *        而单会话操作正常 —— 那时用持久层清单兜底（见 fallback-catalog.mjs）。
  * @returns {object} Typert 调用能力
  */
-export function createTypertBridge({ ctx, registryOf }) {
+export function createTypertBridge({ ctx, registryOf, fallbackOf }) {
   /** 网关服务**每次现取**（延迟解析；塞进 inject 会让插件在服务缺失时不启动）。 */
   function gatewayOf() {
     if (ctx === null || ctx === undefined) return undefined;
@@ -207,7 +211,27 @@ export function createTypertBridge({ ctx, registryOf }) {
       method: "list",
       args: { _request: {} },
     });
-    if (!out.ok) return out;
+    if (!out.ok) {
+      /*
+       * ⚠️ `session/list` 可能**整体失败**：宿主因**一条**会话的 header
+       * 观察不一致（SESSION_QUERY_SOURCE_CONFLICT）而让整个批量查询报 502，
+       * 而单会话的 resume/activate 却一切正常（实测）。
+       *
+       * 那时**回退到持久层清单**（注册表 + 投影缓存）—— 否则侧边栏只剩
+       * 折叠器里那一两条，用户想切的会话根本不在列表里。
+       * 见 fallback-catalog.mjs 的头注释。
+       *
+       * 回退清单**完整**（归属/归档/标题都有），只是来源是持久层快照：
+       * running/agentAvailable 未知 → 界面按「历史」处理，点击走 resume
+       * （单会话 resume 不受批量查询冲突影响，实测可用）。
+       */
+      const fallback = typeof fallbackOf === "function" ? fallbackOf() : null;
+      if (fallback !== null && fallback.ok === true) {
+        return fallback;
+      }
+      // 回退也拿不到 → 如实报原始失败
+      return out;
+    }
 
     const raw = Array.isArray(out.value?.sessions)
       ? out.value.sessions

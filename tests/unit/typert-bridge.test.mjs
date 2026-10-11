@@ -392,20 +392,53 @@ test("listSessions：归档集合来自注册表", async () => {
   assert.equal(out.archivedKnown, true);
 });
 
-test("listSessions：归档判据拿不到时 archivedKnown=false（界面据此不隐藏）", async () => {
+test("listSessions：宿主整体失败时回退到持久层清单（fallback）", async () => {
   /*
-   * ⚠️ 判据拿不到时**不能**按「都没归档」处理 —— 那会让界面以为
-   * 「已确认没有归档的」，而实际是「根本不知道」。
-   * 界面的纪律是：只有 archivedKnown 为 true 才隐藏。
+   * ⚠️ 这是用户报的「切出去后再回会话列表就报错了」的根因路径。
+   *
+   * 实测宿主可能因**一条**会话的 header 冲突（SESSION_QUERY_SOURCE_CONFLICT）
+   * 让整个 `session/list` 502，而单会话的 resume/activate 正常。
+   * 那时必须用持久层清单兜底，否则侧边栏只剩折叠器里那一两条。
    */
+  const err = Object.assign(new Error("conflict"), {
+    code: "SESSION_QUERY_SOURCE_CONFLICT",
+  });
   const bridge = createTypertBridge({
-    ctx: ctxWith({ typertGateway: fakeGateway({ items: [{ sessionId: "x" }] }) }),
-    archivedIdsOf: () => ({ ok: false, ids: [] }),
+    ctx: ctxWith({ typertGateway: fakeGateway(err) }),
+    registryOf: () => ({
+      ok: true,
+      workspaces: [],
+      archivedIds: [],
+      pinnedIds: [],
+    }),
+    fallbackOf: () => ({
+      ok: true,
+      sessions: [{ sessionId: "fb-1", title: "持久层会话" }],
+      archivedKnown: true,
+      registryKnown: true,
+      fallback: true,
+    }),
   });
 
   const out = await bridge.listSessions();
-  assert.equal(out.archivedKnown, false);
-  assert.equal(out.sessions[0].archived, false, "判据没有时不标记");
+  assert.equal(out.ok, true, "失败也要有可用清单");
+  assert.equal(out.sessions[0].sessionId, "fb-1");
+  assert.equal(out.sessions[0].title, "持久层会话");
+  assert.equal(out.fallback, true, "标记来源（供调试/测试）");
+});
+
+test("listSessions：宿主失败且 fallback 也拿不到 → 如实报原始失败", async () => {
+  const err = Object.assign(new Error("conflict"), {
+    code: "SESSION_QUERY_SOURCE_CONFLICT",
+  });
+  const bridge = createTypertBridge({
+    ctx: ctxWith({ typertGateway: fakeGateway(err) }),
+    fallbackOf: () => ({ ok: false, code: "registry-unavailable" }),
+  });
+
+  const out = await bridge.listSessions();
+  assert.equal(out.ok, false);
+  assert.equal(out.code, "SESSION_QUERY_SOURCE_CONFLICT", "不编造清单");
 });
 
 test("listSessions：按最近活动倒序（侧边栏直接消费，不必自己排）", async () => {
