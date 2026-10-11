@@ -38,7 +38,8 @@ test("常量与 PRD / 前端设计规范一致", () => {
   assert.equal(CONTENT_HEIGHT, 678);
   assert.equal(CONTENT_SCALE, 1.1);
   assert.equal(GEOMETRY.CORNER_RADIUS, 18);
-  assert.equal(GEOMETRY.TOPBAR_HEIGHT, 42);
+  // 顶栏高度：用户要求 1.3 倍放大（42 → 55）
+  assert.equal(GEOMETRY.TOPBAR_HEIGHT, 55);
 });
 
 test("内容 460×678 → 窗口 492×710", () => {

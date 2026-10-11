@@ -94,10 +94,10 @@ body.whale {
     0 0 0 1px rgba(120, 130, 175, 0.14);
 }
 
-/* ── 顶栏 42px（整条是拖拽区）─────────────────────── */
+/* ── 顶栏 55px（整条是拖拽区；42 → 55 = 用户要求的 1.3 倍）── */
 .topbar {
-  height: 42px;
-  flex: 0 0 42px;
+  height: 55px;
+  flex: 0 0 55px;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -112,8 +112,8 @@ body.whale {
 }
 
 .ico {
-  width: 24px;
-  height: 24px;
+  width: 31px;
+  height: 31px;
   border: 0;
   background: transparent;
   border-radius: 6px;
@@ -125,8 +125,8 @@ body.whale {
 }
 
 .ico svg {
-  width: 15px;
-  height: 15px;
+  width: 19.5px;
+  height: 19.5px;
   display: block;
 }
 
@@ -146,7 +146,7 @@ body.whale {
 /* ── 左侧边栏（顶栏左侧边栏按钮点开）────────────────── */
 .sidebar {
   position: absolute;
-  top: 42px;            /* 从顶栏**下方**开始，不遮顶栏 —— 用户还要点按钮关它 */
+  top: 55px;            /* 从顶栏**下方**开始（顶栏已放大到 55px），不遮顶栏 */
   left: 0;
   bottom: 0;
   width: 224px;
@@ -347,17 +347,17 @@ body.whale {
 }
 
 .brand-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--brand), var(--brand2));
-  flex: 0 0 7px;
+  flex: 0 0 9px;
 }
 
 .tb-title {
   flex: 1 1 auto;
   text-align: center;
-  font-size: 12.5px;
+  font-size: 16px;
   color: var(--ink2);
   white-space: nowrap;
   overflow: hidden;

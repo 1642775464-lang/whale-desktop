@@ -39,8 +39,8 @@ const SCALE_TIMES = 2;
 /** 圆角（《前端设计规范》4.1）。 */
 const CORNER_RADIUS = 18;
 
-/** 顶栏高度（《前端设计规范》4.2）。 */
-const TOPBAR_HEIGHT = 42;
+/** 顶栏高度（《前端设计规范》4.2；用户要求 1.3 倍放大：42 → 55）。 */
+const TOPBAR_HEIGHT = 55;
 
 /**
  * 内容尺寸 → 窗口尺寸。
