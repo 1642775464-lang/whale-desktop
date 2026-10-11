@@ -137,6 +137,8 @@ async function main() {
   let rowsSeen = 0;
   let skillsSeen = 0;
   let notesSeen = 0;
+  let realMouseClosed = false;
+  let realOutsideClosed = false;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 false）`);
   say(`  技能页打开：${st.skillsOpen}（期望 false）`);
 
@@ -153,6 +155,27 @@ async function main() {
   for (const row of st.rows.slice(0, 6)) {
     say(`    - "${row.text}"  [${row.cls}]`);
   }
+
+  say("");
+  say("=== 2.2) 用**真鼠标**点侧边栏**外**的区域 → 应关闭（用户要求的交互）===");
+  /*
+   * 侧边栏打开时点非侧边栏区域直接关闭。
+   * 侧边栏宽 224px、顶栏高 55px，右侧消息流区域就是「外部」。
+   * 真鼠标点 (400, 300) —— 消息流中间偏右，远离侧边栏与输入区。
+   */
+  win.webContents.sendInputEvent({ type: "mouseMove", x: 400, y: 300 });
+  win.webContents.sendInputEvent({ type: "mouseDown", x: 400, y: 300, button: "left", clickCount: 1 });
+  win.webContents.sendInputEvent({ type: "mouseUp", x: 400, y: 300, button: "left", clickCount: 1 });
+  await new Promise((r) => setTimeout(r, 500));
+  st = await run(READ);
+  say(`  点外部后，侧边栏打开：${st.sidebarOpen}（期望 false）`);
+  realOutsideClosed = st.sidebarOpen === false;
+
+  // 重新打开，供 2.5 用
+  await run(`document.getElementById("btnSideLeft").click()`);
+  await new Promise((r) => setTimeout(r, 400));
+  st = await run(READ);
+  say(`  重新打开：${st.sidebarOpen}（期望 true）`);
 
   say("");
   say("=== 2.5) 用**真鼠标**点侧边栏右上角「×」 ===");
@@ -176,7 +199,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 500));
   st = await run(READ);
   say(`  真鼠标点后，侧边栏打开：${st.sidebarOpen}（期望 false）`);
-  const realMouseClosed = st.sidebarOpen === false;
+  realMouseClosed = st.sidebarOpen === false;
 
   // 重新打开，继续后面的步骤
   await run(`document.getElementById("btnSideLeft").click()`);
@@ -212,6 +235,9 @@ async function main() {
   const problems = [];
   if (realMouseClosed !== true) {
     problems.push("真鼠标点 × 没关上（用户报的「点叉关不上」）");
+  }
+  if (realOutsideClosed !== true) {
+    problems.push("真鼠标点侧边栏外没关闭（用户要求的新交互）");
   }
   if (st.sidebarOpen !== false) problems.push("返回后侧边栏仍可见");
   if (st.skillsOpen !== false) problems.push("返回后技能页没关闭");

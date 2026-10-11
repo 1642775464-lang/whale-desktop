@@ -300,10 +300,36 @@
       if (changed && open) renderSessions();
     }
 
+    /**
+     * 点击侧边栏**外**的任意区域 → 关闭（用户要求的交互）。
+     *
+     * 挂在 document 的 click 上，只在该关的时候关：
+     *   · 点在侧边栏**内** → 不关（会话行 / 新会话 / 技能中心自己处理）；
+     *   · 点在顶栏「打开左侧边栏」按钮上 → 不关（按钮自己 toggle，
+     *     这里再关会把刚打开的又合上）；
+     *   · 其余（消息流 / 输入区 / 顶栏其它按钮）→ 关。
+     *
+     * 用 closest 判断而不是 contains：target 可能是文本节点，
+     * closest 对文本节点返回 null，先归到父元素再查。
+     *
+     * @param {object} ev 点击事件
+     */
+    function onDocClick(ev) {
+      if (!open) return;
+      const raw = ev && ev.target;
+      const el = raw && raw.nodeType === 1 ? raw : (raw && raw.parentElement);
+      if (el === null || el === undefined) return;
+      if (el.closest("#sidebar") !== null) return;
+      if (el.closest("#btnSideLeft") !== null) return;
+      close();
+    }
+
     /** 打开（顺带拉一次清单：每次打开都要看到最新会话）。 */
     function openSidebar() {
       open = true;
       dom.sidebar.hidden = false;
+      // 点外部关闭：只在打开期间监听，关闭即卸 —— 避免常驻判断
+      global.document.addEventListener("click", onDocClick);
       renderSessions();          // 先用旧数据画一帧，避免空白
       void refresh();
     }
@@ -312,6 +338,7 @@
     function close() {
       open = false;
       dom.sidebar.hidden = true;
+      global.document.removeEventListener("click", onDocClick);
     }
 
     /** 切换。 */
