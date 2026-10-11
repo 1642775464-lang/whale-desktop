@@ -102,7 +102,16 @@ async function panel({ query, host, bridge }) {
   const foldSet = bridge?.foldSet;
   const inFold = foldSet !== undefined && foldSet.sessions.has(sessionId);
   if (!inFold && bridge?.seed !== undefined) {
-    await bridge.seed.ensureSeeded(sessionId);
+    /*
+     * ⚠️ 两层兜底（与 /whale/activate 同一套）：
+     * `ensureSeeded` 走宿主的 live 清单（实测**活会话也可能不在里面**），
+     * 失败时用注册表清单兜底 —— 否则「其他会话切过去一片空白」
+     * （用户报的「其他会话的历史消息怎么没了」）。
+     */
+    const ok = await bridge.seed.ensureSeeded(sessionId);
+    if (!ok && typeof bridge.seed.seedFromCatalog === "function") {
+      await bridge.seed.seedFromCatalog(sessionId);
+    }
   }
 
   const session = host.getSession(sessionId);
