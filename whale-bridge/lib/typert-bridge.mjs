@@ -345,23 +345,34 @@ export function createTypertBridge({ ctx, registryOf, fallbackOf }) {
   }
 
   /**
-   * 读账号信息与充值余额（侧边栏底部模块用）。
+   * 读账号状态、资料与充值余额（侧边栏底部模块用）。
    *
-   * 两个方法各自独立取值，**一个失败不影响另一个**（余额读不到时
-   * 资料仍该显示）：各自返回 `status: "ready" | "failed"`。
+   * 三个方法各自独立取值，**一个失败不影响另一个**。
    *
    * 契约（照 `dsh-api-account-controller` 的 typert.host.js 声明）：
    *
-   *   account/getProfile  args:{client:{version,locale,timezoneOffsetSeconds}}
+   *   account/getState    args:{client:{version,locale,timezoneOffsetSeconds}}
+   *     → {status:"signed-out"|"credential-stored", links:{usageUrl, topUpUrl},
+   *        attempt:{...}|null}
+   *   account/getProfile  同上 args
    *     → {status:"ready", value:{id, name, contact, avatarUrl?}} | {status:"failed"}
+   *       **宿主无凭证时直接返回 `null`**（不是 failed）—— 见
+   *       dsh-deepseek-account-platform 的 `getProfile`：
+   *       `if (stored === null) return null;`
    *   account/getBalance  同上 args
    *     → {status:"ready", value:[{currency:"CNY"|"USD", balance}],
    *        bonusWallets:[{currency, balance}]} | {status:"failed"}
    *
    * ⚠️ `client` 参数是**必填**（客户端元数据），不给会被严格 codec 拒掉。
    *
-   * @returns {Promise<{ok:boolean, profile?:object|null, balance?:object|null,
-   *                    profileCode?:string, balanceCode?:string}>}
+   * ⚠️ **为什么要读 getState**：`getProfile` 的 `null` 有歧义 ——
+   * 「没登录」与「读取被中断」都是 null。而 getState 明确给
+   * `signed-out` / `credential-stored`，界面据此才能说准是「未登录」
+   * 还是「资料暂不可用」（两者对用户含义不同）。
+   *
+   * @returns {Promise<{ok:boolean, signedIn?:boolean|null, profile?:object|null,
+   *                    balance?:object|null, profileCode?:string,
+   *                    balanceCode?:string, stateCode?:string}>}
    */
   async function accountInfo() {
     const client = {
@@ -372,10 +383,26 @@ export function createTypertBridge({ ctx, registryOf, fallbackOf }) {
 
     const call = (method) => invokeRemote({ namespace: "account", method, args: { client } });
 
-    const [profileOut, balanceOut] = await Promise.all([
+    const [stateOut, profileOut, balanceOut] = await Promise.all([
+      call("getState"),
       call("getProfile"),
       call("getBalance"),
     ]);
+
+    /*
+     * getState：`{status, links, attempt}` —— **没有** ready/failed 包装。
+     * `status` 直接就是登录状态。
+     */
+    let signedIn = null;
+    let stateCode = null;
+    if (stateOut.ok === true && stateOut.value !== null && typeof stateOut.value === "object") {
+      const st = stateOut.value.status;
+      if (st === "credential-stored") signedIn = true;
+      else if (st === "signed-out") signedIn = false;
+      else stateCode = "account/state-unknown";
+    } else {
+      stateCode = stateOut.ok === true ? "account/state-unknown" : (stateOut.code ?? "typert/failed");
+    }
 
     /** 把宿主给的 `{status, value}` 收成 `{ok, value}`（status 非 ready 即失败）。 */
     const unwrap = (out) => {
@@ -392,6 +419,12 @@ export function createTypertBridge({ ctx, registryOf, fallbackOf }) {
 
     return {
       ok: true,
+      /*
+       * 登录状态：`true` 已登录 / `false` 未登录 / `null` 不知道。
+       * 界面靠它区分「未登录」与「资料暂不可用」—— 这两句对用户含义不同。
+       */
+      signedIn,
+      stateCode,
       profile: profile.ok
         ? {
           name: typeof profile.value?.name === "string" ? profile.value.name : null,

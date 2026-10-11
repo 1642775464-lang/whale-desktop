@@ -27,6 +27,12 @@
   /**
    * 把宿主给的余额行格式化成显示串。
    *
+   * ⚠️ 宿主给的是**高精度字符串**（实测 `"9.5534315800000000"`），
+   * 直接显示会拖一长串尾巴。用户要求**保留到小数点后 5 位**。
+   *
+   * 只**截断**不四舍五入：余额宁可少报一位，也不多报 ——
+   * 四舍五入可能把 9.999999 显示成 10.00000（比真实余额多）。
+   *
    * @param {{currency: string|null, balance: string|null}|null} wallet
    * @returns {string} 拿不到给「—」（不是 0）
    */
@@ -35,8 +41,28 @@
     const raw = wallet.balance;
     if (typeof raw !== "string" || raw === "") return "—";
     const sign = CURRENCY_SIGN[wallet.currency] ?? "";
-    // 宿主给的是字符串（保留它自己的精度），只补币种符号
-    return `${sign}${raw}`;
+    return `${sign}${truncateTo(raw, 5)}`;
+  }
+
+  /**
+   * 把数字串截到指定小数位（**截断**，不四舍五入）。
+   *
+   * 不是数字的串原样返回 —— 宁可显示原值，也不要把看不懂的东西吃掉。
+   * 末尾多余的 0 去掉（`9.50000` → `9.5`），整数部分没有小数时不留小数点。
+   *
+   * @param {string} raw 数字串
+   * @param {number} digits 保留的小数位数
+   * @returns {string}
+   */
+  function truncateTo(raw, digits) {
+    const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(raw).trim());
+    if (m === null) return raw;
+    const neg = m[1];
+    const int = m[2];
+    const frac = m[3];
+    if (frac === undefined) return `${neg}${int}`;
+    const kept = frac.slice(0, digits).replace(/0+$/, "");
+    return kept === "" ? `${neg}${int}` : `${neg}${int}.${kept}`;
   }
 
   /**
@@ -54,19 +80,42 @@
     function render(out) {
       const data = out !== null && out !== undefined && out.ok === true ? out : null;
 
-      // ── 账号资料 ──
-      if (data !== null && data.profile !== null && data.profile !== undefined) {
+      /*
+       * ── 账号资料 ──
+       *
+       * ⚠️ 三种状态要分开说（对用户含义不同）：
+       *   · 有资料            → 显示名字 + 联系方式
+       *   · 已登录但读不到资料 → 「已登录 DeepSeek」+ 失败原因
+       *   · 明确未登录         → 「未登录」
+       *   · 登录状态也不知道   → 「账号信息不可用」（不猜是哪种）
+       *
+       * 宿主 `getProfile` 在无凭证时返回 `null` —— 光看它分不出
+       * 「未登录」与「读取被中断」，所以要看 `signedIn`（来自 getState）。
+       */
+      const signedIn = data !== null ? data.signedIn : null;
+      const hasProfile = data !== null && data.profile !== null && data.profile !== undefined;
+
+      if (hasProfile) {
         const name = data.profile.name;
         dom.name.textContent = typeof name === "string" && name !== "" ? name : "已登录 DeepSeek";
         const contact = data.profile.contact;
         dom.sub.textContent = typeof contact === "string" && contact !== ""
           ? contact
           : "账号资料暂不可用";
-      } else {
+      } else if (signedIn === false) {
+        // getState 明确说未登录 —— 这是准的，不含糊
         dom.name.textContent = "未登录";
+        dom.sub.textContent = "登录后显示账号信息";
+      } else if (signedIn === true) {
+        dom.name.textContent = "已登录 DeepSeek";
         dom.sub.textContent = data !== null && data.profileCode
           ? `账号资料暂不可用（${data.profileCode}）`
           : "账号资料暂不可用";
+      } else {
+        dom.name.textContent = "账号信息不可用";
+        dom.sub.textContent = data !== null && data.stateCode
+          ? `读不到登录状态（${data.stateCode}）`
+          : "读不到登录状态";
       }
 
       // ── 余额 ──
@@ -93,5 +142,5 @@
     return { refresh, render };
   }
 
-  global.WhaleAccountPanel = { createAccountPanel, formatBalance };
+  global.WhaleAccountPanel = { createAccountPanel, formatBalance, truncateTo };
 })(typeof window !== "undefined" ? window : globalThis);

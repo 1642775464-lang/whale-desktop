@@ -43,8 +43,18 @@ test("accountInfo：调 account/getProfile 与 account/getBalance，带必填 cl
   /*
    * ⚠️ `client` 是**必填**参数（AccountClientMetadata，严格 codec）——
    * 缺字段会被整条拒掉，表现是「账号模块永远读不到」。
+   *
+   * ⚠️ 为什么要读 getState：`getProfile` 无凭证时返回 `null`，
+   * 光看它分不出「未登录」与「读取被中断」。
    */
   const gateway = recordingGateway((request) => {
+    if (request.method === "getState") {
+      return Promise.resolve({
+        status: "credential-stored",
+        links: { usageUrl: "u", topUpUrl: "t" },
+        attempt: null,
+      });
+    }
     if (request.method === "getProfile") {
       return Promise.resolve({
         status: "ready",
@@ -53,7 +63,7 @@ test("accountInfo：调 account/getProfile 与 account/getBalance，带必填 cl
     }
     return Promise.resolve({
       status: "ready",
-      value: [{ currency: "CNY", balance: "9.55" }],
+      value: [{ currency: "CNY", balance: "9.5534315800000000" }],
       bonusWallets: [{ currency: "CNY", balance: "1.00" }],
     });
   });
@@ -61,12 +71,15 @@ test("accountInfo：调 account/getProfile 与 account/getBalance，带必填 cl
 
   const out = await bridge.accountInfo();
   assert.equal(out.ok, true);
+  assert.equal(out.signedIn, true, "getState 的 status 决定登录状态");
   assert.deepEqual(out.profile, { name: "张三", contact: "a@b.com", avatarUrl: null });
-  assert.deepEqual(out.balance.wallets, [{ currency: "CNY", balance: "9.55" }]);
+  // 余额原样透传高精度串，截位交给界面（界面才知道显示需求）
+  assert.deepEqual(out.balance.wallets, [{ currency: "CNY", balance: "9.5534315800000000" }]);
   assert.deepEqual(out.balance.bonusWallets, [{ currency: "CNY", balance: "1.00" }]);
 
-  // 两个方法都在 account 命名空间，且 client 必填字段齐全
+  // 三个方法都在 account 命名空间，且 client 必填字段齐全
   assert.deepEqual(gateway.calls.map((c) => [c.namespace, c.method]), [
+    ["account", "getState"],
     ["account", "getProfile"],
     ["account", "getBalance"],
   ]);
@@ -75,6 +88,36 @@ test("accountInfo：调 account/getProfile 与 account/getBalance，带必填 cl
     assert.equal(typeof c.args.client.locale, "string", "locale 必填");
     assert.equal(typeof c.args.client.timezoneOffsetSeconds, "number", "偏移必填");
   }
+});
+
+test("accountInfo：getState 说未登录时 signedIn=false", async () => {
+  const gateway = recordingGateway((request) => {
+    if (request.method === "getState") {
+      // 未登录时 getProfile 返回 null（宿主实现：stored === null → return null）
+      return Promise.resolve({ status: "signed-out", links: {}, attempt: null });
+    }
+    if (request.method === "getProfile") return Promise.resolve(null);
+    return Promise.resolve({ status: "failed" });
+  });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
+
+  const out = await bridge.accountInfo();
+  assert.equal(out.signedIn, false, "界面据此说「未登录」");
+  assert.equal(out.profile, null);
+});
+
+test("accountInfo：getState 取不到时 signedIn 为 null（不猜是哪种）", async () => {
+  const gateway = recordingGateway((request) => {
+    if (request.method === "getState") {
+      return Promise.reject(Object.assign(new Error("x"), { code: "typert/unavailable" }));
+    }
+    return Promise.resolve({ status: "failed" });
+  });
+  const bridge = createTypertBridge({ ctx: ctxWith({ typertGateway: gateway }) });
+
+  const out = await bridge.accountInfo();
+  assert.equal(out.signedIn, null, "不知道就说不知道");
+  assert.equal(out.stateCode, "typert/unavailable");
 });
 
 test("accountInfo：资料失败不影响余额（各自独立）", async () => {
