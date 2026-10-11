@@ -150,9 +150,39 @@ async function sessionList({ host }) {
   return { ok: true, sessions: out.sessions, archivedKnown: out.archivedKnown === true };
 }
 
+/**
+ * GET /whale/account —— 账号信息与充值余额（侧边栏底部模块）
+ *
+ * 走 Typert `account/getProfile` + `account/getBalance`。
+ * 两个方法**各自独立**：一个失败不影响另一个（余额读不到时资料仍要显示）。
+ * 所以这里**不整体报错** —— 失败信息放在 `profileCode` / `balanceCode` 里，
+ * 界面据此显示「—」或原因，不编造数字。
+ *
+ * @param {object} ctx
+ * @param {object} ctx.host
+ * @returns {Promise<object>}
+ */
+async function account({ host }) {
+  if (typeof host.accountInfoViaTypert !== "function") {
+    const err = new Error("桥未装配 accountInfo（typert 能力缺失）");
+    err.code = "account-unavailable";
+    err.status = 503;
+    throw err;
+  }
+  const out = await host.accountInfoViaTypert();
+  if (out.ok !== true) {
+    const err = new Error(out.message ?? "读取账号信息失败");
+    err.code = out.code ?? "account-failed";
+    err.status = 502;
+    throw err;
+  }
+  return out;
+}
+
 /** 注册侧边栏数据源路由。 */
 export function registerSidebarRoutes() {
   register("GET", "/whale/skills", skills);
+  register("GET", "/whale/account", account);
   register("GET", "/whale/session/list", sessionList);
   register("POST", "/whale/session/create", sessionCreate);
 }

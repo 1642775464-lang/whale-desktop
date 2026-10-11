@@ -400,6 +400,17 @@
       });
     }
 
+    /**
+     * 账号信息与充值余额（侧边栏底部模块）。
+     *
+     * ⚠️ 与 `skills()` 一样返回 `{ok, data}`（data 是整个响应体）。
+     * `profile` / `balance` 可能各自为 null（宿主那个方法失败），
+     * 由调用方分别显示「—」—— 不能因为一块失败就把另一块也变空。
+     */
+    function account() {
+      return get("/whale/account");
+    }
+
     /** 断开增量流。 */
     function close() {
       if (pollHandle !== null) {
@@ -427,6 +438,7 @@
 
     return {
       abort,
+      account,
       activate,
       close,
       command,

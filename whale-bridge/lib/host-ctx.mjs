@@ -406,6 +406,8 @@ export function createHostAccess(ctx) {
     listSkills: typert.listSkills,
     createSession: typert.createSession,
     listSessionsViaTypert: typert.listSessions,
+    // 账号信息与充值余额（侧边栏底部模块）
+    accountInfoViaTypert: typert.accountInfo,
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,

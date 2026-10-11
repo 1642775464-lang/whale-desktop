@@ -110,6 +110,24 @@
           </button>
         </div>
         <div class="sb-sessions" id="sbSessions"></div>
+
+        <!--
+          侧边栏底部：账号信息 + 充值余额（对照主窗口首页那张卡）。
+          固定在底部，不随会话列表滚动 —— 余额是「随时想看一眼」的信息。
+        -->
+        <div class="sb-account">
+          <div class="sb-acc-row">
+            <span class="sb-acc-avatar" id="sbAccAvatar" aria-hidden="true"></span>
+            <span class="sb-acc-id">
+              <span class="sb-acc-name" id="sbAccName">未登录</span>
+              <span class="sb-acc-sub" id="sbAccSub">账号资料暂不可用</span>
+            </span>
+          </div>
+          <div class="sb-acc-balance">
+            <span class="sb-acc-bal-label">充值余额</span>
+            <span class="sb-acc-bal-value" id="sbAccBalance">—</span>
+          </div>
+        </div>
       </aside>
 
       <!-- 消息流（批次 B 接入；此处先占位，保证布局成立） -->
@@ -236,6 +254,7 @@
     <script src="panels.js"></script>
     <script src="sidebar.js"></script>
     <script src="skills-view.js"></script>
+    <script src="account-panel.js"></script>
     <script src="sidebar-mount.js"></script>
     <script src="overlays.js"></script>
     <script src="dom-table.js"></script>

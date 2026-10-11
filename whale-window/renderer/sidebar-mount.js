@@ -57,6 +57,26 @@
       onNotify: notify,
     });
 
+    /**
+     * 侧边栏底部的账号信息 + 充值余额。
+     *
+     * 只在**侧边栏打开时**刷新（余额是低频信息，没必要常驻轮询 ——
+     * 那会每 5 秒敲一次宿主账号接口）。
+     */
+    const accountPanel = global.WhaleAccountPanel.createAccountPanel({
+      dom: {
+        avatar: dom.sbAccAvatar,
+        name: dom.sbAccName,
+        sub: dom.sbAccSub,
+        balance: dom.sbAccBalance,
+      },
+      fetchAccount: () => client.account().then((out) => {
+        if (!out.ok) return { ok: false, code: out.code };
+        // data 是整个响应体（含 profile / balance / 各自的 Code）
+        return Object.assign({ ok: true }, out.data);
+      }),
+    });
+
     const sidebar = global.WhaleSidebar.createSidebar({
       dom: {
         sidebar: dom.sidebar,
@@ -158,9 +178,16 @@
     });
 
     // 顶栏「打开左侧边栏」按钮
-    dom.btnSideLeft.addEventListener("click", () => sidebar.toggle());
+    dom.btnSideLeft.addEventListener("click", () => {
+      sidebar.toggle();
+      /*
+       * 打开时才刷新账号与余额（低频信息，不常驻轮询）。
+       * 失败也让面板自己显示「—」与原因，这里不打断。
+       */
+      if (sidebar.isOpen()) void accountPanel.refresh();
+    });
 
-    return { sidebar, skillsView };
+    return { accountPanel, sidebar, skillsView };
   }
 
   global.WhaleSidebarMount = { mount };

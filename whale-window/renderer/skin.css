@@ -364,6 +364,74 @@ body.whale {
   text-overflow: ellipsis;
 }
 
+/* ── 侧边栏底部：账号信息 + 充值余额 ──────────────── */
+.sb-account {
+  flex: 0 0 auto;              /* 固定在底部，不参与会话列表的滚动 */
+  border-top: 1px solid var(--line-soft);
+  padding: 9px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-acc-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sb-acc-avatar {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand), var(--brand2));
+  opacity: 0.85;
+}
+
+.sb-acc-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sb-acc-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-acc-sub {
+  font-size: 10.5px;
+  color: var(--ink-disabled);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-acc-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sb-acc-bal-label {
+  font-size: 11px;
+  color: var(--ink3);
+}
+
+.sb-acc-bal-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 消息流 ──────────────────────────────────────── */
 .stream {
   flex: 1 1 auto;

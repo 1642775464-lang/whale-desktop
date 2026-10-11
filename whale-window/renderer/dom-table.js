@@ -37,6 +37,11 @@
       btnPin: $("btnPin"),
       btnMenu: $("btnMenu"),
       tbTitle: $("tbTitle"),
+      // 侧边栏底部：账号信息 + 余额
+      sbAccAvatar: $("sbAccAvatar"),
+      sbAccName: $("sbAccName"),
+      sbAccSub: $("sbAccSub"),
+      sbAccBalance: $("sbAccBalance"),
       stream: $("stream"),
       status: $("status"),
       statusText: $("statusText"),

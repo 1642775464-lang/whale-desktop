@@ -84,6 +84,9 @@ const READ = `(() => {
      */
     noteCount: rows.filter((r) => r.className === "sb-note").length,
     groupCount: rows.filter((r) => r.className === "sb-group").length,
+    // 侧边栏底部：账号信息 + 充值余额（用户新增的模块）
+    accName: (document.getElementById("sbAccName") || {}).textContent,
+    accBalance: (document.getElementById("sbAccBalance") || {}).textContent,
     skillsOpen: view ? shown(view) : null,
     skillsCount: (document.getElementById("svCount") || {}).textContent,
     skillsRows: Array.from(document.getElementById("svList") ? document.getElementById("svList").children : []).length,
@@ -137,6 +140,7 @@ async function main() {
   let rowsSeen = 0;
   let skillsSeen = 0;
   let notesSeen = 0;
+  let accountSeen = null;
   let realMouseClosed = false;
   let realOutsideClosed = false;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 false）`);
@@ -145,13 +149,16 @@ async function main() {
   say("");
   say("=== 2) 点顶栏「打开左侧边栏」 ===");
   await run(`document.getElementById("btnSideLeft").click()`);
-  await new Promise((r) => setTimeout(r, 400));
+  // 账号与余额是打开时异步拉的，多等一会儿再读（要看到真实值而非初始占位）
+  await new Promise((r) => setTimeout(r, 1500));
   st = await run(READ);
   rowsSeen = st.rowCount;
   notesSeen = st.noteCount;
+  accountSeen = st.accBalance;
   say(`  侧边栏打开：${st.sidebarOpen}（期望 true）`);
   say(`  会话行数：${st.rowCount}（含 ${st.groupCount} 个工作区分组标题）`);
   say(`  提示行数：${st.noteCount}（正常应为 0 —— 过滤不该出提示）`);
+  say(`  账号：${JSON.stringify(st.accName)}  余额：${JSON.stringify(st.accBalance)}`);
   for (const row of st.rows.slice(0, 6)) {
     say(`    - "${row.text}"  [${row.cls}]`);
   }
@@ -250,6 +257,13 @@ async function main() {
    * 那条断言钉住它，防止以后又被加回来。
    */
   if (notesSeen !== 0) problems.push(`出现了 ${notesSeen} 行提示（正常过滤不该出提示）`);
+  /*
+   * 账号模块必须渲染出**内容**（余额要么是数字、要么是「—」；
+   * 空字符串说明渲染没跑）。
+   */
+  if (typeof accountSeen !== "string" || accountSeen === "") {
+    problems.push("侧边栏底部账号/余额模块没渲染");
+  }
 
   say("");
   if (pageErrors.length > 0) {

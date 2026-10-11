@@ -476,3 +476,4 @@ test("listSessions：失败时不返空清单冒充「没有会话」", async ()
   assert.equal(out.code, "gateway/invocation-unavailable");
   assert.equal(out.sessions, undefined);
 });
+
