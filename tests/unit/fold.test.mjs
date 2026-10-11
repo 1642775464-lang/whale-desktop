@@ -220,9 +220,17 @@ test("user/message 进 tail", () => {
  *   与折叠器的 seq 去重 / tail 容量 / phase 流转不是一回事）
  */
 
-test("tool/call 进 tail 为 running，tool/result 改为 done", () => {
+test("tool/call 与 tool/result **不进 tail**（界面不显示工具，别占显示位）", () => {
+  /*
+   * ⚠️ 用户报「为什么只展示一条消息？历史消息都没了」——实测那 40 条 tail 里
+   * **38 条是 tool**，真正的对话（1 assistant + 1 user）被挤出去了。
+   *
+   * 呈现层明确不显示工具调用（用户要求「小窗不需要展示工具调用过程」），
+   * 所以它们占着尾巴却不显示，等于把对话挤没了。尾巴是给用户看的，
+   * 应当只放用户能看到的东西。
+   */
   const foldSet = createFoldSet();
-  applyEvents(
+  const out = applyEvents(
     foldSet,
     [
       { seq: 1, type: "tool/call", data: { name: "pwsh" } },
@@ -231,23 +239,25 @@ test("tool/call 进 tail 为 running，tool/result 改为 done", () => {
     { sessionId: SID },
   );
   const fold = foldSet.sessions.get(SID);
-  assert.equal(fold.tail.length, 1);
-  assert.equal(fold.tail[0].kind, "tool");
-  assert.equal(fold.tail[0].name, "pwsh");
-  assert.equal(fold.tail[0].state, "done");
+  assert.equal(fold.tail.length, 0, "工具事件不该占消息尾巴");
+  assert.equal(out.skipped, 0, "仍然被接受，只是不进 tail —— 不是「不认识的事件」");
 });
 
-test("tool/result 标错误时状态为 error", () => {
+test("对话消息仍然进 tail（工具不占位之后，对话才留得住）", () => {
   const foldSet = createFoldSet();
   applyEvents(
     foldSet,
     [
       { seq: 1, type: "tool/call", data: { name: "pwsh" } },
-      { seq: 2, type: "tool/result", data: { isError: true } },
+      { seq: 2, type: "user/message", data: { content: [{ type: "text", text: "你好" }] } },
+      { seq: 3, type: "tool/call", data: { name: "edit" } },
+      { seq: 4, type: "assistant/message", data: { message: { content: [{ type: "text", text: "在的" }] } } },
     ],
     { sessionId: SID },
   );
-  assert.equal(foldSet.sessions.get(SID).tail[0].state, "error");
+  const fold = foldSet.sessions.get(SID);
+  assert.deepEqual(fold.tail.map((t) => t.kind), ["user", "assistant"]);
+  assert.deepEqual(fold.tail.map((t) => t.text), ["你好", "在的"]);
 });
 
 test("todo/write 进 tail", () => {

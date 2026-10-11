@@ -208,24 +208,26 @@ export function applyEvent(foldSet, event, options = {}) {
     }
 
     case "tool/call":
-      pushTail(fold, {
-        kind: "tool",
-        name: typeof data.name === "string" ? data.name : "?",
-        state: "running",
-        seq: seq ?? -1,
-      });
+      /*
+       * ⚠️ 工具调用**不进消息尾巴**。
+       *
+       * 用户报「为什么只展示一条消息？历史消息都没了」——实测那 40 条 tail 里
+       * **38 条是 tool**，真正的对话（1 assistant + 1 user）被挤出去了。
+       * 而呈现层明确**不显示**工具调用（用户要求「小窗不需要展示工具调用
+       * 过程」），所以它们占着尾巴却不显示，等于把对话挤没了。
+       *
+       * 尾巴是**给用户看的**（`TAIL_LIMIT` 条），应当只放用户能看到的东西。
+       * 工具过程仍然被接受、仍然计入 `steps` 等聚合量，只是不占显示位。
+       */
       return { accepted: true };
 
-    case "tool/result": {
-      // 把最近一条同名 running 的工具改成 done
-      for (let i = fold.tail.length - 1; i >= 0; i -= 1) {
-        if (fold.tail[i].kind === "tool" && fold.tail[i].state === "running") {
-          fold.tail[i] = { ...fold.tail[i], state: data.isError === true ? "error" : "done" };
-          break;
-        }
-      }
+    case "tool/result":
+      /*
+       * 工具结果同样不进 tail（理由见 tool/call）。
+       * 只接受事件，不改任何**显示**状态 —— 工具过程不进用户视野。
+       * （`steps` 等聚合量由 step/* 事件负责，与这里无关。）
+       */
       return { accepted: true };
-    }
 
     case "step/start":
     case "step/end":
