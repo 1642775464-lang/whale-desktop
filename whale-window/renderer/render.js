@@ -44,23 +44,15 @@
     /** 任务清单上一次渲染的签名（保住用户展开状态）。 */
     let lastDockSig = null;
 
-    /** 顶栏标题 + 会话标题行 + 副标题。 */
+    /** 顶栏标题（内容区顶部的会话标题行已按用户要求移除）。 */
     function header(state) {
       if (state.offline) {
         // 文案取自《前端设计规范》6.3 空态文案表，不自创措辞
         dom.tbTitle.textContent = "未连接";
-        dom.shTitle.textContent = "未连接";
-        dom.shSub.textContent = "桥未连接 · 重试中";
         return;
       }
       const title = state.title ?? "（无标题会话）";
       dom.tbTitle.textContent = title;
-      dom.shTitle.textContent = title;
-
-      const parts = [];
-      if (typeof state.workspace === "string" && state.workspace !== "") parts.push(state.workspace);
-      parts.push(state.running ? "回合运行中" : "桥已连接");
-      dom.shSub.textContent = parts.join(" · ");
     }
 
     /**

@@ -109,9 +109,9 @@ app.whenReady().then(async () => {
     }
 
     // 第 4 步：读小窗自己渲染出来的状态条文字（用户看到的东西）
+    // 会话标题行（shTitle/shSub）已按用户要求移除，标题只读顶栏 tbTitle
     res.dom = {
-      title: (document.getElementById("shTitle") || {}).textContent,
-      sub: (document.getElementById("shSub") || {}).textContent,
+      title: (document.getElementById("tbTitle") || {}).textContent,
       conn: (document.querySelector(".conn") || {}).textContent,
     };
     return res;

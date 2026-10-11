@@ -191,11 +191,11 @@ app.whenReady().then(async () => {
     };
   })()`);
 
-  // ── 会话标题行（F3）──
+  // ── 会话标题行（F3）：已按用户要求移除，这里只确认不存在 ──
   report.sessionHead = await run(`({
-    title: document.getElementById("shTitle").textContent,
-    badge: document.querySelector(".sh-badge") ? document.querySelector(".sh-badge").textContent : null,
-    sub: document.getElementById("shSub").textContent
+    removed: document.getElementById("shTitle") === null
+      && document.getElementById("shSub") === null
+      && document.querySelector(".session-head") === null
   })`);
 
   // ── 权限三档文案（B9）：连点三次按钮，文案应轮转一整圈 ──
@@ -363,7 +363,8 @@ app.whenReady().then(async () => {
     content.width === 460 && content.height === 678;
   const okB4 = report.b4.dx === 40 && report.b4.dy === 30 && report.b4.sizeKept === true;
   const okTopbar = report.topbar.missing.length === 0 && report.topbar.brandDot === true;
-  const okHead = report.sessionHead.badge === "同源会话";
+  // 会话标题行已按用户要求移除：整个区块（含角标）都不该在
+  const okHead = report.sessionHead.removed === true;
   const okPerm =
     report.permissionSequence[0] === "工作区内修改" &&
     report.permissionSequence[1] === "完全权限" &&

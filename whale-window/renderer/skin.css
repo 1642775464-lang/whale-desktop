@@ -364,46 +364,6 @@ body.whale {
   text-overflow: ellipsis;
 }
 
-/* ── 会话标题行 ──────────────────────────────────── */
-.session-head {
-  padding: 9px 14px 7px;
-  border-bottom: 1px solid #f3f5fa;
-}
-
-.sh-line {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.sh-title {
-  font-size: 13px;
-  font-weight: 600;
-  max-width: 250px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--ink);
-}
-
-.sh-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: #eef1fb;
-  color: #5b68a8;
-  flex: 0 0 auto;
-}
-
-.sh-sub {
-  font-size: 11px;
-  color: var(--ink3);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* ── 消息流 ──────────────────────────────────────── */
 .stream {
   flex: 1 1 auto;

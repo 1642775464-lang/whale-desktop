@@ -76,7 +76,7 @@ export function el() {
 /** 造一份够用的假 DOM（含 document.createElement）。 */
 export function fakeDom() {
   const ids = [
-    "tbTitle", "shTitle", "shSub", "stream", "streamEmpty", "status", "statusText",
+    "tbTitle", "stream", "streamEmpty", "status", "statusText",
     "dock", "dockList", "dockCount", "dockProg", "dockCaret", "input", "btnSend",
     "btnPerm", "urFg", "usagePct", "infoSession", "infoBridge", "infoEvents",
   ];

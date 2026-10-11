@@ -144,10 +144,16 @@ test("图钉横帽必须用 <path> 画（陷阱 5）", () => {
   assert.ok(!/<rect/.test(pinBlock), "图钉里不得出现 <rect>");
 });
 
-test("会话标题行三元素齐全（F3），角标文案固定", () => {
-  assert.ok(hasId("shTitle"), "缺会话标题");
-  assert.ok(hasId("shSub"), "缺副标题行");
-  assert.match(html, /class="sh-badge">同源会话</, "「同源会话」文案固定，不得改写");
+test("内容区顶部的会话标题行已按用户要求移除", () => {
+  /*
+   * 用户截图红框圈住「标题 + 同源会话角标 + 副标题」那一区，
+   * 说「这部分这个框不需要」—— 整个区块移除。
+   * 顶栏标题 tbTitle 保留（红框没圈它）。
+   */
+  assert.ok(hasId("tbTitle"), "顶栏标题保留");
+  assert.ok(!hasId("shTitle"), "会话标题行已移除");
+  assert.ok(!hasId("shSub"), "副标题行已移除");
+  assert.doesNotMatch(html, /同源会话/, "「同源会话」角标随区块移除");
 });
 
 test("输入区按钮组齐全（F6）", () => {

@@ -37,8 +37,6 @@
       btnPin: $("btnPin"),
       btnMenu: $("btnMenu"),
       tbTitle: $("tbTitle"),
-      shTitle: $("shTitle"),
-      shSub: $("shSub"),
       stream: $("stream"),
       status: $("status"),
       statusText: $("statusText"),

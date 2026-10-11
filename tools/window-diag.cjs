@@ -79,9 +79,9 @@ app.whenReady().then(async () => {
   })()`);
 
   // 客户端实例没暴露，就退而从 DOM 与直接探测拿证据
+  // 会话标题行（shTitle/shSub）已移除，标题读顶栏 tbTitle
   report.dom = await run(`({
-    title: (document.getElementById("shTitle") || {}).textContent,
-    sub: (document.getElementById("shSub") || {}).textContent,
+    title: (document.getElementById("tbTitle") || {}).textContent,
     streamRows: document.querySelectorAll("#stream .msg, #stream .tool-line").length,
     empty: !!document.getElementById("streamEmpty"),
     emptyText: (document.getElementById("streamEmpty") || {}).textContent

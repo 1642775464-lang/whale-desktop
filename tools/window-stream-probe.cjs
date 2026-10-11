@@ -92,8 +92,6 @@ async function main() {
       const r = window.WhaleRender.createRenderer({
         dom: {
           tbTitle: document.getElementById("tbTitle"),
-          shTitle: document.getElementById("shTitle"),
-          shSub: document.getElementById("shSub"),
           stream: document.getElementById("stream"),
           status: document.getElementById("status"),
           statusText: document.getElementById("statusText"),
@@ -151,8 +149,6 @@ async function main() {
       const r = window.WhaleRender.createRenderer({
         dom: {
           tbTitle: document.getElementById("tbTitle"),
-          shTitle: document.getElementById("shTitle"),
-          shSub: document.getElementById("shSub"),
           stream: document.getElementById("stream"),
           status: document.getElementById("status"),
           statusText: document.getElementById("statusText"),
