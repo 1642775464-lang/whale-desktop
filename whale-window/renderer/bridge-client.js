@@ -391,12 +391,8 @@
     function sessionList() {
       return get("/whale/session/list").then(function (out) {
         if (!out.ok) return { ok: false, code: out.code, message: out.message };
-        return {
-          ok: true,
-          sessions: Array.isArray(out.data?.sessions) ? out.data.sessions : [],
-          // 归档判据有没有拿到：界面据此决定「能不能安全隐藏归档会话」
-          archivedKnown: out.data?.archivedKnown === true,
-        };
+        // 形状归一化在 bridge-shapes.js（纯函数，可脱网单测）
+        return global.WhaleBridgeShapes.normalizeSessionList(out.data);
       });
     }
 
@@ -409,6 +405,33 @@
      */
     function account() {
       return get("/whale/account");
+    }
+
+    /**
+     * 列工作区某个目录的条目（文件列表页面用）。
+     *
+     * `dir` 是**目录前缀**（空串 = 工作区根）；桥在宿主那条通路上
+     * 把它当「列这个目录」用。返回值规整成 `{ok, dir, entries, reason?, code?}`
+     * —— 调用方不必自己剥一层。
+     */
+    function workspaceFiles(dir) {
+      const d = typeof dir === "string" ? dir : "";
+      const sid = encodeURIComponent(state.sessionId ?? "");
+      return get(`/whale/workspace/files?sessionId=${sid}&dir=${encodeURIComponent(d)}`)
+        .then(function (out) {
+          if (!out.ok) return { ok: false, code: out.code, message: out.message };
+          return global.WhaleBridgeShapes.normalizeWorkspaceFiles(out.data, d);
+        });
+    }
+
+    /**
+     * 用系统默认程序打开工作区文件。
+     *
+     * ⚠️ 走**宿主**的 `session/openWorkspacePath`，桥不自己起进程 ——
+     * 小窗因此不需要（也不该有）执行系统命令的权限。
+     */
+    function openWorkspacePath(path) {
+      return post("/whale/workspace/open", { sessionId: state.sessionId ?? "", path });
     }
 
     /** 断开增量流。 */
@@ -450,11 +473,13 @@
       getState () { return state; },
       listCommands,
       modelCatalog: capabilities.modelCatalog,
+      openWorkspacePath,
       permissionPresets: capabilities.permissionPresets,
       refresh,
       resume,
       send,
       setModel: capabilities.setModel,
+      workspaceFiles,
       startPolling,
       takeSummon: capabilities.takeSummon,
       uploadFiles: capabilities.uploadFiles,

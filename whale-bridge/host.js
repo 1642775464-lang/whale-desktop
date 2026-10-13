@@ -17,6 +17,7 @@ import { registerSliceTwoRoutes } from "./lib/handlers-slice2.mjs";
 import { registerSliceThreeReadRoutes } from "./lib/handlers-slice3-read.mjs";
 import { registerSliceThreeWriteRoutes } from "./lib/handlers-slice3-write.mjs";
 import { registerSidebarRoutes } from "./lib/handlers-sidebar.mjs";
+import { registerWorkspaceRoutes } from "./lib/handlers-workspace.mjs";
 import { close, createBridgeServer, listen, PORT, HOST } from "./lib/server.mjs";
 import { validateRouteTable } from "./lib/routes.mjs";
 import { createEventPipeline } from "./lib/events.mjs";
@@ -188,6 +189,8 @@ export async function apply(ctx, options = {}) {
   registerSliceThreeWriteRoutes();
   // 侧边栏数据源（技能中心等）——走 Typert，见 handlers-sidebar.mjs
   registerSidebarRoutes();
+  // 工作区文件列表（列目录 + 用系统默认程序打开）——见 handlers-workspace.mjs
+  registerWorkspaceRoutes();
 
   const server = createBridgeServer({ host, bridge, log });
 

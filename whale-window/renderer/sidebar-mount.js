@@ -58,6 +58,28 @@
     });
 
     /**
+     * 工作区文件列表页面（顶栏「文件夹」图标进入）。
+     *
+     * 与技能中心同一模式：与消息流并列、切换只改 hidden。
+     * 「打开」走桥到宿主（小窗没有 shell 权限，也不需要）。
+     */
+    const filesView = global.WhaleFilesView.createFilesView({
+      dom: {
+        view: dom.filesView,
+        fvBack: dom.fvBack,
+        fvCrumb: dom.fvCrumb,
+        fvCount: dom.fvCount,
+        fvList: dom.fvList,
+      },
+      fetchFiles: (dir) => client.workspaceFiles(dir),
+      openPath: (path) => client.openWorkspacePath(path),
+      onBack() {
+        dom.stream.hidden = false;
+      },
+      onNotify: notify,
+    });
+
+    /**
      * 侧边栏底部的账号信息 + 充值余额。
      *
      * 只在**侧边栏打开时**刷新（余额是低频信息，没必要常驻轮询 ——
@@ -187,7 +209,24 @@
       if (sidebar.isOpen()) void accountPanel.refresh();
     });
 
-    return { accountPanel, sidebar, skillsView };
+    /*
+     * 顶栏「文件夹」按钮 → 工作区文件列表。
+     *
+     * 与技能中心**互斥**：两个页面占同一块主区（都与消息流并列），
+     * 同时显示会叠在一起。进文件页时把技能页收起来，反之亦然。
+     */
+    dom.btnFolder.addEventListener("click", () => {
+      if (filesView.isVisible()) {
+        filesView.hide();
+        dom.stream.hidden = false;
+        return;
+      }
+      skillsView.hide();
+      dom.stream.hidden = true;
+      void filesView.show();
+    });
+
+    return { accountPanel, filesView, sidebar, skillsView };
   }
 
   global.WhaleSidebarMount = { mount };

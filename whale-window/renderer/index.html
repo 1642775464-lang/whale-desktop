@@ -150,6 +150,19 @@
         <div class="sv-list" id="svList"></div>
       </section>
 
+      <!--
+        工作区文件列表页面：顶栏「文件夹」图标点开后进入（与技能中心同一模式，
+        与消息流并列 —— 切换只改 hidden，不动消息流的滚动位置）。
+      -->
+      <section class="files-view" id="filesView" hidden>
+        <div class="fv-head">
+          <button class="fv-back" id="fvBack">‹ 返回</button>
+          <span class="fv-crumb" id="fvCrumb"></span>
+          <span class="fv-count" id="fvCount">–</span>
+        </div>
+        <div class="fv-list" id="fvList"></div>
+      </section>
+
       <!-- 输入区 -->
       <footer class="composer" id="composer">
         <!-- 斜杠命令面板（F7）：弹在输入框上方，id 固定供验收脚本读 -->
@@ -243,6 +256,7 @@
       顺序错了会在启动时抛 ReferenceError，现象是「窗口在、什么都没接上」。
     -->
     <script src="bridge-capabilities.js"></script>
+    <script src="bridge-shapes.js"></script>
     <script src="bridge-client.js"></script>
     <script src="follow.js"></script>
     <script src="stream.js"></script>
@@ -255,6 +269,7 @@
     <script src="panels.js"></script>
     <script src="sidebar.js"></script>
     <script src="skills-view.js"></script>
+    <script src="files-view.js"></script>
     <script src="account-panel.js"></script>
     <script src="sidebar-mount.js"></script>
     <script src="overlays.js"></script>

@@ -36,7 +36,15 @@
       btnMin: $("btnMin"),
       btnPin: $("btnPin"),
       btnMenu: $("btnMenu"),
+      // 顶栏「文件夹」→ 工作区文件列表（本轮接线用到）
+      btnFolder: $("btnFolder"),
       tbTitle: $("tbTitle"),
+      // 工作区文件列表页面（顶栏「文件夹」图标进入）
+      filesView: $("filesView"),
+      fvBack: $("fvBack"),
+      fvCrumb: $("fvCrumb"),
+      fvCount: $("fvCount"),
+      fvList: $("fvList"),
       // 侧边栏底部：账号信息 + 余额
       sbAccAvatar: $("sbAccAvatar"),
       sbAccName: $("sbAccName"),

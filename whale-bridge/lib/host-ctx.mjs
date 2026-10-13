@@ -408,6 +408,8 @@ export function createHostAccess(ctx) {
     listSessionsViaTypert: typert.listSessions,
     // 账号信息与充值余额（侧边栏底部模块）
     accountInfoViaTypert: typert.accountInfo,
+    // 用系统默认程序打开工作区文件（走宿主 session/openWorkspacePath）
+    openWorkspacePath: typert.openWorkspacePath,
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,
