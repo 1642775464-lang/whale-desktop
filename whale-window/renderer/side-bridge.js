@@ -139,13 +139,63 @@
       return post("/whale/workspace/open", { sessionId: sessionId ?? "", path });
     }
 
+    /**
+     * 读工作区文件内容（预览用）。
+     *
+     * @param {string} path 工作区相对路径
+     * @param {boolean} binary 是否要 base64（图片/音视频要，文本类不要）
+     * @returns {Promise<{ok: boolean, text?: string, base64?: string, size?: number, code?: string}>}
+     */
+    function readWorkspaceFile(path, binary) {
+      const sid = encodeURIComponent(sessionId ?? "");
+      const b = binary === true ? "1" : "0";
+      return get(`/whale/workspace/read?sessionId=${sid}&path=${encodeURIComponent(path)}&binary=${b}`)
+        .then((out) => {
+          if (!out.ok) return out;
+          return {
+            ok: true,
+            path: out.data?.path ?? path,
+            size: typeof out.data?.size === "number" ? out.data.size : null,
+            text: typeof out.data?.text === "string" ? out.data.text : null,
+            base64: typeof out.data?.base64 === "string" ? out.data.base64 : null,
+          };
+        });
+    }
+
+    /**
+     * 取会话清单（选「继承哪条会话的上下文」用）。
+     *
+     * 用桥的 `/whale/session/list`（与主窗同一来源），规整成扁平数组 ——
+     * 界面只关心「标题 + id + 工作区名」，不必自己剥一层 data。
+     *
+     * @returns {Promise<{ok: boolean, sessions: Array<object>, code?: string}>}
+     */
+    function sessionList() {
+      return get("/whale/session/list").then((out) => {
+        if (!out.ok) return { ok: false, code: out.code };
+        const raw = Array.isArray(out.data?.sessions) ? out.data.sessions : [];
+        return {
+          ok: true,
+          sessions: raw.map((s) => ({
+            sessionId: s.sessionId,
+            title: typeof s.title === "string" && s.title !== "" ? s.title : "(未命名会话)",
+            workspaceTitle: typeof s.workspaceTitle === "string" ? s.workspaceTitle : "",
+            workspacePath: typeof s.workspacePath === "string" ? s.workspacePath : "",
+            updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : 0,
+          })),
+        };
+      });
+    }
+
     return {
       base,
       createSession,
       getSessionId: () => sessionId,
       openWorkspacePath,
       panel,
+      readWorkspaceFile,
       send,
+      sessionList,
       setSessionId: (id) => { sessionId = id; },
       workspaceFiles,
     };

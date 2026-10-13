@@ -121,14 +121,13 @@ test("needsRedock：小窗被移动后判定为需要重新贴合", () => {
   assert.equal(needsRedock(sidePos, moved), true, "小窗移了就要跟");
 });
 
-test("动画时长要「快」但仍是滑动（用户要求加快过）", () => {
+test("动画时长要「快」（用户连提两轮加快）", () => {
   /*
-   * 两轮调整：220ms → 用户说「滑动打开和关闭的速度加快」→ 140ms。
-   * 下限 100ms：再快就是「闪一下」，不是滑动，与「类似抽屉拉开」的要求相反。
-   * 上限 200ms：不能回到用户说「太慢」的那一档。
+   * 三轮调整：220ms → 「速度加快」140ms → 「再快一倍」70ms。
+   * 上限 100ms：不能回到前两轮那两档；下限 40ms：再快就是「闪现」。
    */
-  assert.ok(DRAWER_MS <= 200, `不能比 220ms 那档还慢，实际 ${DRAWER_MS}`);
-  assert.ok(DRAWER_MS >= 100, `再快就不是滑动了，实际 ${DRAWER_MS}`);
+  assert.ok(DRAWER_MS <= 100, `用户已两次要求加快，不能再慢，实际 ${DRAWER_MS}`);
+  assert.ok(DRAWER_MS >= 40, `再快就不是滑动了，实际 ${DRAWER_MS}`);
 });
 
 test("SHADOW_PAD 与主窗几何同源", async () => {

@@ -62,7 +62,8 @@ test("顶栏元素齐全（F2）", () => {
    * ⚠️ 新增的这三个**当前没有交互**（用户明确说「下一步再明确具体的交互内容」）。
    * 它们先作为占位存在，等交互定了再接绑定。
    */
-  for (const id of ["btnMin", "btnPin", "btnSideLeft", "btnFolder", "btnSideRight", "btnMenu", "tbTitle"]) {
+  // ⚠️ `btnFolder` 已按用户要求移除（文件列表改到侧边栏里默认展示）
+  for (const id of ["btnMin", "btnPin", "btnSideLeft", "btnSideRight", "btnMenu", "tbTitle"]) {
     assert.ok(hasId(id), `缺元素 #${id}`);
   }
   assert.match(html, /class="brand-dot"/, "工作区色块必须存在");
@@ -91,14 +92,14 @@ test("顶栏布局顺序：左组按钮 → 色块 → 标题 → 右组按钮",
     .map((m) => m[1] ?? m[2]);
   assert.deepEqual(
     ids,
-    ["btnMin", "btnPin", "btnSideLeft", "brand-dot", "tbTitle", "btnFolder", "btnSideRight", "btnMenu"],
-    "顶栏顺序：最小化 → 置顶 → 左侧边栏 → 色块 → 标题 → 文件夹 → 右侧边栏 → 更多",
+    ["btnMin", "btnPin", "btnSideLeft", "brand-dot", "tbTitle", "btnSideRight", "btnMenu"],
+    "顶栏顺序：最小化 → 置顶 → 左侧边栏 → 色块 → 标题 → 右侧边栏 → 更多",
   );
 
   // 标题必须夹在左右两组按钮之间 —— 「中间区域为会话标题」靠这个成立
   const iTitle = ids.indexOf("tbTitle");
   assert.ok(iTitle > ids.indexOf("btnSideLeft"), "标题要在左侧组之后");
-  assert.ok(iTitle < ids.indexOf("btnFolder"), "标题要在右侧组之前");
+  assert.ok(iTitle < ids.indexOf("btnSideRight"), "标题要在右侧组之前");
 });
 
 test("app.js 绑定的每个按钮都必须真的存在于 HTML", () => {
@@ -294,7 +295,7 @@ test("脚本加载顺序：各模块先定义、app.js 最后装配", () => {
   const tags = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(
     tags,
-    ["bridge-capabilities.js", "bridge-shapes.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "rich-input.js", "input-area.js", "render.js", "palette.js", "panels.js", "sidebar.js", "skills-view.js", "files-view.js", "account-panel.js", "sidebar-mount.js", "overlays.js", "dom-table.js", "app.js"],
+    ["bridge-capabilities.js", "bridge-shapes.js", "bridge-workspace.js", "bridge-client.js", "follow.js", "stream.js", "menu-icons.js", "add-menu.js", "rich-input.js", "input-area.js", "render.js", "palette.js", "panels.js", "sidebar.js", "skills-view.js", "account-panel.js", "sidebar-mount.js", "overlays.js", "dom-table.js", "app.js"],
     "顺序错了会在启动时抛 ReferenceError（现象是「窗口在、什么都没接上」）",
   );
   // app.js 必须最后：它是装配层，要用到前面每个模块的命名空间

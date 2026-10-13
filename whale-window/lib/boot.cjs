@@ -21,6 +21,7 @@ const { createStateStore } = require("./persist.cjs");
 const { createRecovery } = require("./recovery.cjs");
 const { registerIpc } = require("./ipc.cjs");
 const { createSideWindow } = require("./side-window.cjs");
+const { browserUserAgent } = require("./side-ua.cjs");
 
 /** 小窗所在目录。 */
 const WINDOW_DIR = path.resolve(__dirname, "..");
@@ -56,6 +57,28 @@ function bootWindow(deps) {
   const noRestore = deps.noRestore === true;
 
   const stateFile = path.join(USER_DATA_DIR, "window-state.json");
+
+  /**
+   * 渲染层最近一次上报的状态快照（会话 id / 工作区路径）。
+   *
+   * 由渲染层通过 `whale:state` 通道写入（见 renderer/bridge-client.js），
+   * 主进程只存不解析 —— 建侧窗时拿它给页面当前后文。
+   *
+   * @type {{sessionId?: string, workspace?: string}|null}
+   */
+  let lastState = null;
+
+  /**
+   * 读渲染层最近一次上报的状态（会话 id / 工作区路径）。
+   *
+   * 走主进程里维护的一份**内存快照**，由渲染层通过 IPC 写入 ——
+   * 主进程直接去问桥会开第二条真相（两条路各自的时序不同，容易打架）。
+   *
+   * @returns {{sessionId?: string, workspace?: string}|null}
+   */
+  function readLastState() {
+    return lastState;
+  }
 
   /** 状态存储：文件 IO 注入成真实读写。 */
   const store = createStateStore({
@@ -127,6 +150,24 @@ function bootWindow(deps) {
       const b = win.bounds();
       return b === null ? null : b;
     },
+    /*
+     * 页面要的两个查询参数从**渲染层已经拿到的状态**里取。
+     *
+     * 为什么不在这里去问桥：那份状态是渲染层轮询维护的，主进程再问一次
+     * 等于开第二条真相。渲染层会把最近一次状态写在 `window.__whaleLastState`
+     * （见 renderer/bridge-client.js）—— 取不到就给空，
+     * 页面自己会退回「当前会话」一项，不会崩。
+     */
+    currentSessionId: () => {
+      const st = readLastState();
+      return typeof st?.sessionId === "string" ? st.sessionId : null;
+    },
+    workspacePath: () => {
+      const st = readLastState();
+      return typeof st?.workspace === "string" ? st.workspace : null;
+    },
+    // webview 用平板 UA（用户要求按平板口径适配）
+    userAgent: browserUserAgent(),
     // 贴住/分开时通知主窗：它据此去掉右侧圆角与阴影，两块才连成一体
     onJoinedChange: (joined) => {
       if (ipcRef.value !== null) ipcRef.value.notifyJoined(joined);
@@ -136,6 +177,25 @@ function bootWindow(deps) {
   // 小窗移动/缩放时，已拉开的侧窗要跟着贴住（收起态则不跟随）
   win.win.on("move", () => side.follow());
   win.win.on("resize", () => side.follow());
+
+  /*
+   * 小窗被隐藏 / 最小化 / 关闭时，侧窗必须跟着收起。
+   *
+   * 用户报的 bug：「侧边栏打开情况下，关闭或者最小化小窗，侧边栏不会跟着
+   * 一起关闭」—— 原先只接了 move/resize，**没有接生命周期事件**，
+   * 于是小窗没了、侧窗还孤零零留在屏幕上。
+   *
+   * ⚠️ 这里必须用 `closeNow()`（立刻收起、不播动画）而不是 `close()`：
+   *   `close()` 的 `opened` 是在**动画结束后**才置 false，而关小窗是「马上
+   *   退出」，动画根本没机会跑完 —— 探针复现过：`close` 事件里读到的
+   *   `opened` 仍是 true，侧栏于是留在屏幕上。
+   *
+   * `closed` 里再补一次 `dispose()` 兜底（异常路径不会漏）。
+   */
+  win.win.on("hide", () => side.closeNow());
+  win.win.on("minimize", () => side.closeNow());
+  win.win.on("close", () => side.closeNow());
+  win.win.on("closed", () => side.dispose());
 
   if (typeof deps.onWindowReady === "function") deps.onWindowReady(win);
 
@@ -184,6 +244,21 @@ function bootWindow(deps) {
     port: bridgePort,
     version: app.getVersion(),
     side,
+    // 渲染层上报状态：主进程只存快照（建侧窗时用，见 readLastState）
+    onState: (payload) => {
+      const next = {};
+      if (typeof payload?.sessionId === "string" && payload.sessionId !== "") {
+        next.sessionId = payload.sessionId;
+      }
+      if (typeof payload?.workspace === "string" && payload.workspace !== "") {
+        next.workspace = payload.workspace;
+      }
+      // 空上报不覆盖已有值：渲染层在「还没连上桥」时会发空对象，
+      // 覆盖掉之前的好值会让侧窗突然拿不到上下文
+      if (Object.keys(next).length === 0) return { ok: true, stored: false };
+      lastState = { ...(lastState ?? {}), ...next };
+      return { ok: true, stored: true };
+    },
   });
   // 让侧窗的贴住回调能拿到 ipc（见上面的延迟绑定说明）
   ipcRef.value = ipc;

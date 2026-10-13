@@ -33,8 +33,24 @@
  *   · 列目录的 `dir` 前缀同样过一遍，不让它拼出工作区外的 query。
  */
 
+import { realpathSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+
 import { register } from "./routes.mjs";
-import { normalizeDirPrefix, normalizeEntries, safeRelativePath } from "./workspace-files.mjs";
+import {
+  normalizeDirPrefix,
+  normalizeEntries,
+  resolveInsideRoot,
+  safeRelativePath,
+} from "./workspace-files.mjs";
+
+/**
+ * 单次读取的字节上限（16 MiB）。
+ *
+ * 为什么要限：这是「点一下预览」的通路，读到几百 MB 的二进制会把渲染进程
+ * 连同整个小窗卡死。超限**如实报错**而不是截断 —— 半份内容比报错更误导。
+ */
+const MAX_READ_BYTES = 16 * 1024 * 1024;
 
 /**
  * GET /whale/workspace/files?sessionId=&dir=
@@ -157,8 +173,125 @@ async function workspaceOpen({ body, host }) {
   throw err;
 }
 
+/**
+ * GET /whale/workspace/read?sessionId=&path= —— 读工作区文件内容（预览用）
+ *
+ * 为什么用 Node 的 `fs` 而不是走宿主服务：实测宿主的 `fileReferences` **只有
+ * `list`**，没有任何读内容的方法。桥本身在宿主进程内、有完整文件权限，
+ * 直接读即可 —— 且安全边界由我们自己卡（见下面两道校验）。
+ *
+ * 返回分两块，让界面能分别处理：
+ *   · 文本类（md/js/txt…）→ `{ text }`（UTF-8 解码）；
+ *   · 二进制类（图片/音视频）→ `{ base64, mime }`（界面拼 data URL）。
+ *
+ * `binary=1` 用来区分这两条路 —— 判定权在**渲染层**（它才知道文件叫什么、
+ * 该用哪种预览），桥不重复一份扩展名表（两处迟早不一致）。
+ *
+ * 三类失败要分开：路径非法 400 / 文件不存在 404 / 太大 413。
+ *
+ * @param {object} ctx
+ * @param {object} ctx.host
+ * @param {URLSearchParams} [ctx.query]
+ * @returns {Promise<object>}
+ */
+async function workspaceRead({ host, query }) {
+  const sessionId = query?.get?.("sessionId");
+  if (typeof sessionId !== "string" || sessionId === "") {
+    const err = new Error("缺少 sessionId");
+    err.code = "bad-request";
+    err.status = 400;
+    throw err;
+  }
+
+  const safe = safeRelativePath(query?.get?.("path"));
+  if (!safe.ok) {
+    const err = new Error(`路径不被允许：${safe.reason}`);
+    err.code = "bad-path";
+    err.status = 400;
+    throw err;
+  }
+
+  const session = host.getSession(sessionId);
+  if (session === undefined) {
+    const err = new Error(`会话 ${sessionId} 不存在`);
+    err.code = "session-not-found";
+    err.status = 404;
+    throw err;
+  }
+
+  // 工作区根：从会话拿（与列目录用的是同一个来源）
+  const root = typeof session.cwd === "string" && session.cwd !== ""
+    ? session.cwd
+    : (typeof session.workspace === "string" ? session.workspace : "");
+  if (root === "") {
+    const err = new Error("这个会话没有工作区路径，读不到文件");
+    err.code = "no-workspace";
+    err.status = 409;
+    throw err;
+  }
+
+  /*
+   * 两道校验：
+   *   1. `safeRelativePath` 已挡掉绝对路径与 `..`（字符串层面）；
+   *   2. `resolveInsideRoot` 用 realpath 再核一次真实位置 —— 防符号链接绕过。
+   */
+  const inside = resolveInsideRoot(root, safe.path, realpathSync);
+  if (!inside.ok) {
+    const status = inside.reason === "not-found" ? 404 : 400;
+    const err = new Error(inside.reason === "not-found" ? "文件不存在或读不到" : `路径不被允许：${inside.reason}`);
+    err.code = inside.reason === "not-found" ? "file-not-found" : "bad-path";
+    err.status = status;
+    throw err;
+  }
+
+  let info;
+  try {
+    info = await stat(inside.abs);
+  } catch {
+    const err = new Error("文件不存在或读不到");
+    err.code = "file-not-found";
+    err.status = 404;
+    throw err;
+  }
+  if (!info.isFile()) {
+    const err = new Error("这不是一个文件");
+    err.code = "not-a-file";
+    err.status = 400;
+    throw err;
+  }
+  if (info.size > MAX_READ_BYTES) {
+    // 超限**明确报错**，不截断 —— 半份内容比报错更误导
+    const err = new Error(`文件太大（${Math.round(info.size / 1024 / 1024)} MiB），无法在窗内预览`);
+    err.code = "file-too-large";
+    err.status = 413;
+    throw err;
+  }
+
+  const wantBinary = query?.get?.("binary") === "1";
+  let buf;
+  try {
+    buf = await readFile(inside.abs);
+  } catch {
+    const err = new Error("读文件失败（可能没有权限）");
+    err.code = "read-failed";
+    err.status = 500;
+    throw err;
+  }
+
+  if (wantBinary) {
+    return { ok: true, path: safe.path, size: info.size, base64: buf.toString("base64") };
+  }
+  /*
+   * 文本：按 UTF-8 解码。
+   * ⚠️ 用 `latin1`/直接 toString 会把非 UTF-8 的二进制变成乱码方块 ——
+   * 界面那边已经按扩展名判定过，走到这里的就是真文本。
+   */
+  return { ok: true, path: safe.path, size: info.size, text: buf.toString("utf8") };
+}
+
 /** 注册工作区文件路由。 */
 export function registerWorkspaceRoutes() {
   register("GET", "/whale/workspace/files", workspaceFiles);
+  register("GET", "/whale/workspace/read", workspaceRead);
   register("POST", "/whale/workspace/open", workspaceOpen);
 }

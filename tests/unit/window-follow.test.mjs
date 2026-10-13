@@ -83,7 +83,16 @@ function loadClient(env) {
   };
 
   createContext(sandbox);
-  // 与真实页面同一套依赖：client 会用到这两个命名空间
+  /*
+   * 与真实页面同一套依赖：client 会用到这几个命名空间。
+   * ⚠️ 顺序必须与 index.html 一致 —— `bridge-workspace.js` 在 client 之前
+   * （client 建实例时要调用它的工厂），漏了会在构造时报
+   * 「Cannot read properties of undefined」。
+   */
+  for (const f of ["bridge-shapes.js", "bridge-workspace.js"]) {
+    const p = join(ROOT, "whale-window", "renderer", f);
+    runInContext(readFileSync(p, "utf8"), sandbox, { filename: p });
+  }
   runInContext(readFileSync(CAP_FILE, "utf8"), sandbox, { filename: CAP_FILE });
   runInContext(readFileSync(FOLLOW_FILE, "utf8"), sandbox, { filename: FOLLOW_FILE });
   runInContext(readFileSync(STREAM_FILE, "utf8"), sandbox, { filename: STREAM_FILE });

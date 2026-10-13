@@ -35,6 +35,8 @@ const CHANNELS = {
    * 这是**单向推送**，不在下面的 invoke 清单里（它不是渲染层主动调的）。
    */
   SIDE_JOINED: "whale:side-joined",
+  /* 渲染层 → 主进程：上报当前会话与工作区（建侧窗时要用）。 */
+  STATE: "whale:state",
 };
 
 /**
@@ -105,4 +107,21 @@ contextBridge.exposeInMainWorld("whale", {
     ipcRenderer.on(CHANNELS.SIDE_JOINED, listener);
     return () => ipcRenderer.removeListener(CHANNELS.SIDE_JOINED, listener);
   },
+
+  /**
+   * 上报当前状态（会话 id / 工作区路径）给主进程。
+   *
+   * 主进程建侧窗时要把这两个值交给页面：
+   *   · 会话 id → 侧边对话「继承上下文」的默认项；
+   *   · 工作区路径 → html 预览要拼 `file://` 地址。
+   *
+   * ⚠️ 只传两个字符串，不把整个 state 丢过去 —— 主进程不需要知道别的，
+   * 传多了等于把渲染层的内部结构耦合进主进程。
+   *
+   * @param {{sessionId?: string, workspace?: string}} state
+   */
+  reportState: (state) => ipcRenderer.invoke(CHANNELS.STATE, {
+    sessionId: typeof state?.sessionId === "string" ? state.sessionId : "",
+    workspace: typeof state?.workspace === "string" ? state.workspace : "",
+  }),
 });

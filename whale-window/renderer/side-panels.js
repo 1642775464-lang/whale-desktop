@@ -53,6 +53,9 @@
    * @param {object} deps.dom 元素引用
    * @param {object} deps.client 侧窗桥客户端
    * @param {(name: string) => void} deps.onHome 回到首页
+ * @param {() => string|null} [deps.currentSessionId] 当前小窗展示的会话（继承下拉的默认项）
+ * @param {(path: string) => void} [deps.onOpenInBrowser] html 预览转给浏览器面板
+ * @param {object} [deps.preview] 文件分类函数（file-preview.cjs 的导出）
    * @param {(msg: string) => void} [deps.onNotify]
    * @returns {object} 控制器
    */
@@ -95,57 +98,44 @@
       if (ev.key === "Enter") browse();
     });
 
-    // ── 文件 ────────────────────────────────────────
-
-    /** 渲染文件列表。 */
-    function renderFiles(entries, reason) {
-      dom.sfList.innerHTML = "";
-      dom.sfCount.textContent = String(entries.length);
-
-      if (entries.length === 0) {
-        dom.sfList.appendChild(el("div", "sf-empty",
-          typeof reason === "string" && reason !== "" ? reason : "这个目录是空的"));
-        return;
-      }
-      entries.forEach(function (e) {
-        const row = el("div", e.kind === "directory" ? "sf-row sf-dir" : "sf-row");
-        row.appendChild(el("span", "sf-icon", e.kind === "directory" ? "▸" : "·"));
-        const name = el("span", "sf-name", e.name);
-        name.title = e.path;
-        row.appendChild(name);
-        row.addEventListener("click", function () {
-          if (e.kind === "directory") {
-            void gotoFiles(`${e.path}/`);
-            return;
-          }
-          client.openWorkspacePath(e.path).then(function (out) {
-            if (out.ok === true) return;
-            onNotify(`打开失败（${out.code}）`);
-          });
-        });
-        dom.sfList.appendChild(row);
-      });
-    }
-
-    /** 切到某目录并渲染。 */
-    function gotoFiles(dir) {
-      return client.workspaceFiles(dir).then(function (out) {
-        dom.sfCrumb.textContent = dir === "" ? "工作区" : `工作区 / ${dir.replace(/\/$/, "")}`;
-        if (out.ok !== true) {
-          // 读不到就显示原因，不把旧目录的条目留在屏幕上冒充新目录
-          dom.sfCount.textContent = "–";
-          dom.sfList.innerHTML = "";
-          dom.sfList.appendChild(el("div", "sf-empty", `读不到这个目录：${out.code}`));
-          return out;
-        }
-        renderFiles(out.entries, out.reason);
-        return out;
-      });
-    }
-
-    dom.sfBack.addEventListener("click", function () {
-      deps.onHome("files");
+    /*
+     * 浏览器面板的「返回」。
+     *
+     * ⚠️ 用户报的 bug：「浏览器点击返回，侧边栏不会回到初始页面」——
+     * 根因是**这个按钮当初根本没接事件**（文件与对话两个面板都接了，
+     * 只有它漏了）。所以不是逻辑错，是漏接线。
+     */
+    dom.sbBack.addEventListener("click", function () {
+      deps.onHome("browser");
     });
+
+    /** 外部（html 预览）要求切到浏览器面板并打开某个地址。 */
+    function openInBrowser(url) {
+      dom.sbUrl.value = url;
+      if (dom.sbWeb !== null && dom.sbWeb !== undefined) {
+        dom.sbWeb.setAttribute("src", url);
+      }
+    }
+
+    // ── 文件 ────────────────────────────────────────
+    /*
+     * 文件面板整体搬到了 `side-files.js`（列表 + 预览 + html 转浏览器）。
+     *
+     * 为什么搬走：这一段从「纯列表」长成了「列表 + 七种预览 + 转浏览器」，
+     * 再留在本文件里会把它顶过 500 行上限（强制 14），
+     * 而且它与浏览器/对话两块已经不是同一类东西了。
+     *
+     * 装配在下面 `createSideFiles` 处完成；本文件只持有它的引用并转发。
+     */
+    const files = global.WhaleSideFiles.createSideFiles({
+      dom,
+      client,
+      preview: deps.preview,
+      onOpenInBrowser: (path) => { deps.onOpenInBrowser(path); },
+      onNotify,
+    });
+
+    // 文件面板的「返回」由 side-files.js 自己接（它知道该回列表还是回首页）
 
     // ── 侧边对话 ────────────────────────────────────
 
@@ -200,9 +190,51 @@
       }
     }
 
+    /**
+     * 填充「继承上下文」下拉。
+     *
+     * 用户要求：「侧边对话需要支持选择继承的上下文的会话（按照标题选）、
+     * 默认是继承当前小窗展示会话的上下文」。
+     *
+     * 所以：
+     *   · 列表来自桥的会话清单（**全部工作区**，带工作区名便于区分同名标题）；
+     *   · 默认选中**当前小窗展示的会话**（`deps.currentSessionId()`）；
+     *   · 拿不到清单时保留一项「当前会话」，不让下拉变空 —— 空下拉比没得选更糟。
+     */
+    function fillInheritOptions() {
+      if (dom.scInherit === null || dom.scInherit === undefined) return Promise.resolve(null);
+      const current = typeof deps.currentSessionId === "function" ? deps.currentSessionId() : null;
+      return client.sessionList().then(function (out) {
+        dom.scInherit.innerHTML = "";
+        const add = (value, label, selected) => {
+          const opt = global.document.createElement("option");
+          opt.value = value;
+          opt.textContent = label;
+          if (selected) opt.selected = true;
+          dom.scInherit.appendChild(opt);
+        };
+
+        if (out.ok !== true || out.sessions.length === 0) {
+          // 清单读不到也要能用：至少列出「当前会话」
+          add(current ?? "", current === null ? "当前会话（读不到清单）" : "当前会话", true);
+          return out;
+        }
+        for (const s of out.sessions) {
+          const ws = s.workspaceTitle !== "" ? `｜${s.workspaceTitle}` : "";
+          add(s.sessionId, `${s.title}${ws}`, s.sessionId === current);
+        }
+        // 当前会话不在清单里时也补一项，避免「默认」落空
+        if (current !== null && !out.sessions.some((s) => s.sessionId === current)) {
+          add(current, "当前会话", true);
+        }
+        return out;
+      });
+    }
+
     /** 进入侧边对话：没有会话就先建一个真会话。 */
     function openChat() {
       dom.scState.textContent = "";
+      void fillInheritOptions();
       if (chatSessionId !== null) {
         startChatPoll();
         return refreshChat();
@@ -258,9 +290,14 @@
           dom.sbUrl.focus();
           return Promise.resolve(null);
         }
-        if (name === "files") return gotoFiles("");
+        // 文件面板整体交给 side-files.js（默认列当前工作区根）
+        if (name === "files") return files.enter();
         if (name === "chat") return openChat();
         return Promise.resolve(null);
+      },
+      /** 由 html 预览转过来：切到浏览器面板并打开该地址。 */
+      openInBrowser(url) {
+        openInBrowser(url);
       },
       /** 面板隐藏时调用（停轮询，别让隐藏面板继续敲宿主）。 */
       leave(name) {

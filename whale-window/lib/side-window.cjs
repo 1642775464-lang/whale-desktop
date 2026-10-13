@@ -53,6 +53,9 @@ const WINDOW_DIR = path.resolve(__dirname, "..");
  * @param {object} deps.screen Electron 的 screen
  * @param {object} deps.log
  * @param {() => object|null} deps.mainBounds 取小窗当前窗口矩形
+ * @param {() => string|null} [deps.currentSessionId] 当前展示的会话（传给页面）
+ * @param {() => string|null} [deps.workspacePath] 工作区根绝对路径（传给页面）
+ * @param {string} [deps.userAgent] webview 用的 UA（平板口径，见 lib/side-ua.cjs）
  * @param {(joined: boolean) => void} [deps.onJoinedChange]
  *        贴住状态变化回调：**主窗据此去掉右侧圆角与阴影**，
  *        两块看起来才是「一个连着的面板」（用户报「中间像两个图层」）。
@@ -156,7 +159,37 @@ function createSideWindow(deps) {
     });
     win.setAlwaysOnTop(true, "floating");
     win.setSkipTaskbar(true);
-    win.loadFile(rendererFile, { query: { port: String(deps.port ?? 19387) } });
+
+    /*
+     * 页面地址带三个查询参数（渲染层据此工作）：
+     *   · `port`      —— 桥端口（发请求用）
+     *   · `sessionId` —— 当前小窗展示的会话（侧边对话「继承上下文」的默认项）
+     *   · `workspace` —— 工作区根绝对路径（html 预览要拼 file:// 地址）
+     */
+    const query = { port: String(deps.port ?? 19387) };
+    if (typeof deps.currentSessionId === "function") {
+      const sid = deps.currentSessionId();
+      if (typeof sid === "string" && sid !== "") query.sessionId = sid;
+    }
+    if (typeof deps.workspacePath === "function") {
+      const ws = deps.workspacePath();
+      if (typeof ws === "string" && ws !== "") query.workspace = ws;
+    }
+    win.loadFile(rendererFile, { query });
+
+    /*
+     * `<webview>` 里的页面用**平板 UA**（用户要求「适配当前页面比例，类似
+     * 平板或者手机」）。只在 webview 附加时改它自己的 webContents ——
+     * 不动外层页面，也不注入脚本。
+     */
+    const ua = deps.userAgent;
+    if (typeof ua === "string" && ua !== "") {
+      win.webContents.on("did-attach-webview", (_e, wc) => {
+        if (wc !== null && wc !== undefined && typeof wc.setUserAgent === "function") {
+          wc.setUserAgent(ua);
+        }
+      });
+    }
 
     /*
      * 等页面加载（带超时兜底，与 window.cjs 同因）：
@@ -297,6 +330,28 @@ function createSideWindow(deps) {
     return { ok: true, opened: false };
   }
 
+  /**
+   * **立刻**收起（不播动画），用于小窗正在关闭这类「等不到动画结束」的场合。
+   *
+   * 为什么要单独一个：
+   *   `close()` 的 `opened` 是在**动画结束后**才置 false 的 —— 而关小窗是
+   *   「马上退出」，动画根本没机会跑完，于是状态永远停在 opened:true
+   *   （用户报「关闭或者最小化小窗，侧边栏不会跟着一起关闭」，探针也复现了：
+   *   `close` 事件里读到的 `opened` 仍是 true）。
+   *
+   *   这种场合观众看不到「收起动画」（小窗都没了），所以直接隐藏 + 归位
+   *   才是对的：留下一个孤零零的侧栏比「没有动画」糟得多。
+   *
+   * @returns {{ok: boolean, opened: boolean}}
+   */
+  function closeNow() {
+    stopAnim();
+    opened = false;
+    if (win !== null && !win.isDestroyed()) win.hide();
+    emitJoined(false);
+    return { ok: true, opened: false };
+  }
+
   /** 切换。 */
   function toggle() {
     return opened ? close() : open();
@@ -344,7 +399,7 @@ function createSideWindow(deps) {
     opened = false;
   }
 
-  return { close, dispose, ensure, follow, hide: close, open, snap, state, toggle };
+  return { close, closeNow, dispose, ensure, follow, hide: close, open, snap, state, toggle };
 }
 
 module.exports = { createSideWindow };

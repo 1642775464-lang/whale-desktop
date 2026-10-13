@@ -110,6 +110,39 @@ export function safeRelativePath(path) {
 }
 
 /**
+ * 把「工作区相对路径」拼成绝对路径，并确认它**没有跑出工作区**。
+ *
+ * ⚠️ 这是读文件内容的最后一道闸。`safeRelativePath` 已经挡掉了 `..` 与绝对路径，
+ * 但**符号链接**能绕过纯字符串检查（`link` 这一段里没有 `..`，它却指向别处），
+ * 所以这里用 `realpath` 再核一次前缀 —— 字符串检查与真实路径检查缺一不可。
+ *
+ * @param {string} root 工作区绝对路径
+ * @param {string} rel 已过 `safeRelativePath` 的相对路径
+ * @param {(p: string) => string} realpath 真实路径解析（注入以便单测）
+ * @param {string} [sep] 路径分隔符（默认 `/`）
+ * @returns {{ok: true, abs: string} | {ok: false, reason: string}}
+ */
+export function resolveInsideRoot(root, rel, realpath, sep = "/") {
+  if (typeof root !== "string" || root === "") return { ok: false, reason: "root-missing" };
+  const base = root.replace(/[/\\]+$/, "");
+  const abs = `${base}${sep}${String(rel).split("/").join(sep)}`;
+  let realAbs;
+  let realBase;
+  try {
+    realAbs = realpath(abs);
+    realBase = realpath(base);
+  } catch {
+    // 不存在或被权限拒绝：交给调用方按「读不到」处理，不在这里猜原因
+    return { ok: false, reason: "not-found" };
+  }
+  const a = String(realAbs).replace(/\\/g, "/").replace(/\/+$/, "");
+  const b = String(realBase).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (a === b) return { ok: false, reason: "path-is-directory" };
+  if (!a.startsWith(`${b}/`)) return { ok: false, reason: "path-escapes" };
+  return { ok: true, abs };
+}
+
+/**
  * 由当前目录 + 条目名拼出下钻后的目录前缀。
  *
  * @param {string} dir 当前目录前缀

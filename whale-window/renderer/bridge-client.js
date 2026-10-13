@@ -90,6 +90,23 @@
     let stream = null;
     let reconnectDelay = 1000;
 
+    /**
+     * 把「当前会话 + 工作区」上报给主进程。
+     *
+     * 主进程建侧窗时要用这两个值（继承上下文的默认项、html 预览的 file 地址）。
+     * 失败不抛：这是**辅助信息**，报不上去顶多让侧窗少两个默认值，
+     * 不该影响主流程（所以只记一条渲染日志）。
+     */
+    function reportState() {
+      const api = global.whale;
+      if (api === undefined || typeof api.reportState !== "function") return;
+      const payload = { sessionId: state.sessionId ?? "", workspace: state.workspace ?? "" };
+      if (payload.sessionId === "" && payload.workspace === "") return;
+      Promise.resolve(api.reportState(payload)).catch(function (err) {
+        global.console.warn(`上报状态失败：${err?.message ?? err}`);
+      });
+    }
+
     /** 进降级态。注意不能写成「已经 offline 就 return」——初值就是 true。 */
     function markOffline() {
       if (state.offline && state.renderedOffline) return;
@@ -179,6 +196,7 @@
             state.contextUsed = found.contextUsed ?? null;
             state.contextWindow = found.contextWindow ?? null;
           }
+          reportState();
           return true;
         })
         .catch(function () {
@@ -222,6 +240,8 @@
           if (typeof json.workspace === "string") state.workspace = json.workspace;
           state.offline = false;
           state.renderedOffline = false;
+          // 每轮都上报：会话与工作区都可能变（切会话、切工作区）
+          reportState();
           onChange(state);
           return true;
         })
@@ -396,44 +416,6 @@
       });
     }
 
-    /**
-     * 账号信息与充值余额（侧边栏底部模块）。
-     *
-     * ⚠️ 与 `skills()` 一样返回 `{ok, data}`（data 是整个响应体）。
-     * `profile` / `balance` 可能各自为 null（宿主那个方法失败），
-     * 由调用方分别显示「—」—— 不能因为一块失败就把另一块也变空。
-     */
-    function account() {
-      return get("/whale/account");
-    }
-
-    /**
-     * 列工作区某个目录的条目（文件列表页面用）。
-     *
-     * `dir` 是**目录前缀**（空串 = 工作区根）；桥在宿主那条通路上
-     * 把它当「列这个目录」用。返回值规整成 `{ok, dir, entries, reason?, code?}`
-     * —— 调用方不必自己剥一层。
-     */
-    function workspaceFiles(dir) {
-      const d = typeof dir === "string" ? dir : "";
-      const sid = encodeURIComponent(state.sessionId ?? "");
-      return get(`/whale/workspace/files?sessionId=${sid}&dir=${encodeURIComponent(d)}`)
-        .then(function (out) {
-          if (!out.ok) return { ok: false, code: out.code, message: out.message };
-          return global.WhaleBridgeShapes.normalizeWorkspaceFiles(out.data, d);
-        });
-    }
-
-    /**
-     * 用系统默认程序打开工作区文件。
-     *
-     * ⚠️ 走**宿主**的 `session/openWorkspacePath`，桥不自己起进程 ——
-     * 小窗因此不需要（也不该有）执行系统命令的权限。
-     */
-    function openWorkspacePath(path) {
-      return post("/whale/workspace/open", { sessionId: state.sessionId ?? "", path });
-    }
-
     /** 断开增量流。 */
     function close() {
       if (pollHandle !== null) {
@@ -459,9 +441,20 @@
       post: (path, body) => post(path, body),
     });
 
+    /*
+     * 工作区文件与账号这两组**低频、由用户动作触发**的调用拆到
+     * bridge-workspace.js（本文件是主循环所在地，已到 500 行上限）。
+     * 依赖用工厂注入，调用形状仍只有一处实现。
+     */
+    const ws = global.WhaleBridgeWorkspace.createWorkspaceCalls({
+      get: (path) => get(path),
+      post: (path, body) => post(path, body),
+      state: () => state,
+    });
+
     return {
       abort,
-      account,
+      account: ws.account,
       activate,
       close,
       command,
@@ -473,13 +466,13 @@
       getState () { return state; },
       listCommands,
       modelCatalog: capabilities.modelCatalog,
-      openWorkspacePath,
+      openWorkspacePath: ws.openWorkspacePath,
       permissionPresets: capabilities.permissionPresets,
       refresh,
       resume,
       send,
       setModel: capabilities.setModel,
-      workspaceFiles,
+      workspaceFiles: ws.workspaceFiles,
       startPolling,
       takeSummon: capabilities.takeSummon,
       uploadFiles: capabilities.uploadFiles,

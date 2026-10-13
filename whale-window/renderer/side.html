@@ -82,14 +82,14 @@
         </div>
       </section>
 
-      <!-- 文件面板：复用主小窗那套文件列表能力 -->
+      <!-- 文件面板：默认展示当前会话工作区；点文件在窗内预览 -->
       <section class="spanel" id="pFiles" hidden>
         <div class="spane-head">
           <button class="sback" id="sfBack">‹ 返回</button>
           <span class="sf-crumb" id="sfCrumb"></span>
           <span class="sf-count" id="sfCount">–</span>
         </div>
-        <div class="sf-list" id="sfList"></div>
+        <div class="sf-body" id="sfBody"></div>
       </section>
 
       <!-- 侧边对话面板：新建一个真会话并与之对话 -->
@@ -98,6 +98,14 @@
           <button class="sback" id="scBack">‹ 返回</button>
           <span class="sc-title" id="scTitle">侧边对话</span>
           <span class="sc-state" id="scState"></span>
+        </div>
+        <!--
+          继承哪条会话的上下文：**下拉选标题**，默认是当前小窗展示的会话。
+          全部工作区的会话都在列表里（带工作区名，便于区分同名标题）。
+        -->
+        <div class="sc-inherit">
+          <span class="sc-inherit-label">继承上下文</span>
+          <select class="sc-inherit-sel" id="scInherit"></select>
         </div>
         <div class="sc-stream" id="scStream"></div>
         <div class="sc-compose">
@@ -108,7 +116,13 @@
       </div>
     </div>
 
+    <!--
+      文件分类规则放在 lib/file-preview.cjs（与主进程、单测共用同一份）。
+      它写成双端导出，所以这里可以直接 script 引入，不必抄第二份。
+    -->
+    <script src="../lib/file-preview.cjs"></script>
     <script src="side-bridge.js"></script>
+    <script src="side-files.js"></script>
     <script src="side-panels.js"></script>
     <script src="side-app.js"></script>
   </body>

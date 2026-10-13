@@ -30,6 +30,13 @@ const CHANNEL = Object.freeze({
    * （用户报「中间不要显示成两个图层」）。
    */
   SIDE_JOINED: "whale:side-joined",
+  /*
+   * 渲染层 → 主进程：上报当前状态（会话 id / 工作区路径）。
+   * 主进程建侧窗时要把这两个值通过查询串交给页面：
+   *   · sessionId —— 侧边对话「继承上下文」的默认项
+   *   · workspace —— html 预览要拼 file:// 地址
+   */
+  STATE: "whale:state",
 });
 
 /**
@@ -175,6 +182,11 @@ function registerIpc(deps) {
     if (action === "open") return { ok: true, ...side.open() };
     if (action === "close") return { ok: true, ...side.close() };
     return { ok: true, ...side.toggle() };
+  });
+
+  on(CHANNEL.STATE, (payload) => {
+    if (typeof deps.onState !== "function") return { ok: false, code: "no-sink" };
+    return deps.onState(payload ?? {});
   });
 
   /**

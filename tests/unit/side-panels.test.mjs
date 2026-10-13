@@ -45,7 +45,7 @@ function loadPanels() {
   const sandbox = {
     window: {},
     console: { warn: () => {} },
-    Object, Array, String, Promise, Number, URLSearchParams,
+    Object, Array, String, Promise, Number, URLSearchParams, RegExp, Set, Map,
   };
   sandbox.window.document = {
     createElement: () => fakeEl(),
@@ -55,11 +55,19 @@ function loadPanels() {
   sandbox.window.clearInterval = () => {};
   sandbox.window.console = sandbox.console;
   createContext(sandbox);
-  runInContext(
-    readFileSync(join(ROOT, "whale-window", "renderer", "side-panels.js"), "utf8"),
-    sandbox,
-    { filename: "side-panels.js" },
-  );
+
+  /*
+   * 加载顺序与 side.html 一致：分类规则 → 文件面板 → 面板装配。
+   * `file-preview.cjs` 是双端导出（见该文件末尾），所以在沙箱里也会挂到 window 上。
+   */
+  for (const rel of [
+    ["whale-window", "lib", "file-preview.cjs"],
+    ["whale-window", "renderer", "side-files.js"],
+    ["whale-window", "renderer", "side-panels.js"],
+  ]) {
+    const file = join(ROOT, ...rel);
+    runInContext(readFileSync(file, "utf8"), sandbox, { filename: rel[rel.length - 1] });
+  }
   return sandbox.window.WhaleSidePanels;
 }
 
@@ -70,14 +78,16 @@ const inertClient = {
   workspaceFiles: nothing,
   panel: nothing,
   openWorkspacePath: nothing,
+  readWorkspaceFile: nothing,
   send: nothing,
   createSession: nothing,
+  sessionList: async () => ({ ok: true, sessions: [] }),
 };
 
 function mkDom() {
   const ids = [
     "sHome", "sbTitle", "sClose", "sBrowser", "sFiles", "sChat",
-    "sbBack", "sbUrl", "sbGo", "sbWeb", "sfBack", "sfCrumb", "sfCount", "sfList",
+    "sbBack", "sbUrl", "sbGo", "sbWeb", "sfBack", "sfCrumb", "sfCount", "sfBody",
     "scBack", "scTitle", "scState", "scStream", "scInput", "scSend",
   ];
   const dom = {};
@@ -153,7 +163,7 @@ test("文件：进入时列工作区根，失败要显示原因", async () => {
   });
   await panels.enter("files");
   assert.deepEqual(seen, [""], "先列根目录");
-  const text = dom.sfList.children.map((c) => c.textContent).join(" ");
+  const text = dom.sfBody.children.map((c) => c.textContent).join(" ");
   assert.match(text, /not-found/, "要显示失败原因");
 });
 

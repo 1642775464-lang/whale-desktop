@@ -43,10 +43,11 @@
       sfBack: $("sfBack"),
       sfCrumb: $("sfCrumb"),
       sfCount: $("sfCount"),
-      sfList: $("sfList"),
+      sfBody: $("sfBody"),
       scBack: $("scBack"),
       scTitle: $("scTitle"),
       scState: $("scState"),
+      scInherit: $("scInherit"),
       scStream: $("scStream"),
       scInput: $("scInput"),
       scSend: $("scSend"),
@@ -60,9 +61,29 @@
     /** 当前显示的面板名；null = 首页。 */
     let current = null;
 
+    /*
+     * 当前小窗展示的会话 id —— 侧边对话的「继承上下文」默认选它。
+     *
+     * 从 URL 查询串拿（主进程 loadFile 时带的 `?sessionId=`）：那是主窗
+     * **启动时**指向的会话，与「侧边栏贴在它右边」这个语义一致。
+     * 拿不到就给 null，下拉会退回「当前会话」一项。
+     */
+    const mainSessionId = (() => {
+      try {
+        const q = new global.URLSearchParams(global.location.search).get("sessionId");
+        return q === null || q === "" ? null : q;
+      } catch {
+        return null;
+      }
+    })();
+
     const panels = global.WhaleSidePanels.createSidePanels({
       dom,
       client,
+      currentSessionId: () => mainSessionId,
+      // html 预览转给浏览器面板（本回调由 side-app 处理切换）
+      onOpenInBrowser: (path) => { openFileInBrowser(path); },
+      preview: global.WhaleFilePreview,
       onHome() { goHome(); },
       onNotify(msg) { global.console.warn(msg); },
     });
@@ -90,6 +111,31 @@
       dom.home.hidden = false;
       current = null;
       dom.title.textContent = "侧边栏";
+    }
+
+    /**
+     * 把工作区里的 html 交给浏览器面板打开。
+     *
+     * 为什么用 `file://` 绝对地址：桥给的是**工作区相对路径**，
+     * 而 `<webview>` 需要一个可加载的 URL。主进程在 `loadFile` 时已经
+     * 把工作区根通过查询串传进来了（`?workspace=`），这里拼成 file URL。
+     */
+    function openFileInBrowser(path) {
+      const root = (() => {
+        try {
+          return new global.URLSearchParams(global.location.search).get("workspace") ?? "";
+        } catch {
+          return "";
+        }
+      })();
+      // 反斜杠统一（Windows 路径），再做最小转义
+      const abs = `${root.replace(/[/\\]+$/, "")}/${String(path).replace(/^[/\\]+/, "")}`
+        .replace(/\\/g, "/");
+      const url = abs.startsWith("/")
+        ? `file://${encodeURI(abs)}`
+        : `file:///${encodeURI(abs)}`;
+      showPanel("browser");
+      panels.openInBrowser(url);
     }
 
     /** 三个入口按钮。 */
