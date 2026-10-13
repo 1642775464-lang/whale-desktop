@@ -1,6 +1,6 @@
 # Whale Desktop · STATUS
 
-- 文档版本：v5.8
+- 文档版本：v5.9
 - 日期：2026-10-07
 - 状态：**一期与切片 7 全部完成并验收通过**——四个浮层、真上传、模型目录同步、小窗默认会话并跟随、唤起语义、＋号菜单对齐主窗口；647 测试全绿、七道闸门全过
 - 项目根：`D:\DEEPSEEK\悬浮窗`
@@ -3009,6 +3009,64 @@ if (!ok && typeof bridge.seed.seedFromCatalog === "function") {
 
 ---
 
+## 六·四十四补、工作区文件列表（顶栏文件夹图标进入）（2026-10-13）
+
+### 用户需求
+
+> 小窗右上角的文件图标，点击后进入工作区文件列表
+
+用户裁定：**主区整页切换**（像技能中心）、**可逐层点进目录**、
+**点文件用系统默认程序打开**。
+
+### 勘察：三个决定实现方式的实测
+
+| 结论 | 依据 |
+|---|---|
+| 「列目录」**不需要新的宿主能力** | `fileReferences.list(agent, query)` 实测 `query=""` 列顶层、`query="whale-window/"` 列该目录 —— 「传目录前缀 == 列这个目录」 |
+| 「打开文件」有官方通路 | `session/openWorkspacePath`（args `{request:{path,action?,application?}}` → `{opened:true}`）。让**宿主**去开：复用它的工作区边界校验，且**不给小窗开能执行系统命令的通道** |
+| `btnFolder` **此前没接任何行为** | 且 `dom-table` 里也没有它的引用 —— 真窗口探针立刻抓到 `Cannot read properties of undefined`（这就是「点图标没反应」的根因） |
+
+### 改动
+
+| 层 | 改动 |
+|---|---|
+| 桥（纯逻辑） | 新增 `workspace-files.mjs`：条目归一化（目录在前）、目录前缀规范化、**`safeRelativePath`（安全边界）** |
+| 桥（路由） | 新增 `handlers-workspace.mjs`：`GET /whale/workspace/files`、`POST /whale/workspace/open` |
+| 呈现层 | 新增 `files-view.js`（页面）与 `bridge-shapes.js`（响应归一化）；HTML / CSS / dom-table / bridge-client / sidebar-mount 接线到 `btnFolder` |
+
+### 安全边界（有专门测试）
+
+`POST /whale/workspace/open` 的 path 来自渲染层，**不受信任**：
+
+- 拒绝绝对路径（`C:\...`、`/etc/...`、UNC）；
+- 拒绝任何 `..` 段（否则能爬出工作区）；
+- 列目录的 `dir` 前缀同样过一遍校验。
+
+### 真窗口探针抓到的两个问题
+
+1. `dom-table` 缺 `btnFolder` 引用 → 点击抛 `Cannot read properties of undefined`；
+2. 测试替身的 `innerHTML = ""` 没真的清空子节点 → 面包屑「越渲染越长」，
+   看起来像产品 bug（**被自己的替身骗过一次**，已在替身里注明）。
+
+### 拆分（闸门 6 卡住后按职责拆，不是放宽上限）
+
+- `typert-bridge.mjs` 516 → 360 行：账号（`typert-account.mjs`）、
+  工作区打开（`typert-workspace.mjs`）各自成模块，**工厂注入 `invokeRemote`**
+  以保持「调用形状只有一处实现」；
+- `bridge-client.js` 507 → 496 行：响应归一化抽到 `bridge-shapes.js`
+  （纯函数，可脱网单测）。
+
+### 状态
+
+```kv
+测试: 869 全绿（+33）
+闸门: 7 道全过
+提交: c3dd20e
+待用户操作: 重启宿主（新增了两个端点）
+```
+
+---
+
 ## 七、版本沿革
 
 | 版本 | 日期 | 变更 |
@@ -3024,6 +3082,7 @@ if (!ok && typeof bridge.seed.seedFromCatalog === "function") {
 | v1.8 | 2026-10-06 | **切片 6 完成，六片全部交付**（`aadf93a`）。页面右下角小鲸鱼按钮（挂 `shell.overlay`，单击并行拉起悬浮条与小窗）；桥侧按已确认的影响清单泛化 `windows.mjs`（TARGETS 表 + 复用按目标分开）。真宿主验收 E1–E6 全过，**走正规 `install_bundle` / `remove_bundle` 通道，0 个坑**（与切片 5 手工安装的 3 个坑形成对照）。图标改为机械注入（我第一版凭印象编了段鲸鱼 path，与真图标完全不同——PRD 早警告过「手抄会错」）。依赖扫描口径修正为「浏览器侧另算、但更严」（允许宿主模块表模块，禁止 node: 内置）。测试 502 全绿、七道闸门全过。卸载核对：依赖回 12、bundles 回 17、用户主题设置保留；记一条工具小缺口（`remove_bundle` 不删 `node_modules/` 下的符号链接） |
 | v1.9 | 2026-10-06 | **插件装回并长期保留**（用户要求「装」），进入日用阶段。用户在日用中发现并报出 **4 个缺陷**，全部修复且**逐项验收通过**：① 点鲸鱼只唤起不收起（PRD F2① 是切换语义）② 图标照抄源 svg 的 `fill="none"` → 看着透明 ③ 关窗时 `target` 被 HTTP 处理器静默丢掉 → `{ok:true,closed:0}`「成功但一个都没关」④ `align-items:baseline` 的行盒贴顶 → 数字偏上 6px。四个都做了注入验证的防线。新增 3 个量测工具（切换/绿环探针、居中量测探针、图标独立复核），预检补标题通路。记录三次「我以为」被证据纠正的过程。新增 4 项环境坑（27–30）。测试 520 全绿 |
 | v2.1 | 2026-10-07 | **切片 7 第二批（A/B/C）落地**：模型目录改走 `sessionController.modelCatalog()`（原先找的 `models` 服务宿主根本没注册 → 一直返回 0）、权限档位以 `permissionPresets` 为准（4 档含运行期注册的 `auto`）、新增第 24 条路由 `GET /whale/presets` 与两条上传路由（25/26）。小窗补齐四个浮层（权限/模型与思考强度/用量/＋真上传，含拖拽与粘贴）。**三个真因层层递进**：① 数据源找错 ② 数据源对了但**取太早**（sessionController 注册时机在桥之后）③ 把「还没就绪」**缓存成了永远**（环境坑 35）。另修掉 `btnPerm` 被绑定两次导致两次 toggle 互相抵消（浮层永远打不开）。新增坑 31–35。测试 583 全绿 |
+| v5.9 | 2026-10-13 | **工作区文件列表（顶栏文件夹图标进入）**（`c3dd20e`）：用户要求「小窗右上角的文件图标，点击后进入工作区文件列表」，裁定为**主区整页切换 + 可逐层进入目录 + 点文件用系统默认程序打开**。**勘察三个关键结论**：① 列目录**不需要新宿主能力** —— `fileReferences.list(agent,query)` 实测「传目录前缀 == 列该目录」（`query=""` 顶层、`"whale-window/"` 该目录）；② 打开走宿主官方通路 `session/openWorkspacePath`（→ `{opened:true}`），**不为小窗开 shell 通道**（`ipc.cjs` 白名单不变）；③ `btnFolder` 此前**没接任何行为**且 dom-table 无引用 —— 探针立刻抓到 `Cannot read properties of undefined`。新增 `workspace-files.mjs`（归一化 + **`safeRelativePath` 安全边界**：拒绝对路径与 `..`）、`handlers-workspace.mjs`（两个端点）、`files-view.js`、`bridge-shapes.js`。**闸门 6 卡住后按职责拆**：`typert-bridge.mjs` 516→360（账号/工作区各自成模块，工厂注入 `invokeRemote`）、`bridge-client.js` 507→496（归一化抽成纯函数）。探针还抓到「测试替身 `innerHTML=""` 没清子节点」导致面包屑越渲染越长。测试 869 全绿（+33） |
 | v5.8 | 2026-10-11 | **修「其他会话的历史消息没了」**（`40c44a3`）：用户报「其他会话的历史消息怎么没了」。取证：桥面板抽查 6 个会话，只有当前会话 `panel=40`，其余全 `panel=0`（有的还 404 `session-not-found`）；但**历史并没有丢** —— 直接从落盘日志解码可见 `e21d009d` 有 244 事件（user=13 + assistant=34）、`43d3938f` 有 845 事件。**根因：面板的播种只走一层** —— `/whale/panel` 只调 `seed.ensureSeeded()`（走宿主的 **live 会话清单**，而实测活会话也可能不在里面），失败后折叠器里仍没有该会话（活会话不 404 但 fold 空 → panel=0；冷会话直接 404）。`/whale/activate` 上一轮已加「注册表清单兜底」，**面板这条路径漏了**。改法：两条路径用**同一套两层兜底**（`ensureSeeded` 失败 → `seedFromCatalog`）。只改装配层调用点（`seedFromCatalog` 行为已有单测）。测试 835 全绿；桥侧改动需重启 |
 | v5.7 | 2026-10-11 | **修「只展示一条消息，历史消息都没了」**（`5a2923c`）：用户报「为什么只展示一条消息？历史消息都没了」。桥实测 `/whale/panel` 的 40 条 tail：**38 条是 tool、只有 1 assistant + 1 user** —— 而呈现层明确**不显示**工具调用（用户早前要求「小窗不需要展示工具调用过程」），于是那 38 条占着 40 个显示位却一条都不显示，真正的对话被挤出去。`TAIL_LIMIT = 40` 是**所有事件共用一个尾巴**。改法：**工具事件不进 tail**（`tool/call`/`tool/result` 只 accepted、不 pushTail）—— 尾巴是给用户看的，只放用户能看到的东西；工具过程仍计入 `steps` 等聚合量，只是不占显示位。`toolName` 链路现恒为 null，检查过无任何渲染依赖，无影响。新增两条断言（工具事件 tail.length===0、对话在工具事件之间仍能留住），注入验证有效（改回进 tail 红 2 条）。测试 835 全绿；桥侧改动需重启 |
 | v5.6 | 2026-10-11 | **账号模块两处修正**（`b24d823`）：用户报「为什么还是显示未登录，另外余额只需要到小数点后5位」。取证：余额**其实读到了**（`9.5534315800000000` —— 那串高精度就是要截位的原因），问题在账号状态判据。**根因一**：`getProfile` 的 `null` 有歧义 —— 宿主无凭证时 `if (stored === null) return null;`，而「读取被中断」也是 `null`，光看它分不出「未登录」与「资料失败」，我却按后者写文案。改法：**加读 `account/getState`**（`{status:"signed-out"\|"credential-stored"}`）明确登录状态，桥回传 `signedIn: true/false/null`（不知道就不猜），界面据此分四种显示（有资料 / 已登录但资料读不到 / 明确未登录 / 登录状态也不知道）。**根因二**：余额是高精度字符串没截位。改法：截到小数点后 5 位且**只截断不四舍五入**（四舍五入会把 9.999999 显示成 10.00000，比真实余额多），末尾多余的 0 去掉。**三**：初始占位改中性文案「账号信息 / 打开时读取」——还没读不该断言「未登录」。真窗口实测 `¥9.55343` 截位生效、0 页面错误。测试 835 全绿（+7） |
