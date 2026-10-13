@@ -189,17 +189,16 @@ async function main() {
     joinedInfo = { mainSide, sideSide };
 
     /*
-     * 用户本轮定的三条判据：
-     *   1. 相邻侧圆角为 0（否则中间有缝、像两个图层）；
-     *   2. **中间要一条分割线** → 侧窗左边框保留可见颜色（不再是透明）；
-     *   3. **整体四周阴影要保留** → 两侧都还有投影，但都**朝外**
-     *      （小窗偏移为负、侧窗偏移为正），中间相接处不投、不叠影。
+     * 用户本轮定的两条：
+     *   1. **中间分割线上不能有阴影** → 两侧投影的偏移必须大于模糊半径，
+     *      否则阴影会漫过中线压在线上（原来 `-8px 0 24px` 就是这个问题）；
+     *   2. 整体四周阴影仍要保留（两侧都得还有投影，且朝外）。
      */
     say(`  小窗  右侧圆角：${mainSide.radius}（期望 0px）`);
-    say(`  小窗  阴影    ：${mainSide.shadow === "none" ? "无" : mainSide.shadow.slice(0, 46)}（期望 有且朝左）`);
+    say(`  小窗  阴影    ：${mainSide.shadow === "none" ? "无" : mainSide.shadow.slice(0, 46)}`);
     say(`  侧窗  左侧圆角：${sideSide.radius}（期望 0px）`);
     say(`  侧窗  左边框  ：${sideSide.borderWidth} ${sideSide.borderColor}（期望 1px 且不透明＝分割线）`);
-    say(`  侧窗  阴影    ：${sideSide.shadow === "none" ? "无" : sideSide.shadow.slice(0, 46)}（期望 有且朝右）`);
+    say(`  侧窗  阴影    ：${sideSide.shadow === "none" ? "无" : sideSide.shadow.slice(0, 46)}`);
   }
 
   say("");
@@ -295,16 +294,34 @@ async function main() {
     if (joinedInfo.mainSide.shadow === "none") problems.push("小窗阴影被去干净了（用户要求整体四周阴影保留）");
     if (joinedInfo.sideSide.shadow === "none") problems.push("侧窗阴影被去干净了（用户要求整体四周阴影保留）");
     /*
-     * 且必须是**朝外**投：小窗朝左（首个偏移为负）、侧窗朝右（为正）。
-     * ⚠️ computed style 里每层的写法是「颜色 偏移X 偏移Y 模糊 扩散」，
-     * 颜色在前，所以不能用 startsWith 判偏移，要按「颜色 + 偏移」整段找。
+     * 且必须是**朝外**投，并且**不漫到中线**（用户：「中间分割线不需要阴影」）。
+     *
+     * 判据：相邻那条投影的**偏移绝对值 ≥ 模糊半径** —— 偏移不足时阴影会
+     * 越过中线压在分割线上（原来 `-8px 0 24px` 就是这个问题）。
+     *
+     * ⚠️ computed style 里每层是「颜色 偏移X 偏移Y 模糊 扩散」，颜色在前，
+     * 不能用 startsWith 判偏移，要按「颜色 + 偏移」整段找。
      */
-    if (!joinedInfo.mainSide.shadow.includes(" -8px 0px 24px")) {
-      problems.push("小窗阴影不是朝左投的（中间可能叠影）");
+    const layerOf = (shadow, offset) => `${offset} 0px`;
+    if (!joinedInfo.mainSide.shadow.includes(layerOf(joinedInfo.mainSide.shadow, "-20px"))) {
+      problems.push("小窗朝左的投影不是预期参数（可能是偏移不足、会漫到中线）");
     }
-    if (!joinedInfo.sideSide.shadow.includes(" 8px 0px 24px")) {
-      problems.push("侧窗阴影不是朝右投的（中间可能叠影）");
+    if (!joinedInfo.sideSide.shadow.includes("20px 0px")) {
+      problems.push("侧窗朝右的投影不是预期参数（可能是偏移不足、会漫到中线）");
     }
+    // 内侧边缘 = 偏移 − 模糊；必须 ≥ 0，否则阴影越过中线压在分割线上
+    const innerEdge = (shadow, offsetAbs) => {
+      const seg = shadow.split(offsetAbs)[1] ?? "";
+      const nums = seg.match(/-?\d+(\.\d+)?px/g) ?? [];
+      // seg 形如 " 0px 16px 0px, rgba(...)" → 第一个数字是偏移Y，第二个是模糊
+      const blur = parseFloat(nums[1] ?? "0");
+      return offsetAbs - blur;
+    };
+    const mainInner = innerEdge(joinedInfo.mainSide.shadow, 20);
+    const sideInner = innerEdge(joinedInfo.sideSide.shadow, 20);
+    if (mainInner < 0) problems.push(`小窗阴影内侧越过中线 ${-mainInner}px（会压在分割线上）`);
+    if (sideInner < 0) problems.push(`侧窗阴影内侧越过中线 ${-sideInner}px（会压在分割线上）`);
+    say(`  阴影内侧边缘：小窗 ${mainInner}px / 侧窗 ${sideInner}px（≥ 0 才不压线）`);
   }
   if (closedOk === false) problems.push("点 × 没有收起侧窗");
   if (restoredOk !== null && restoredOk.hasClass) problems.push("收起后小窗还留着连体类（圆角回不来）");
