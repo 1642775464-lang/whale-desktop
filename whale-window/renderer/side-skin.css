@@ -1,0 +1,444 @@
+/*
+ * 右侧附带窗皮肤
+ *
+ * 职责：侧窗自己的样式 —— 宿主侧边栏式的面板外观 + 三个大入口按钮 + 内容区。
+ * 所属层：小窗（whale-window/renderer）
+ *
+ * ## 为什么单独一份而不是复用 skin.css
+ *
+ * skin.css 是主小窗的皮肤（顶栏、消息流、输入区、侧边栏…1400 行），
+ * 侧窗一个都用不上。整份引进来：
+ *   · 会有大量「同名类互相影响」的风险（`.sbar`/`.sact` 这类短名容易撞）；
+ *   · 改主窗皮肤时可能意外改到侧窗（两处耦合、一处改另一处坏）。
+ *
+ * 但**变量必须同源**（颜色、圆角、阴影观感）—— 下面这份 :root 是从
+ * skin.css 抄来的同一组值，改色时两处要一起改（已在开发规范里注明）。
+ *
+ * ## 布局口径
+ *
+ * 与主窗一致：窗口 = 内容 + 四周 SHADOW_PAD(16)，由 body 的 padding 收回。
+ * `--shadow-pad` 必须等于 `whale-window/lib/geometry.cjs` 的 SHADOW_PAD。
+ */
+
+:root {
+  --ink: #1f2430;
+  --ink2: #5a6070;
+  --ink3: #8a90a0;
+  --ink-disabled: #b4bacb;
+  --line: #e3e6f0;
+  --line-soft: #f0f2f8;
+  --card: #ffffff;
+  --brand: #2f6bff;
+  --brand2: #7c3aed;
+  --ok: #22c55e;
+  --bad: #ef4444;
+  --mono: "SF Mono", Consolas, "Cascadia Mono", monospace;
+
+  /* 必须等于 geometry.cjs 的 SHADOW_PAD（16） */
+  --shadow-pad: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 与主窗同一条纪律：`hidden` 属性必须真的隐藏，不因元素自己写了 display 而失效 */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  /* 侧窗不可拖动（位置由主进程贴靠决定），整窗都不需要拖拽区 */
+  user-select: none;
+}
+
+.whale-side {
+  padding: var(--shadow-pad);
+}
+
+/* 面板本体：宿主侧边栏的观感 —— 白底、圆角、柔和边框与阴影 */
+.swin {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 8px 26px rgba(30, 45, 90, 0.16);
+}
+
+/* ── 顶栏（拖拽区 + 收起按钮）────────────────────── */
+.sbar {
+  flex: 0 0 auto;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--line-soft);
+  -webkit-app-region: drag;
+}
+
+.sbar-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand), var(--brand2));
+}
+
+.sbar-title {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  color: var(--ink2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sact {
+  flex: 0 0 auto;
+  -webkit-app-region: no-drag;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sact:hover {
+  background: #f2f4fa;
+}
+
+.sact svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* ── 首页：三个入口，正中间横排，占满中间区域 ────── */
+.shome {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;      /* 垂直居中 */
+  justify-content: center;
+  min-height: 0;
+  padding: 18px;
+}
+
+.shome-inner {
+  width: 100%;
+  display: flex;
+  flex-direction: row;      /* 横排 */
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/*
+ * 每个入口占等分宽度（flex:1）—— 三个按钮**占满中间区域**，
+ * 而不是挤在中间一小条（用户要求「占据中间区域，显得视觉合理」）。
+ */
+.sbig {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: #fbfcff;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.sbig:hover {
+  background: #f2f6ff;
+  border-color: #dbe4fb;
+  transform: translateY(-1px);
+}
+
+.sbig:active {
+  transform: translateY(0);
+}
+
+.sbig svg {
+  width: 30px;
+  height: 30px;
+  display: block;
+  color: var(--brand);
+}
+
+.sbig-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.sbig-sub {
+  font-size: 11px;
+  color: var(--ink3);
+  text-align: center;
+}
+
+/* ── 内容面板（浏览器 / 文件 / 对话共用外框）──────── */
+.spanel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.spane-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.sback {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.sback:hover {
+  background: #eef2fd;
+}
+
+/* ── 浏览器面板 ──────────────────────────────────── */
+.surl {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 12px;
+  outline: none;
+  user-select: text;
+}
+
+.surl:focus {
+  border-color: var(--brand);
+}
+
+.sgo {
+  flex: 0 0 auto;
+  border: 1px solid var(--line-soft);
+  background: #fff;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.sgo:hover {
+  background: #f2f6ff;
+}
+
+.sweb-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #fff;
+}
+
+.sweb {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: flex;
+}
+
+/* ── 文件面板 ────────────────────────────────────── */
+.sf-crumb {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--ink2);
+}
+
+.sf-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-disabled);
+}
+
+.sf-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sf-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid var(--line-soft);
+}
+
+.sf-row:hover {
+  background: #f4f7fe;
+}
+
+.sf-icon {
+  flex: 0 0 12px;
+  font-size: 11px;
+  color: var(--ink-disabled);
+  text-align: center;
+}
+
+.sf-dir .sf-icon {
+  color: var(--brand);
+}
+
+.sf-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.sf-empty {
+  padding: 14px 10px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-disabled);
+  line-height: 1.6;
+}
+
+/* ── 侧边对话面板 ────────────────────────────────── */
+.sc-title {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-state {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--ink-disabled);
+}
+
+.sc-stream {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  user-select: text;
+}
+
+.sc-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 100%;
+}
+
+.sc-role {
+  font-size: 10.5px;
+  color: var(--ink3);
+}
+
+.sc-body {
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f4f6fc;
+}
+
+.sc-msg.me .sc-body {
+  background: #e8efff;
+}
+
+.sc-empty {
+  margin: auto;
+  color: var(--ink3);
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.7;
+}
+
+.sc-compose {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.sc-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-size: 12.5px;
+  outline: none;
+  user-select: text;
+}
+
+.sc-input:focus {
+  border-color: var(--brand);
+}
+
+.sc-send {
+  flex: 0 0 auto;
+  border: 0;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.sc-send:disabled {
+  background: var(--ink-disabled);
+  cursor: default;
+}

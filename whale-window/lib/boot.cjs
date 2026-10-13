@@ -20,6 +20,7 @@ const { createWindow } = require("./window.cjs");
 const { createStateStore } = require("./persist.cjs");
 const { createRecovery } = require("./recovery.cjs");
 const { registerIpc } = require("./ipc.cjs");
+const { createSideWindow } = require("./side-window.cjs");
 
 /** 小窗所在目录。 */
 const WINDOW_DIR = path.resolve(__dirname, "..");
@@ -107,6 +108,26 @@ function bootWindow(deps) {
     log,
   });
 
+  /*
+   * 右侧附带窗：**延迟创建**（不点按钮就不建窗口）。
+   * 它是独立窗口而非窗内面板 —— 只有独立窗口才能做到「不影响小窗尺寸」
+   * 而又有真正的抽屉拉开动画（详见 side-window.cjs 的头注释）。
+   */
+  const side = createSideWindow({
+    BrowserWindow,
+    screen,
+    log,
+    port: bridgePort,
+    mainBounds: () => {
+      const b = win.bounds();
+      return b === null ? null : b;
+    },
+  });
+
+  // 小窗移动/缩放时，已拉开的侧窗要跟着贴住（收起态则不跟随）
+  win.win.on("move", () => side.follow());
+  win.win.on("resize", () => side.follow());
+
   if (typeof deps.onWindowReady === "function") deps.onWindowReady(win);
 
   /** 崩溃自愈。 */
@@ -153,6 +174,7 @@ function bootWindow(deps) {
     log,
     port: bridgePort,
     version: app.getVersion(),
+    side,
   });
 
   // 位置/尺寸变化时记忆（400ms 防抖由 store 内部负责）
@@ -173,7 +195,7 @@ function bootWindow(deps) {
     else log.warn("界面加载超时（可能没有调用 loadFile）");
   });
 
-  return { win, store, recovery, ipc, bounds, storeFile: stateFile, bridgePort };
+  return { win, store, recovery, ipc, bounds, storeFile: stateFile, bridgePort, side };
 }
 
 module.exports = { USER_DATA_DIR, WINDOW_DIR, bootWindow };

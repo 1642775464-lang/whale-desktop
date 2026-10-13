@@ -22,7 +22,16 @@ const CHANNEL = Object.freeze({
   DRAG: "whale:drag",
   LOG: "whale:log",
   FLUSH_STATE: "whale:flush-state",
+  // 右侧附带窗（顶栏「打开右侧边栏」按钮）
+  SIDE: "whale:side",
 });
+
+/**
+ * 允许渲染层调用的右侧窗动作。
+ *
+ * 同样用白名单：渲染层只能开关/查询，不能拿它做别的事。
+ */
+const SIDE_ACTIONS = Object.freeze(["open", "close", "toggle", "state"]);
 
 /**
  * 允许渲染层调用的窗口动作。
@@ -141,6 +150,27 @@ function registerIpc(deps) {
     return { ok: true, wrote };
   });
 
+  /*
+   * 右侧附带窗：开 / 关 / 切换 / 查状态。
+   *
+   * 侧窗实例由 boot 传入（延迟创建 —— 不点按钮不占资源）；
+   * 这里只做「白名单 + 转发」，不关心窗口怎么建。
+   */
+  on(CHANNEL.SIDE, (payload) => {
+    const action = payload?.action;
+    if (!SIDE_ACTIONS.includes(action)) {
+      return { ok: false, code: "bad-action", message: `不认识的侧窗动作：${String(action)}` };
+    }
+    const side = deps.side;
+    if (side === undefined || side === null) {
+      return { ok: false, code: "side-unavailable", message: "侧窗未装配" };
+    }
+    if (action === "state") return { ok: true, ...side.state() };
+    if (action === "open") return { ok: true, ...side.open() };
+    if (action === "close") return { ok: true, ...side.close() };
+    return { ok: true, ...side.toggle() };
+  });
+
   return {
     channels: [...registered],
     dispose() {
@@ -150,4 +180,4 @@ function registerIpc(deps) {
   };
 }
 
-module.exports = { CHANNEL, WINDOW_ACTIONS, registerIpc };
+module.exports = { CHANNEL, SIDE_ACTIONS, WINDOW_ACTIONS, registerIpc };

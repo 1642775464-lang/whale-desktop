@@ -29,6 +29,7 @@ const CHANNELS = {
   DRAG: "whale:drag",
   LOG: "whale:log",
   FLUSH_STATE: "whale:flush-state",
+  SIDE: "whale:side",
 };
 
 /**
@@ -70,4 +71,14 @@ contextBridge.exposeInMainWorld("whale", {
    * 退出前立刻补写窗口状态（F12：防抖之外的最后一次位置）。
    */
   flushState: () => ipcRenderer.invoke(CHANNELS.FLUSH_STATE),
+
+  /**
+   * 右侧附带窗：开 / 关 / 切换 / 查状态。
+   *
+   * 白名单在 lib/ipc.cjs（越界由主进程拒绝并回错误码）。
+   *
+   * @param {"open"|"close"|"toggle"|"state"} action
+   * @returns {Promise<{ok: boolean, opened?: boolean, code?: string}>}
+   */
+  sideAction: (action) => ipcRenderer.invoke(CHANNELS.SIDE, { action }),
 });

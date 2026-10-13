@@ -38,6 +38,8 @@
       btnMenu: $("btnMenu"),
       // 顶栏「文件夹」→ 工作区文件列表（本轮接线用到）
       btnFolder: $("btnFolder"),
+      // 顶栏「打开右侧边栏」→ 右侧附带窗（独立窗口）
+      btnSideRight: $("btnSideRight"),
       tbTitle: $("tbTitle"),
       // 工作区文件列表页面（顶栏「文件夹」图标进入）
       filesView: $("filesView"),

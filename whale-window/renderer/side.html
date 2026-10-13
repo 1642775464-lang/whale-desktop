@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CSP：与主小窗同一口径（放行 'self' 与回环连接）。
+      ⚠️ 本页要内嵌网页，所以必须放行 `frame-src`/`child-src` 到 http(s)，
+      否则 <webview> 会被 CSP 拦成空白（且报错只在渲染进程控制台里）。
+      这是用户明确授权「浏览器按钮要真在窗内渲染网页」所必需的最小放宽。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src http://127.0.0.1:* http://localhost:*; img-src 'self' data:; frame-src http: https:; child-src http: https:"
+    />
+    <title>Whale Side</title>
+    <link rel="stylesheet" href="side-skin.css" />
+  </head>
+  <body class="whale-side">
+    <!-- 窗口 = 内容 + 四周 SHADOW_PAD(16)，由 body 的 padding 收回 -->
+    <div class="swin" id="swin">
+      <!-- 顶栏：整条是拖拽区（无边框窗口），右侧一个关闭按钮 -->
+      <header class="sbar" id="sbar">
+        <span class="sbar-dot" aria-hidden="true"></span>
+        <span class="sbar-title" id="sbTitle">侧边栏</span>
+        <button class="sact" id="sClose" aria-label="收起侧边栏">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </header>
+
+      <!--
+        三个入口：**正中间横排**、占满中间区域宽度（用户要求
+        「大小要合适的占据中间区域，显得视觉合理」）。
+        下面各自挂一个内容区，同一时刻只显示一个。
+      -->
+      <section class="shome" id="sHome">
+        <div class="shome-inner">
+          <button class="sbig" id="sBrowser" data-panel="browser">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="7" />
+              <path d="M3 10h14M10 3c2 2.2 3 4.5 3 7s-1 4.8-3 7c-2-2.2-3-4.5-3-7s1-4.8 3-7z" />
+            </svg>
+            <span class="sbig-name">浏览器</span>
+            <span class="sbig-sub">在窗内打开网页</span>
+          </button>
+
+          <button class="sbig" id="sFiles" data-panel="files">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6.5h5l1.6 2H17v6.5H3z" />
+              <path d="M3 6.5V5h4.2l1.4 1.5" />
+            </svg>
+            <span class="sbig-name">文件</span>
+            <span class="sbig-sub">工作区文件列表</span>
+          </button>
+
+          <button class="sbig" id="sChat" data-panel="chat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.5 5.5h13v8h-8l-5 3z" />
+            </svg>
+            <span class="sbig-name">侧边对话</span>
+            <span class="sbig-sub">新建一个会话</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 浏览器面板：地址栏 + 内嵌网页 -->
+      <section class="spanel" id="pBrowser" hidden>
+        <div class="spane-head">
+          <button class="sback" id="sbBack">‹ 返回</button>
+          <input class="surl" id="sbUrl" type="text" placeholder="输入网址后回车…" spellcheck="false" />
+          <button class="sgo" id="sbGo">打开</button>
+        </div>
+        <div class="sweb-wrap" id="sbWebWrap">
+          <webview class="sweb" id="sbWeb" src="about:blank" allowpopups="false"></webview>
+        </div>
+      </section>
+
+      <!-- 文件面板：复用主小窗那套文件列表能力 -->
+      <section class="spanel" id="pFiles" hidden>
+        <div class="spane-head">
+          <button class="sback" id="sfBack">‹ 返回</button>
+          <span class="sf-crumb" id="sfCrumb"></span>
+          <span class="sf-count" id="sfCount">–</span>
+        </div>
+        <div class="sf-list" id="sfList"></div>
+      </section>
+
+      <!-- 侧边对话面板：新建一个真会话并与之对话 -->
+      <section class="spanel" id="pChat" hidden>
+        <div class="spane-head">
+          <button class="sback" id="scBack">‹ 返回</button>
+          <span class="sc-title" id="scTitle">侧边对话</span>
+          <span class="sc-state" id="scState"></span>
+        </div>
+        <div class="sc-stream" id="scStream"></div>
+        <div class="sc-compose">
+          <input class="sc-input" id="scInput" type="text" placeholder="说点什么… Enter 发送" />
+          <button class="sc-send" id="scSend">发送</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="side-bridge.js"></script>
+    <script src="side-panels.js"></script>
+    <script src="side-app.js"></script>
+  </body>
+</html>

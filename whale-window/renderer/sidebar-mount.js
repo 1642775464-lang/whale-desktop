@@ -226,6 +226,26 @@
       void filesView.show();
     });
 
+    /*
+     * 顶栏「打开右侧边栏」按钮 → 右侧附带窗（独立窗口，见 lib/side-window.cjs）。
+     *
+     * 走主进程：窗口的位移与抽屉拉开动画只能由主进程做。
+     * 失败要如实提示 —— 否则用户以为「点了没反应」。
+     */
+    if (dom.btnSideRight !== null && dom.btnSideRight !== undefined) {
+      dom.btnSideRight.addEventListener("click", () => {
+        const api = global.whale;
+        if (api === undefined || typeof api.sideAction !== "function") {
+          notify("打开右侧边栏失败：主进程通道未接通");
+          return;
+        }
+        api.sideAction("toggle").then((out) => {
+          if (out !== null && out !== undefined && out.ok === true) return;
+          notify(`打开右侧边栏失败（${out?.code ?? "unknown"}）`);
+        });
+      });
+    }
+
     return { accountPanel, filesView, sidebar, skillsView };
   }
 
