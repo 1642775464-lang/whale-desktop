@@ -123,11 +123,63 @@ function needsRedock(sidePos, winBounds, workArea) {
   return Math.abs(sidePos.x - want.x) > 1 || Math.abs(sidePos.y - want.y) > 1;
 }
 
+/**
+ * 算「往右展开」动画的某一帧（**宽度插值**）。
+ *
+ * ⚠️ 与 `drawerFrame` 的区别（用户要求改了做法，两套都保留但各司其职）：
+ *   · `drawerFrame` 是**整体平移**（窗口从屏幕右侧滑到贴靠位）；
+ *   · 这里是**从左边框往外长** —— 左边缘固定在小窗的右边框上，
+ *     只有宽度从 0 长到全宽。
+ *
+ * 用户原话是「从小窗的右边框往右拉出」，所以用这一种。
+ *
+ * @param {{x:number,y:number,width:number,height:number}} winBounds 小窗窗口矩形
+ * @param {number} sideWindowWidth 完全展开时的窗口宽度
+ * @param {number} t 进度：0 = 宽 0，1 = 全宽
+ * @param {{x:number,y:number,width:number,height:number}} [workArea]
+ * @returns {{x:number,y:number,width:number}} 该帧的窗口矩形（高度由调用方保持）
+ */
+function expandFrame(winBounds, sideWindowWidth, t, workArea) {
+  const p = clamp(Number.isFinite(t) ? t : 0, 0, 1);
+  /*
+   * 左边缘固定在**小窗可见区右缘**：整段动画里窗口左边不动、右边往右长 ——
+   * 这正是「从边框拉出」的观感。用 dockedPosition 算是为了让
+   * 「贴到屏外时回退」这条规则在展开动画里也一致生效。
+   */
+  const target = dockedPosition(winBounds, sideWindowWidth, workArea);
+  /*
+   * ⚠️ 宽度不能给 0：Electron 会把 0 宽当非法尺寸并**忽略这次 setBounds**
+   * （窗口保持旧宽度），表现是「动画不播、面板直接出现」。
+   * 从 1px 起步在视觉上等同于「从零长出」。
+   */
+  const width = Math.max(1, Math.round(sideWindowWidth * p));
+  return { x: target.x, y: target.y, width };
+}
+
+/**
+ * 贴住时两侧是否该「连成一体」（去掉相邻的圆角/边框/阴影）。
+ *
+ * 抽成函数是为了让呈现层与测试**共用同一条判据**，
+ * 而不是主进程、两侧 CSS、探针各写一遍「差几像素算贴住」。
+ *
+ * @param {{x:number,y:number}} sidePos 侧窗当前位置
+ * @param {{x:number,y:number,width:number,height:number}} winBounds 小窗矩形
+ * @param {number} sideWindowWidth
+ * @param {{x:number,y:number,width:number,height:number}} [workArea]
+ * @returns {boolean}
+ */
+function isJoined(sidePos, winBounds, sideWindowWidth, workArea) {
+  const want = dockedPosition(winBounds, sideWindowWidth, workArea);
+  return Math.abs(sidePos.x - want.x) <= 1 && Math.abs(sidePos.y - want.y) <= 1;
+}
+
 module.exports = {
   DRAWER_MS,
   SHADOW_PAD,
   dockedPosition,
   drawerFrame,
+  expandFrame,
   hiddenPosition,
+  isJoined,
   needsRedock,
 };

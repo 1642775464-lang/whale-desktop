@@ -132,6 +132,16 @@
       if (api !== undefined && typeof api.sideAction === "function") api.sideAction("close");
     });
 
+    /*
+     * 一进页面就带上「贴住」类。
+     *
+     * 侧窗只在**贴住**时才显示（位置由主进程摆在贴靠位），所以这个类在本窗口
+     * 是常态、不需要向谁查询 —— 它表达的是「我贴在左边那个人身上」，
+     * 用来把**左侧**的圆角/描边/阴影切掉（见 side-skin.css 的 body.joined）。
+     * 主窗那边由主进程推送状态来切它**右侧**的（见 preload 的 onSideJoined）。
+     */
+    global.document.body.classList.add("joined");
+
     goHome();
   }
 

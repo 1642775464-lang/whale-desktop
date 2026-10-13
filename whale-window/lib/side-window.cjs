@@ -53,6 +53,9 @@ const WINDOW_DIR = path.resolve(__dirname, "..");
  * @param {object} deps.screen Electron 的 screen
  * @param {object} deps.log
  * @param {() => object|null} deps.mainBounds 取小窗当前窗口矩形
+ * @param {(joined: boolean) => void} [deps.onJoinedChange]
+ *        贴住状态变化回调：**主窗据此去掉右侧圆角与阴影**，
+ *        两块看起来才是「一个连着的面板」（用户报「中间像两个图层」）。
  * @param {number} [deps.port] 桥端口（传给页面，侧窗也要连桥读数据）
  * @param {string} [deps.rendererFile] 页面路径（默认 renderer/side.html）
  * @param {string} [deps.preloadFile] preload 路径
@@ -191,16 +194,33 @@ function createSideWindow(deps) {
   /** 立刻把侧窗摆到贴靠位（无动画）。 */
   function snap() {
     if (win === null || win.isDestroyed()) return null;
+    const m = mainBounds();
     const pos = wantDocked();
-    if (pos === null) return null;
-    win.setBounds({ x: pos.x, y: pos.y, width: sideWidth(), height: win.getBounds().height });
+    if (pos === null || m === null) return null;
+    win.setBounds({ x: pos.x, y: pos.y, width: m.width, height: m.height });
     return pos;
   }
 
   /**
-   * 播放抽屉动画到目标进度（**匀速**）。
+   * 通知外部「贴住状态变了」。
    *
-   * @param {0|1} target 1 = 拉开，0 = 收起
+   * 用途：主窗要据此去掉它右侧的圆角/阴影，两块才看起来是**连在一起的
+   * 一个面板**（用户报「中间不要显示成两个图层」）。
+   *
+   * @param {boolean} joined
+   */
+  function emitJoined(joined) {
+    if (typeof deps.onJoinedChange === "function") deps.onJoinedChange(joined);
+  }
+
+  /**
+   * 播放展开动画到目标进度（**匀速、往右长出**）。
+   *
+   * ⚠️ 做法是**宽度插值**而不是整体平移（用户要求：「从小窗的右边框往右拉出」）：
+   *   左边缘固定在小窗的右边框上，只有宽度从 1px 长到全宽 ——
+   *   观感是面板从边框里被抽出来，而不是「旁边滑来一个窗口」。
+   *
+   * @param {0|1} target 1 = 展开，0 = 收起（收回边框里）
    * @param {(opened: boolean) => void} [done] 结束回调
    */
   function animateTo(target, done) {
@@ -222,8 +242,8 @@ function createSideWindow(deps) {
 
     if (span === 0) {
       // 已经在目标态：直接摆好，不动画（避免无意义闪烁）
-      const pos = target === 1 ? wantDocked() : sideGeometry.hiddenPosition(m, width, workArea());
-      if (pos !== null) w.setBounds({ x: pos.x, y: pos.y, width, height: m.height });
+      const r = sideGeometry.expandFrame(m, width, target === 1 ? 1 : 0, workArea());
+      w.setBounds({ x: r.x, y: r.y, width: r.width, height: m.height });
       if (typeof done === "function") done(target === 1);
       return;
     }
@@ -236,8 +256,8 @@ function createSideWindow(deps) {
       i += 1;
       const t = i / steps;
       const progress = from + span * t;
-      const pos = sideGeometry.drawerFrame(m, width, progress, workArea());
-      w.setBounds({ x: pos.x, y: pos.y, width, height: m.height });
+      const r = sideGeometry.expandFrame(m, width, progress, workArea());
+      w.setBounds({ x: r.x, y: r.y, width: r.width, height: m.height });
       if (i >= steps) {
         stopAnim();
         opened = target === 1;
@@ -245,13 +265,16 @@ function createSideWindow(deps) {
       }
     }, stepMs);
 
-    // 先显示：窗口在屏幕外时 setBounds 也能动，但用户会先看到它滑入
+    // 先显示：宽度从 1px 开始长，用户看到的是「从边框里抽出来」
     w.showInactive();
   }
 
-  /** 拉开（幂等）。 */
+  /** 展开（幂等）。 */
   function open() {
     if (opened && win !== null && !win.isDestroyed()) return { ok: true, opened: true, already: true };
+    // 展开**一开始**就告诉主窗「要连在一起了」—— 等动画结束再切，
+    // 中间那 200ms 会看到主窗右侧还带着圆角与阴影（正是用户报的现象）
+    emitJoined(true);
     animateTo(1);
     return { ok: true, opened: true };
   }
@@ -260,11 +283,16 @@ function createSideWindow(deps) {
   function close() {
     if (!opened || win === null || win.isDestroyed()) {
       opened = false;
+      emitJoined(false);
       return { ok: true, opened: false, already: true };
     }
+    /*
+     * 收起时**等收完再恢复**主窗的圆角/阴影：
+     * 一开始就恢复的话，面板还在收回途中主窗右边就出现圆角，看着像裂开。
+     */
     animateTo(0, () => {
-      // 收完隐藏：留在屏幕外会让「窗口已存在」的判断变复杂
       if (win !== null && !win.isDestroyed()) win.hide();
+      emitJoined(false);
     });
     return { ok: true, opened: false };
   }
@@ -293,7 +321,7 @@ function createSideWindow(deps) {
     win.setBounds({
       x: want.x,
       y: want.y,
-      width: sideWidth(),
+      width: m === null ? b.width : m.width,
       height: m === null ? b.height : m.height,
     });
     return true;

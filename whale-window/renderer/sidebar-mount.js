@@ -246,6 +246,20 @@
       });
     }
 
+    /*
+     * 侧窗贴住时，小窗右侧「切开」—— 去掉圆角、描边与阴影，两块连成一条面板。
+     *
+     * 用户报「中间不要像现在这样显示两个不在一个图层」。状态由**主进程推**
+     * （跟着窗口动画走），不在这里轮询 —— 轮询会晚一拍，表现为「面板已经贴上了，
+     * 小窗右边还带着圆角」。
+     */
+    if (global.whale !== undefined && typeof global.whale.onSideJoined === "function") {
+      global.whale.onSideJoined((joined) => {
+        const box = global.document.getElementById("win");
+        if (box !== null) box.classList.toggle("side-joined", joined === true);
+      });
+    }
+
     return { accountPanel, filesView, sidebar, skillsView };
   }
 

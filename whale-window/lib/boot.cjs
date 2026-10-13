@@ -112,7 +112,12 @@ function bootWindow(deps) {
    * 右侧附带窗：**延迟创建**（不点按钮就不建窗口）。
    * 它是独立窗口而非窗内面板 —— 只有独立窗口才能做到「不影响小窗尺寸」
    * 而又有真正的抽屉拉开动画（详见 side-window.cjs 的头注释）。
+   *
+   * `onJoinedChange` 里用 `ipc.value` 是**延迟绑定**：ipc 在下面才建，
+   * 而这个回调只会在用户点按钮之后触发（那时 ipc 早就存在了）。
+   * 直接引用 `ipc` 会因为 const TDZ 在极端时序下抛错，故用一层容器。
    */
+  const ipcRef = { value: null };
   const side = createSideWindow({
     BrowserWindow,
     screen,
@@ -121,6 +126,10 @@ function bootWindow(deps) {
     mainBounds: () => {
       const b = win.bounds();
       return b === null ? null : b;
+    },
+    // 贴住/分开时通知主窗：它据此去掉右侧圆角与阴影，两块才连成一体
+    onJoinedChange: (joined) => {
+      if (ipcRef.value !== null) ipcRef.value.notifyJoined(joined);
     },
   });
 
@@ -176,6 +185,8 @@ function bootWindow(deps) {
     version: app.getVersion(),
     side,
   });
+  // 让侧窗的贴住回调能拿到 ipc（见上面的延迟绑定说明）
+  ipcRef.value = ipc;
 
   // 位置/尺寸变化时记忆（400ms 防抖由 store 内部负责）
   if (!noRestore) {

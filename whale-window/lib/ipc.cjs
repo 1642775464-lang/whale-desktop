@@ -24,6 +24,12 @@ const CHANNEL = Object.freeze({
   FLUSH_STATE: "whale:flush-state",
   // 右侧附带窗（顶栏「打开右侧边栏」按钮）
   SIDE: "whale:side",
+  /*
+   * 主进程 → 渲染层：侧窗「贴住」状态变化。
+   * 主窗据此去掉自己右侧的圆角与阴影，两块才看起来是一个连着的面板
+   * （用户报「中间不要显示成两个图层」）。
+   */
+  SIDE_JOINED: "whale:side-joined",
 });
 
 /**
@@ -171,8 +177,27 @@ function registerIpc(deps) {
     return { ok: true, ...side.toggle() };
   });
 
+  /**
+   * 把侧窗的「贴住」状态推给渲染层。
+   *
+   * 为什么走主进程推、而不是渲染层轮询：这是**跟着窗口动画走的瞬时状态**，
+   * 轮询会晚一拍 —— 表现为「面板已经贴上了，主窗右边还带着圆角」。
+   *
+   * @param {boolean} joined
+   * @returns {{ok: boolean}}
+   */
+  function notifyJoined(joined) {
+    const raw = win.win;
+    if (raw === undefined || typeof raw.isDestroyed !== "function" || raw.isDestroyed()) {
+      return { ok: false, code: "window-destroyed" };
+    }
+    raw.webContents.send(CHANNEL.SIDE_JOINED, { joined: joined === true });
+    return { ok: true };
+  }
+
   return {
     channels: [...registered],
+    notifyJoined,
     dispose() {
       for (const channel of registered) ipcMain.removeHandler(channel);
       registered.length = 0;

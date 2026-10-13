@@ -18,6 +18,12 @@
   <body class="whale-side">
     <!-- 窗口 = 内容 + 四周 SHADOW_PAD(16)，由 body 的 padding 收回 -->
     <div class="swin" id="swin">
+      <!--
+        展开动画期间窗口宽度从 1px 长到全宽，所以内容要**固定成全宽**放进来，
+        由 .swin 的 overflow:hidden 裁出右侧部分 —— 否则里面的 flex 会一路重排，
+        文字被压扁、按钮被挤成竖条。
+      -->
+      <div class="swin-inner">
       <!-- 顶栏：整条是拖拽区（无边框窗口），右侧一个关闭按钮 -->
       <header class="sbar" id="sbar">
         <span class="sbar-dot" aria-hidden="true"></span>
@@ -99,6 +105,7 @@
           <button class="sc-send" id="scSend">发送</button>
         </div>
       </section>
+      </div>
     </div>
 
     <script src="side-bridge.js"></script>

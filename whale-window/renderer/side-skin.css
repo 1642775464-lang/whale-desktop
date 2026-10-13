@@ -78,6 +78,21 @@ body {
   box-shadow: 0 8px 26px rgba(30, 45, 90, 0.16);
 }
 
+/*
+ * 贴住小窗时：**左侧切开** —— 去掉圆角、描边与阴影，与小窗连成一条面板。
+ *
+ * 用户报「中间不要像现在这样显示两个不在一个图层」。规则与主窗
+ * `skin.css` 的 `.win.side-joined` **成对**（那边去右侧，这边去左侧）。
+ *
+ * ⚠️ 用 `border-color: transparent` 而不是 `border: 0`：
+ * 后者会把 1px 占位也去掉，内容横向抖动 1px（动画过程中看得见）。
+ */
+body.joined .swin {
+  border-radius: 0 18px 18px 0;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 /* ── 顶栏（拖拽区 + 收起按钮）────────────────────── */
 .sbar {
   flex: 0 0 auto;

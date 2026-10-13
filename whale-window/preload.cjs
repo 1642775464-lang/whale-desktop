@@ -30,6 +30,11 @@ const CHANNELS = {
   LOG: "whale:log",
   FLUSH_STATE: "whale:flush-state",
   SIDE: "whale:side",
+  /*
+   * 主进程 → 渲染层：侧窗「贴住」状态变化。
+   * 这是**单向推送**，不在下面的 invoke 清单里（它不是渲染层主动调的）。
+   */
+  SIDE_JOINED: "whale:side-joined",
 };
 
 /**
@@ -81,4 +86,23 @@ contextBridge.exposeInMainWorld("whale", {
    * @returns {Promise<{ok: boolean, opened?: boolean, code?: string}>}
    */
   sideAction: (action) => ipcRenderer.invoke(CHANNELS.SIDE, { action }),
+
+  /**
+   * 订阅侧窗「贴住」状态变化（主进程单向推送）。
+   *
+   * 主窗据此去掉自己右侧的圆角、边框与阴影，与侧窗连成一个面板
+   * （用户报「中间不要显示成两个图层」）。
+   *
+   * ⚠️ **只传布尔值进去**，不把事件对象交给渲染层 —— 事件对象上带着
+   * `sender` 等能力，交出去等于开了一条回到主进程的路。
+   *
+   * @param {(joined: boolean) => void} handler
+   * @returns {() => void} 取消订阅
+   */
+  onSideJoined: (handler) => {
+    if (typeof handler !== "function") return () => {};
+    const listener = (_event, payload) => handler(payload?.joined === true);
+    ipcRenderer.on(CHANNELS.SIDE_JOINED, listener);
+    return () => ipcRenderer.removeListener(CHANNELS.SIDE_JOINED, listener);
+  },
 });

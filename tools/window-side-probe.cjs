@@ -93,16 +93,28 @@ async function main() {
   const sideWindow = require(path.join(REPO_ROOT, "whale-window", "lib", "side-window.cjs"));
   const ipc = require(path.join(REPO_ROOT, "whale-window", "lib", "ipc.cjs"));
 
+  /*
+   * ⚠️ 装配顺序必须与 boot.cjs **一致**，否则探针会漏掉产品真实存在的环节。
+   *
+   * 踩过一次：探针先建侧窗、后建 ipc，且**没接 onJoinedChange**，
+   * 于是「小窗右侧圆角没去掉」被判成失败 —— 而那是探针自己漏接的，
+   * 不是产品的问题。用 ipcRef 延迟绑定，与 boot.cjs 同一套写法。
+   */
+  const ipcRef = { value: null };
+
   const side = sideWindow.createSideWindow({
     BrowserWindow,
     screen,
     log: { info: () => {}, warn: () => {}, error: () => {} },
     port: ARGS.port,
     mainBounds: () => win.getBounds(),
+    onJoinedChange: (joined) => {
+      if (ipcRef.value !== null) ipcRef.value.notifyJoined(joined);
+    },
   });
 
   const fakeStore = { flush: () => true, remember: () => {} };
-  ipc.registerIpc({
+  const registered = ipc.registerIpc({
     ipcMain,
     win: { bounds: () => win.getBounds(), contentSize: () => win.getContentSize(), win },
     store: fakeStore,
@@ -111,6 +123,7 @@ async function main() {
     version: "probe",
     side,
   });
+  ipcRef.value = registered;
 
   win.loadFile(path.join(REPO_ROOT, "whale-window", "renderer", "index.html"));
   const run = makeRun(win);
@@ -133,7 +146,7 @@ async function main() {
   const appeared = await waitFor(() => findSide(win.id).length > 0, 5000, "侧窗出现");
   say(`  侧窗出现：${appeared}`);
 
-  // 等抽屉动画结束（时长 + 余量）
+  // 等展开动画结束（时长 + 余量）
   await new Promise((r) => setTimeout(r, sideGeometry.DRAWER_MS + 500));
 
   const sideWin = findSide(win.id)[0];
@@ -141,7 +154,7 @@ async function main() {
   if (sideWin !== undefined) {
     const mb = win.getBounds();
     const sb = sideWin.getBounds();
-    const want = sideGeometry.dockedPosition(mb, sideWin ? mb.width : 492, screen.getPrimaryDisplay().workArea);
+    const want = sideGeometry.dockedPosition(mb, mb.width, screen.getPrimaryDisplay().workArea);
     dockOk = Math.abs(sb.x - want.x) <= 2 && Math.abs(sb.y - want.y) <= 2;
     say(`  侧窗 bounds: ${JSON.stringify(sb)}`);
     say(`  期望贴靠  : ${JSON.stringify(want)}`);
@@ -151,6 +164,34 @@ async function main() {
     const mainRight = mb.x + SHADOW_PAD + (mb.width - SHADOW_PAD * 2);
     const sideLeft = sb.x + SHADOW_PAD;
     say(`  可见区相接：${Math.abs(mainRight - sideLeft) <= 2}（小窗右 ${mainRight} / 侧窗左 ${sideLeft}）`);
+  }
+
+  say("");
+  say("=== 2.5) 中间要不要连成一体（圆角/描边/阴影） ===");
+  let joinedInfo = null;
+  if (sideWin !== undefined) {
+    const mainSide = await run(`(() => {
+      const box = document.getElementById("win");
+      const cs = getComputedStyle(box);
+      return { hasClass: box.classList.contains("side-joined"), radius: cs.borderTopRightRadius, shadow: cs.boxShadow };
+    })()`);
+    const sideSide = await sideWin.webContents.executeJavaScript(`(() => {
+      const sw = document.getElementById("swin");
+      const cs = getComputedStyle(sw);
+      return {
+        bodyJoined: document.body.classList.contains("joined"),
+        radius: cs.borderTopLeftRadius,
+        borderColor: cs.borderLeftColor,
+        shadow: cs.boxShadow,
+      };
+    })()`, true);
+    joinedInfo = { mainSide, sideSide };
+
+    say(`  小窗  右侧圆角：${mainSide.radius}（期望 0px）`);
+    say(`  小窗  阴影    ：${mainSide.shadow === "none" ? "无" : mainSide.shadow.slice(0, 50)}（期望 无）`);
+    say(`  侧窗  左侧圆角：${sideSide.radius}（期望 0px）`);
+    say(`  侧窗  左边框色：${sideSide.borderColor}（期望 透明）`);
+    say(`  侧窗  阴影    ：${sideSide.shadow === "none" ? "无" : sideSide.shadow.slice(0, 50)}（期望 无）`);
   }
 
   say("");
@@ -199,13 +240,25 @@ async function main() {
   }
 
   say("");
-  say("=== 5) 点侧窗 × → 收起（窗口应收在屏幕外/隐藏）===");
+  say("=== 5) 点侧窗 × → 收起 ===");
   let closedOk = null;
+  let restoredOk = null;
   if (sideWin !== undefined) {
     await sideWin.webContents.executeJavaScript(`document.getElementById("sClose").click()`, true);
     await new Promise((r) => setTimeout(r, sideGeometry.DRAWER_MS + 600));
     closedOk = !sideWin.isVisible();
     say(`  侧窗已隐藏：${closedOk}`);
+
+    // 收完小窗右侧的圆角/阴影必须**还回来**，否则小窗右上角是缺的
+    restoredOk = await run(`(() => {
+      const box = document.getElementById("win");
+      return {
+        hasClass: box.classList.contains("side-joined"),
+        radius: getComputedStyle(box).borderTopRightRadius,
+      };
+    })()`);
+    say(`  收起后小窗右侧圆角：${restoredOk.radius}（期望 18px，即已恢复）`);
+    say(`  连体类已移除：${!restoredOk.hasClass}`);
   }
 
   say("");
@@ -218,7 +271,16 @@ async function main() {
   if (panelOk !== null && (panelOk.filesShown !== true || panelOk.homeHidden !== true)) {
     problems.push("点「文件」没有切到文件面板");
   }
+  if (joinedInfo !== null) {
+    // 中间要连成一体：两侧相邻的圆角/描边/阴影都得让开
+    if (joinedInfo.mainSide.radius !== "0px") problems.push("小窗右侧圆角没去掉（中间会有一条缝）");
+    if (joinedInfo.mainSide.shadow !== "none") problems.push("小窗阴影没去掉（中间会有阴影）");
+    if (joinedInfo.sideSide.radius !== "0px") problems.push("侧窗左侧圆角没去掉");
+    if (joinedInfo.sideSide.shadow !== "none") problems.push("侧窗阴影没去掉");
+    if (joinedInfo.sideSide.borderColor !== "rgba(0, 0, 0, 0)") problems.push("侧窗左边框没让开（中间会有一条竖线）");
+  }
   if (closedOk === false) problems.push("点 × 没有收起侧窗");
+  if (restoredOk !== null && restoredOk.hasClass) problems.push("收起后小窗还留着连体类（圆角回不来）");
 
   say(`小窗页面错误 ${pageErrors.length} 条：`);
   pageErrors.slice(0, 4).forEach((e) => say(`  ✗ ${String(e).slice(0, 120)}`));

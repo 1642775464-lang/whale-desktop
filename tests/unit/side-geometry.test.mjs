@@ -18,7 +18,9 @@ import {
   SHADOW_PAD,
   dockedPosition,
   drawerFrame,
+  expandFrame,
   hiddenPosition,
+  isJoined,
   needsRedock,
 } from "../../whale-window/lib/side-geometry.cjs";
 
@@ -66,6 +68,50 @@ test("抽屉插值：t 越界与非法值被夹到 [0,1]", () => {
   assert.deepEqual(drawerFrame(WIN, 492, -1), hiddenPosition(WIN, 492));
   assert.deepEqual(drawerFrame(WIN, 492, 2), dockedPosition(WIN, 492));
   assert.deepEqual(drawerFrame(WIN, 492, NaN), hiddenPosition(WIN, 492));
+});
+
+test("展开帧：**左边缘固定**在小窗右边框，只有宽度在长", () => {
+  /*
+   * 用户要求「从小窗的右边框往右拉出」——
+   * 若 x 也跟着变，观感就退回「旁边滑来一个窗口」。
+   */
+  const docked = dockedPosition(WIN, 492);
+  for (const t of [0, 0.2, 0.5, 0.9, 1]) {
+    const f = expandFrame(WIN, 492, t);
+    assert.equal(f.x, docked.x, `t=${t} 时左边缘必须钉住`);
+    assert.equal(f.y, docked.y);
+  }
+});
+
+test("展开帧：宽度**匀速**从 0 长到全宽", () => {
+  assert.equal(expandFrame(WIN, 492, 0).width, 1, "0 宽会被 Electron 忽略，从 1px 起步");
+  assert.equal(expandFrame(WIN, 492, 1).width, 492);
+  assert.equal(expandFrame(WIN, 492, 0.5).width, 246);
+  // 线性：25% 与 75% 落在同一直线上
+  assert.equal(expandFrame(WIN, 492, 0.25).width, 123);
+  assert.equal(expandFrame(WIN, 492, 0.75).width, 369);
+});
+
+test("展开帧：宽度**永远不会是 0**（否则 Electron 忽略这次 setBounds）", () => {
+  /*
+   * 实测坑：0 宽被当作非法尺寸 → setBounds 整条被忽略 → 窗口保持旧宽度，
+   * 表现是「动画不播、面板直接出现」，且没有任何报错。
+   */
+  for (const t of [0, -1, NaN, 0.0001]) {
+    assert.ok(expandFrame(WIN, 492, t).width >= 1, `t=${t} 时宽度必须 >= 1`);
+  }
+});
+
+test("isJoined：只有落在贴靠位才算连住", () => {
+  /*
+   * 这条判据决定「两块要不要连成一体」（去掉中间的圆角/边框/阴影）。
+   * 判太松 → 没贴上就切了圆角（看着残缺）；判太严 → 贴上了中间还留着缝。
+   */
+  const pos = dockedPosition(WIN, 492);
+  assert.equal(isJoined(pos, WIN, 492), true, "贴靠位就是连住");
+  assert.equal(isJoined({ x: pos.x + 1, y: pos.y }, WIN, 492), true, "1px 内算贴住");
+  assert.equal(isJoined({ x: pos.x + 20, y: pos.y }, WIN, 492), false, "差 20px 不算");
+  assert.equal(isJoined({ x: pos.x, y: pos.y + 20 }, WIN, 492), false, "纵向偏了也不算");
 });
 
 test("needsRedock：小窗被移动后判定为需要重新贴合", () => {
