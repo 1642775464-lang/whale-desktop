@@ -87,10 +87,45 @@ body {
  * ⚠️ 用 `border-color: transparent` 而不是 `border: 0`：
  * 后者会把 1px 占位也去掉，内容横向抖动 1px（动画过程中看得见）。
  */
+/*
+ * 贴住小窗时：
+ *   · 右角改直角（左角本来就方，让上下边缘与小窗连成一条直线）；
+ *   · **保留左侧 1px 边** —— 那就是用户要的「中间的分割线」；
+ *   · 投影只留**右、上、下**（左侧那层由小窗接上，见 skin.css 的 .win.side-joined）。
+ *
+ * 为什么不能把 border-color 设成 transparent：描边本身就是那条分割线，
+ * 去掉它中间就成一片白、两块分不出边界（上一轮就是这么改错的）。
+ *
+ * 为什么阴影要分边：窗口各自独立合成，CSS 阴影画在自己窗口内、被窗口边界裁掉，
+ * 所以没法「一块面板统一投影」。两块各自只朝外投，合起来才是完整的外侧阴影，
+ * 而中间相接处两边都不投 —— 不会叠出双层。
+ */
 body.joined .swin {
   border-radius: 0 18px 18px 0;
-  border-color: transparent;
-  box-shadow: none;
+  border-left-color: var(--line);
+  box-shadow: 8px 0 24px rgba(30, 45, 90, 0.13), 0 -8px 24px rgba(30, 45, 90, 0.09),
+    0 8px 24px rgba(30, 45, 90, 0.09);
+}
+
+/*
+ * 内容层：**固定全宽 + 撑满高度**。
+ *
+ * 两个作用，都是必须的：
+ *   1. 固定全宽 —— 展开动画期间窗口从 1px 长到全宽，里面的 flex 会一路重排
+ *      （文字压扁、按钮挤成竖条）。固定成全宽后由 .swin 的 overflow:hidden
+ *      裁出可见部分，观感才是「一块完整面板逐渐露出」。
+ *   2. 撑满高度 —— ⚠️ 踩过的坑：这里原先只有 `height: 100%`（且最初还漏写了），
+ *      在 flex 容器里高度会**塌成内容高度**，于是 `.shome` 只有 160px 高，
+ *      三个按钮虽然在那 160px 里居中、但在整个窗口里**挤在顶部**。
+ *      必须用 `flex: 1 1 auto` 让它真正占满。
+ */
+.swin-inner {
+  flex: 1 1 auto;
+  width: var(--content-w);
+  min-width: var(--content-w);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── 顶栏（拖拽区 + 收起按钮）────────────────────── */

@@ -167,7 +167,7 @@ async function main() {
   }
 
   say("");
-  say("=== 2.5) 中间要不要连成一体（圆角/描边/阴影） ===");
+  say("=== 2.5) 中间的接缝与四周阴影 ===");
   let joinedInfo = null;
   if (sideWin !== undefined) {
     const mainSide = await run(`(() => {
@@ -182,16 +182,24 @@ async function main() {
         bodyJoined: document.body.classList.contains("joined"),
         radius: cs.borderTopLeftRadius,
         borderColor: cs.borderLeftColor,
+        borderWidth: cs.borderLeftWidth,
         shadow: cs.boxShadow,
       };
     })()`, true);
     joinedInfo = { mainSide, sideSide };
 
+    /*
+     * 用户本轮定的三条判据：
+     *   1. 相邻侧圆角为 0（否则中间有缝、像两个图层）；
+     *   2. **中间要一条分割线** → 侧窗左边框保留可见颜色（不再是透明）；
+     *   3. **整体四周阴影要保留** → 两侧都还有投影，但都**朝外**
+     *      （小窗偏移为负、侧窗偏移为正），中间相接处不投、不叠影。
+     */
     say(`  小窗  右侧圆角：${mainSide.radius}（期望 0px）`);
-    say(`  小窗  阴影    ：${mainSide.shadow === "none" ? "无" : mainSide.shadow.slice(0, 50)}（期望 无）`);
+    say(`  小窗  阴影    ：${mainSide.shadow === "none" ? "无" : mainSide.shadow.slice(0, 46)}（期望 有且朝左）`);
     say(`  侧窗  左侧圆角：${sideSide.radius}（期望 0px）`);
-    say(`  侧窗  左边框色：${sideSide.borderColor}（期望 透明）`);
-    say(`  侧窗  阴影    ：${sideSide.shadow === "none" ? "无" : sideSide.shadow.slice(0, 50)}（期望 无）`);
+    say(`  侧窗  左边框  ：${sideSide.borderWidth} ${sideSide.borderColor}（期望 1px 且不透明＝分割线）`);
+    say(`  侧窗  阴影    ：${sideSide.shadow === "none" ? "无" : sideSide.shadow.slice(0, 46)}（期望 有且朝右）`);
   }
 
   say("");
@@ -272,12 +280,31 @@ async function main() {
     problems.push("点「文件」没有切到文件面板");
   }
   if (joinedInfo !== null) {
-    // 中间要连成一体：两侧相邻的圆角/描边/阴影都得让开
+    /*
+     * 本轮三条要求（用户明确）：
+     *   1. 整体四周阴影要保留；
+     *   2. 中间要一条分割线；
+     *   3. 相邻侧不要各自的圆角与朝内的投影。
+     */
     if (joinedInfo.mainSide.radius !== "0px") problems.push("小窗右侧圆角没去掉（中间会有一条缝）");
-    if (joinedInfo.mainSide.shadow !== "none") problems.push("小窗阴影没去掉（中间会有阴影）");
     if (joinedInfo.sideSide.radius !== "0px") problems.push("侧窗左侧圆角没去掉");
-    if (joinedInfo.sideSide.shadow !== "none") problems.push("侧窗阴影没去掉");
-    if (joinedInfo.sideSide.borderColor !== "rgba(0, 0, 0, 0)") problems.push("侧窗左边框没让开（中间会有一条竖线）");
+    // 中间的分割线：侧窗左边框必须还在且有可见颜色
+    if (joinedInfo.sideSide.borderWidth !== "1px") problems.push("中间的分割线没了（边框宽度不是 1px）");
+    if (joinedInfo.sideSide.borderColor === "rgba(0, 0, 0, 0)") problems.push("中间的分割线被设成透明了");
+    // 四周阴影要保留：两侧都得还有投影
+    if (joinedInfo.mainSide.shadow === "none") problems.push("小窗阴影被去干净了（用户要求整体四周阴影保留）");
+    if (joinedInfo.sideSide.shadow === "none") problems.push("侧窗阴影被去干净了（用户要求整体四周阴影保留）");
+    /*
+     * 且必须是**朝外**投：小窗朝左（首个偏移为负）、侧窗朝右（为正）。
+     * ⚠️ computed style 里每层的写法是「颜色 偏移X 偏移Y 模糊 扩散」，
+     * 颜色在前，所以不能用 startsWith 判偏移，要按「颜色 + 偏移」整段找。
+     */
+    if (!joinedInfo.mainSide.shadow.includes(" -8px 0px 24px")) {
+      problems.push("小窗阴影不是朝左投的（中间可能叠影）");
+    }
+    if (!joinedInfo.sideSide.shadow.includes(" 8px 0px 24px")) {
+      problems.push("侧窗阴影不是朝右投的（中间可能叠影）");
+    }
   }
   if (closedOk === false) problems.push("点 × 没有收起侧窗");
   if (restoredOk !== null && restoredOk.hasClass) problems.push("收起后小窗还留着连体类（圆角回不来）");
