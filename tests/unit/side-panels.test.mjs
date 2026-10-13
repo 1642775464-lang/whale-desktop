@@ -68,7 +68,7 @@ function loadPanels() {
     const file = join(ROOT, ...rel);
     runInContext(readFileSync(file, "utf8"), sandbox, { filename: rel[rel.length - 1] });
   }
-  return sandbox.window.WhaleSidePanels;
+  return { WhaleSidePanels: sandbox.window.WhaleSidePanels, WhaleFilePreview: sandbox.window.WhaleFilePreview };
 }
 
 const nothing = async () => ({ ok: true, entries: [], messages: [] });
@@ -96,32 +96,32 @@ function mkDom() {
 }
 
 test("normalizeUrl：缺协议时按 https 补", () => {
-  const { normalizeUrl } = loadPanels();
+  const { WhaleSidePanels: { normalizeUrl } } = loadPanels();
   assert.equal(normalizeUrl("example.com"), "https://example.com");
   assert.equal(normalizeUrl("  example.com/a  "), "https://example.com/a");
 });
 
 test("normalizeUrl：已有协议原样保留", () => {
-  const { normalizeUrl } = loadPanels();
+  const { WhaleSidePanels: { normalizeUrl } } = loadPanels();
   assert.equal(normalizeUrl("http://a.com"), "http://a.com");
   assert.equal(normalizeUrl("https://a.com/x"), "https://a.com/x");
 });
 
 test("normalizeUrl：about/data/file 这类也放行（不带 //）", () => {
-  const { normalizeUrl } = loadPanels();
+  const { WhaleSidePanels: { normalizeUrl } } = loadPanels();
   assert.equal(normalizeUrl("about:blank"), "about:blank");
   assert.equal(normalizeUrl("file:///C:/x.html"), "file:///C:/x.html");
 });
 
 test("normalizeUrl：空输入给空串（调用方据此提示，而不是打开某个默认站点）", () => {
-  const { normalizeUrl } = loadPanels();
+  const { WhaleSidePanels: { normalizeUrl } } = loadPanels();
   assert.equal(normalizeUrl(""), "");
   assert.equal(normalizeUrl("   "), "");
   assert.equal(normalizeUrl(null), "");
 });
 
 test("浏览器：点「打开」把地址设到 webview 的 src", async () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   dom.sbUrl.value = "example.com";
   createSidePanels({
@@ -134,7 +134,7 @@ test("浏览器：点「打开」把地址设到 webview 的 src", async () => {
 });
 
 test("浏览器：空地址不打开，只提示", () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   dom.sbUrl.value = "";
   const notes = [];
@@ -150,7 +150,7 @@ test("浏览器：空地址不打开，只提示", () => {
 });
 
 test("文件：进入时列工作区根，失败要显示原因", async () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   const seen = [];
   const panels = createSidePanels({
@@ -168,7 +168,7 @@ test("文件：进入时列工作区根，失败要显示原因", async () => {
 });
 
 test("侧边对话：进入时**新建一个真会话**，再拉它的面板", async () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   let created = 0;
   let polledFor = null;
@@ -187,7 +187,7 @@ test("侧边对话：进入时**新建一个真会话**，再拉它的面板", a
 });
 
 test("侧边对话：已有会话时再进入不重复新建", async () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   let created = 0;
   const panels = createSidePanels({
@@ -205,8 +205,79 @@ test("侧边对话：已有会话时再进入不重复新建", async () => {
   assert.equal(created, 1, "连点不该建出两个会话");
 });
 
+test("文件区：点「返回」必须回到侧边栏首页", async () => {
+  /*
+   * ⚠️ 用户报「侧边栏文件区，点返回回不到侧边栏首页」——
+   * 根因是拆出文件面板时**漏传了 `onHome` 依赖**：
+   * `side-files.js` 里调 `deps.onHome(...)` 时它是 undefined，直接抛错、
+   * 什么都不发生（而且启动时不报错，只在点下去那一刻才暴露）。
+   *
+   * 这条测试专门钉住「依赖真的传到位、点下去真的会回调」——
+   * 光测「函数存在」拦不住这类漏传。
+   */
+  const { WhaleSidePanels: { createSidePanels }, WhaleFilePreview: preview } = loadPanels();
+  const dom = mkDom();
+  const homes = [];
+  const panels = createSidePanels({
+    dom,
+    preview,
+    client: {
+      workspaceFiles: async (dir) => ({
+        ok: true,
+        dir,
+        entries: [{ path: "docs", name: "docs", kind: "directory" }],
+      }),
+      panel: nothing, openWorkspacePath: nothing, readWorkspaceFile: nothing,
+      send: nothing, createSession: nothing, sessionList: async () => ({ ok: true, sessions: [] }),
+    },
+    onHome: (name) => homes.push(name),
+  });
+
+  await panels.enter("files");
+  // 在**列表层**（没点进任何文件）点返回 → 应回首页
+  dom.sfBack.click();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(homes, ["files"], "点返回要回调 onHome，否则用户看到的是一动不动");
+});
+
+test("文件区：看文件时点返回先回列表，再点才回首页（一层层退）", async () => {
+  const { WhaleSidePanels: { createSidePanels }, WhaleFilePreview: preview } = loadPanels();
+  const dom = mkDom();
+  const homes = [];
+  const panels = createSidePanels({
+    dom,
+    // 分类函数也要注入：漏传它的表现是「一点列表就抛 previewModeOf」
+    preview,
+    client: {
+      workspaceFiles: async (dir) => ({
+        ok: true,
+        dir,
+        entries: [{ path: "a.md", name: "a.md", kind: "file" }],
+      }),
+      readWorkspaceFile: async () => ({ ok: true, text: "# hi", size: 4 }),
+      panel: nothing, openWorkspacePath: nothing,
+      send: nothing, createSession: nothing, sessionList: async () => ({ ok: true, sessions: [] }),
+    },
+    onHome: (name) => homes.push(name),
+  });
+
+  await panels.enter("files");
+  // 点进文件（预览）
+  dom.sfBody.children[0].click();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(homes, [], "看文件时不该直接回首页");
+
+  dom.sfBack.click();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(homes, [], "第一下返回：回列表（还没到首页）");
+
+  dom.sfBack.click();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(homes, ["files"], "第二下返回：回首页");
+});
+
 test("侧边对话：新建失败要显示原因，不静默空白", async () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   const notes = [];
   const panels = createSidePanels({
@@ -225,7 +296,7 @@ test("侧边对话：新建失败要显示原因，不静默空白", async () =>
 });
 
 test("侧边对话：发消息空文本不发；有文本才发", async () => {
-  const { createSidePanels } = loadPanels();
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
   const dom = mkDom();
   const sent = [];
   const panels = createSidePanels({

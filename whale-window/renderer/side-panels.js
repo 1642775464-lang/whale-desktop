@@ -132,6 +132,15 @@
       client,
       preview: deps.preview,
       onOpenInBrowser: (path) => { deps.onOpenInBrowser(path); },
+      /*
+       * ⚠️ `onHome` 必须转发 —— 用户报「文件区点返回回不到侧边栏首页」，
+       * 根因就是上一轮拆出文件面板时**漏传了这个依赖**：`deps.onHome(...)`
+       * 在 `side-files.js` 里被调用时是 undefined，直接抛错、什么都不发生。
+       *
+       * 这类「漏传依赖」不会在启动时报错，只在用户点下去那一刻才暴露 ——
+       * 所以新增/搬迁组件时，要对着它的 deps 签名逐个核对（见开发规范）。
+       */
+      onHome: (name) => { deps.onHome(name); },
       onNotify,
     });
 

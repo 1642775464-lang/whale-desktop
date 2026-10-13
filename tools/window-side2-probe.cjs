@@ -172,6 +172,18 @@ async function main() {
   say(`  设定给 webview 的 UA 含 iPad：${sideUa.browserUserAgent().includes("iPad")}`);
 
   say("");
+  say("=== 2.2) 文件区「返回」要能回首页（用户报的第二个返回 bug）===");
+  await srun(`document.getElementById("sFiles").click()`);
+  await new Promise((r) => setTimeout(r, 800));
+  st = await srun(READ_PANELS);
+  say(`  进入文件面板：${st.files}（期望 true）`);
+  await srun(`document.getElementById("sfBack").click()`);
+  await new Promise((r) => setTimeout(r, 400));
+  st = await srun(READ_PANELS);
+  const filesBackOk = st.home === true && st.files === false;
+  say(`  点返回后回首页：${filesBackOk}（期望 true）`);
+
+  say("");
   say("=== 3) 侧边对话：继承上下文下拉 ===");
   await srun(`document.getElementById("sChat").click()`);
   await new Promise((r) => setTimeout(r, 600));
@@ -204,6 +216,7 @@ async function main() {
    */
   const problems = [];
   if (backToHome !== true) problems.push("bug2 未修：浏览器返回回不到首页");
+  if (filesBackOk !== true) problems.push("bug2b 未修：文件区返回回不到首页");
   if (inherit.exists !== true) problems.push("第 3 条：没有继承上下文下拉");
   if (inherit.exists === true && inherit.count < 1) problems.push("第 3 条：下拉是空的");
   if (defaultOk !== true) problems.push("第 3 条：默认项不是当前会话");
