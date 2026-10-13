@@ -47,6 +47,30 @@
   };
 
   /**
+   * 把桥的失败 code 翻成**用户能看懂的一句话**（附 code 便于排查）。
+   *
+   * 为什么值得单列：`bad-request` 这种串对用户毫无意义，而它恰恰最容易
+   * 出现在「会话还没就绪」这种可自愈的场景里 —— 说清楚用户就知道
+   * 「不是坏了，是还在连」。
+   *
+   * @param {string} code
+   * @returns {string}
+   */
+  function explainCode(code) {
+    const table = {
+      "bad-request": "还没拿到当前会话，稍等一下再试（或先让小窗连上会话）",
+      "session-not-found": "当前会话已不存在，换一个会话再试",
+      "no-workspace": "这个会话没有工作区路径",
+      "not-found": "这个目录读不到",
+      network: "连不上桥，稍后重试",
+    };
+    const human = table[code];
+    return human === undefined
+      ? `读不到这个目录（${code}）`
+      : `${human}（${code}）`;
+  }
+
+  /**
    * 建文件面板。
    *
    * @param {object} deps
@@ -130,7 +154,14 @@
         renderCrumb();
         if (out.ok !== true) {
           dir = "";
-          showFailure(`读不到这个目录：${out.code}`);
+          /*
+           * ⚠️ 错误要**说人话**。
+           * 用户报「文件区域读不到当前工作区」，界面当时显示的是
+           * 「读不到这个目录：bad-request」—— 那串 code 对用户毫无意义，
+           * 也让人没法判断是「会话没选上」还是「桥挂了」。
+           * 这里把最常见的那种翻成人话，并保留 code 便于排查。
+           */
+          showFailure(explainCode(out.code));
           return out;
         }
         dir = typeof out.dir === "string" ? out.dir : "";
@@ -277,5 +308,5 @@
     };
   }
 
-  global.WhaleSideFiles = { BINARY_MODES, MODE_LABEL, createSideFiles };
+  global.WhaleSideFiles = { BINARY_MODES, MODE_LABEL, createSideFiles, explainCode };
 })(typeof window !== "undefined" ? window : globalThis);

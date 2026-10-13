@@ -187,7 +187,38 @@
       });
     }
 
+    /**
+     * 从桥取**当前活跃会话**及其工作区。
+     *
+     * ## 为什么侧窗必须自己问，而不是只用建窗时的查询串
+     *
+     * 用户报「文件区域读不到当前工作区」——实测根因：侧窗的查询串只有
+     * `?port=19387`，**既没有 sessionId 也没有 workspace**（主进程建窗那一刻
+     * 渲染层还没把状态报上来），于是请求不带会话 → 桥回 400 `bad-request`。
+     *
+     * 就算那一次拿到了，也还有个更深的问题：**查询串只在建窗时取一次**，
+     * 之后主窗切了会话，侧窗永远不知道。所以把桥当作事实源、查询串只当兜底。
+     *
+     * @returns {Promise<{ok: boolean, sessionId: string|null, workspace: string|null, code?: string}>}
+     */
+    function activeContext() {
+      return get("/whale/hud").then((out) => {
+        if (!out.ok) return { ok: false, sessionId: null, workspace: null, code: out.code };
+        const sid = out.data?.activeSessionId;
+        const sessions = Array.isArray(out.data?.sessions) ? out.data.sessions : [];
+        const found = sessions.filter((s) => s.sessionId === sid)[0];
+        return {
+          ok: true,
+          sessionId: typeof sid === "string" && sid !== "" ? sid : null,
+          workspace: typeof found?.workspace === "string" && found.workspace !== ""
+            ? found.workspace
+            : null,
+        };
+      });
+    }
+
     return {
+      activeContext,
       base,
       createSession,
       getSessionId: () => sessionId,

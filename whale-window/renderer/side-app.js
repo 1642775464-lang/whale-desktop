@@ -62,25 +62,64 @@
     let current = null;
 
     /*
-     * 当前小窗展示的会话 id —— 侧边对话的「继承上下文」默认选它。
+     * 当前会话与工作区 —— 侧边对话的「继承上下文」默认项、html 预览的 file 地址
+     * 都要用。
      *
-     * 从 URL 查询串拿（主进程 loadFile 时带的 `?sessionId=`）：那是主窗
-     * **启动时**指向的会话，与「侧边栏贴在它右边」这个语义一致。
-     * 拿不到就给 null，下拉会退回「当前会话」一项。
+     * ## 为什么不是「只用查询串」
+     *
+     * 查询串是主进程**建窗那一刻**从状态快照里取的。用户报「文件区域读不到
+     * 当前工作区」，实测根因就是那一刻快照还空 —— 侧窗只拿到 `?port=`，
+     * 于是请求不带会话、桥回 400。而且就算那次拿到了，主窗之后切会话，
+     * 侧窗也永远不知道。
+     *
+     * 所以：**桥是事实源**，启动时问一次 `/whale/hud`；查询串只当兜底
+     * （桥暂时读不到时才用它）。
      */
-    const mainSessionId = (() => {
+    const queryContext = (() => {
       try {
-        const q = new global.URLSearchParams(global.location.search).get("sessionId");
-        return q === null || q === "" ? null : q;
+        const q = new global.URLSearchParams(global.location.search);
+        const sid = q.get("sessionId");
+        const ws = q.get("workspace");
+        return {
+          sessionId: sid === null || sid === "" ? null : sid,
+          workspace: ws === null || ws === "" ? null : ws,
+        };
       } catch {
-        return null;
+        return { sessionId: null, workspace: null };
       }
     })();
+
+    /** 运行时上下文（先由查询串兜底，启动后立刻用桥的值覆盖）。 */
+    const context = {
+      sessionId: queryContext.sessionId,
+      workspace: queryContext.workspace,
+    };
+
+    /**
+     * 向桥要一次活跃会话并应用。
+     *
+     * 失败**不覆盖**已有的（查询串那份可能还有用），只记一条日志 ——
+     * 这是辅助信息，读不到不该让侧窗不可用。
+     */
+    function resolveContext() {
+      return client.activeContext().then((out) => {
+        if (out.ok !== true) {
+          global.console.warn(`读活跃会话失败：${out.code}`);
+          return context;
+        }
+        if (out.sessionId !== null) {
+          context.sessionId = out.sessionId;
+          client.setSessionId(out.sessionId);
+        }
+        if (out.workspace !== null) context.workspace = out.workspace;
+        return context;
+      });
+    }
 
     const panels = global.WhaleSidePanels.createSidePanels({
       dom,
       client,
-      currentSessionId: () => mainSessionId,
+      currentSessionId: () => context.sessionId,
       // html 预览转给浏览器面板（本回调由 side-app 处理切换）
       onOpenInBrowser: (path) => { openFileInBrowser(path); },
       preview: global.WhaleFilePreview,
@@ -121,13 +160,8 @@
      * 把工作区根通过查询串传进来了（`?workspace=`），这里拼成 file URL。
      */
     function openFileInBrowser(path) {
-      const root = (() => {
-        try {
-          return new global.URLSearchParams(global.location.search).get("workspace") ?? "";
-        } catch {
-          return "";
-        }
-      })();
+      // 工作区根用**运行时上下文**（桥给的），查询串只是它来源之一
+      const root = context.workspace ?? "";
       // 反斜杠统一（Windows 路径），再做最小转义
       const abs = `${root.replace(/[/\\]+$/, "")}/${String(path).replace(/^[/\\]+/, "")}`
         .replace(/\\/g, "/");
@@ -187,6 +221,15 @@
      * 主窗那边由主进程推送状态来切它**右侧**的（见 preload 的 onSideJoined）。
      */
     global.document.body.classList.add("joined");
+
+    /*
+     * 启动时先把会话与工作区解析出来（**桥优先**，查询串兜底）。
+     *
+     * 必须先跑这一步再让用户点文件 —— 否则文件面板拿不到 sessionId，
+     * 请求会被桥按 400 拒掉（用户报的「文件区域读不到当前工作区」）。
+     * 不 await：解析完之前界面已可用，点文件时会拿到查询串那份或等它完成。
+     */
+    void resolveContext();
 
     goHome();
   }

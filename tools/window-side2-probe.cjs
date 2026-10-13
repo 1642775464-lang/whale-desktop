@@ -171,6 +171,30 @@ async function main() {
   // webview 内部的 UA 由主进程 did-attach-webview 设置，这里读宿主侧记录
   say(`  设定给 webview 的 UA 含 iPad：${sideUa.browserUserAgent().includes("iPad")}`);
 
+  // 首页默认百度（用户要求）：webview 的 src 与地址栏都该是它
+  const homeInfo = await srun(`(() => {
+    const wv = document.getElementById("sbWeb");
+    return { src: wv.getAttribute("src"), url: document.getElementById("sbUrl").value };
+  })()`);
+  const homeOk = /baidu\.com/.test(homeInfo.src ?? "") && /baidu\.com/.test(homeInfo.url ?? "");
+  say(`  webview src：${homeInfo.src}`);
+  say(`  地址栏    ：${homeInfo.url}`);
+  say(`  首页默认百度：${homeOk}（期望 true）`);
+
+  say("");
+  say("=== 2.1) 文件区要能列出当前工作区（用户报「读不到当前工作区」）===");
+  await srun(`document.getElementById("sFiles").click()`);
+  await new Promise((r) => setTimeout(r, 1200));
+  const filesInfo = await srun(`(() => {
+    const body = document.getElementById("sfBody");
+    const rows = Array.from(body.children).map((c) => c.textContent);
+    return { rows: rows.length, first: rows.slice(0, 3), text: rows.join(" | ").slice(0, 120) };
+  })()`);
+  const filesOk = filesInfo.rows > 0 && !/读不到/.test(filesInfo.text);
+  say(`  条目数：${filesInfo.rows}`);
+  say(`  前几项：${JSON.stringify(filesInfo.first)}`);
+  say(`  能列出工作区：${filesOk}（期望 true）`);
+
   say("");
   say("=== 2.2) 文件区「返回」要能回首页（用户报的第二个返回 bug）===");
   await srun(`document.getElementById("sFiles").click()`);
@@ -203,12 +227,16 @@ async function main() {
   say(`  默认选中：${JSON.stringify(inherit.selected ?? [])}`);
   say(`  第一项：${JSON.stringify(inherit.first?.[0] ?? null)}`);
   /*
-   * 默认项要等于「探针注入的当前会话」。
-   * 探针注入的是假 id（session-probe-main），所以它会作为兜底项被补进列表
-   * —— 这本身也验证了「当前会话不在清单里时不会落空」这条分支。
+   * 默认项要等于**桥的真实活跃会话**。
+   *
+   * ⚠️ 探针虽然注入了 `session-probe-main`，但侧窗现在**桥优先**（查询串只兜底）
+   * —— 那是修「文件区读不到工作区」时定的：查询串只在建窗那一刻取一次，
+   * 主窗之后切会话它就不知道了。所以这里按桥的值判，且必须不为空。
    */
-  const defaultOk = Array.isArray(inherit.selected) && inherit.selected[0] === "session-probe-main";
-  say(`  默认项＝注入的当前会话：${defaultOk}`);
+  const activeSid = await run(`(() => fetch("http://127.0.0.1:${ARGS.port}/whale/hud").then(r => r.json()).then(j => j.activeSessionId))()`);
+  const defaultOk = Array.isArray(inherit.selected) && inherit.selected[0] === activeSid;
+  say(`  桥的活跃会话：${activeSid}`);
+  say(`  默认项＝桥的活跃会话：${defaultOk}`);
 
   /*
    * 「bug4」的判据在下面的 close 事件里补（那里才能同步取到状态），
@@ -217,6 +245,8 @@ async function main() {
   const problems = [];
   if (backToHome !== true) problems.push("bug2 未修：浏览器返回回不到首页");
   if (filesBackOk !== true) problems.push("bug2b 未修：文件区返回回不到首页");
+  if (filesOk !== true) problems.push("文件区读不到当前工作区");
+  if (homeOk !== true) problems.push("浏览器首页不是百度");
   if (inherit.exists !== true) problems.push("第 3 条：没有继承上下文下拉");
   if (inherit.exists === true && inherit.count < 1) problems.push("第 3 条：下拉是空的");
   if (defaultOk !== true) problems.push("第 3 条：默认项不是当前会话");

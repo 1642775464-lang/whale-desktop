@@ -47,6 +47,15 @@
   }
 
   /**
+   * 浏览器面板的默认首页（用户要求：默认百度）。
+   *
+   * ⚠️ 这个地址**同时**写在 `side.html` 的 webview `src` 上 ——
+   * 两处必须一致：那里决定「点开就有内容」，这里只是把地址栏补上，
+   * 免得用户看到地址栏空白却已经是某个页面。
+   */
+  const HOME_URL = "https://www.baidu.com";
+
+  /**
    * 建三个面板。
    *
    * @param {object} deps
@@ -295,7 +304,14 @@
       /** 面板显示时调用（起各自的拉取）。 */
       enter(name) {
         if (name === "browser") {
-          // 地址栏留空：第一次由用户输入；不预加载任何站点（避免意外外联）
+          /*
+           * 首页默认百度（用户要求）：`side.html` 里 webview 的 `src` 就写着
+           * 百度，所以这里**不覆盖**它 —— 只有地址栏是空的才把地址栏补上，
+           * 免得用户看到地址栏空白、却已经是某个页面。
+           */
+          if (String(dom.sbUrl.value ?? "").trim() === "") {
+            dom.sbUrl.value = HOME_URL;
+          }
           dom.sbUrl.focus();
           return Promise.resolve(null);
         }

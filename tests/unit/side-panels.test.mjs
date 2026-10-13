@@ -33,6 +33,7 @@ function fakeEl() {
     scrollTop: 0,
     scrollHeight: 0,
     click() { if (listeners.click) listeners.click(); },
+    focus() {},
   };
   Object.defineProperty(el, "innerHTML", {
     get() { return ""; },
@@ -68,7 +69,11 @@ function loadPanels() {
     const file = join(ROOT, ...rel);
     runInContext(readFileSync(file, "utf8"), sandbox, { filename: rel[rel.length - 1] });
   }
-  return { WhaleSidePanels: sandbox.window.WhaleSidePanels, WhaleFilePreview: sandbox.window.WhaleFilePreview };
+  return {
+    WhaleSidePanels: sandbox.window.WhaleSidePanels,
+    WhaleFilePreview: sandbox.window.WhaleFilePreview,
+    WhaleSideFiles: sandbox.window.WhaleSideFiles,
+  };
 }
 
 const nothing = async () => ({ ok: true, entries: [], messages: [] });
@@ -203,6 +208,66 @@ test("侧边对话：已有会话时再进入不重复新建", async () => {
   panels.leave("chat");
   await panels.enter("chat");
   assert.equal(created, 1, "连点不该建出两个会话");
+});
+
+test("浏览器：首页默认百度（webview 的 src 与地址栏一致）", async () => {
+  /*
+   * 用户要求「侧边栏浏览器首页默认百度」。
+   *
+   * ⚠️ 这个地址**同时**写在两处：`side.html` 的 webview `src`（决定
+   * 「点开就有内容」）与本模块的 HOME_URL（把地址栏补上）。两处必须一致，
+   * 否则用户会看到「地址栏空着、内容却是百度」这种别扭状态。
+   */
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
+  const dom = mkDom();
+  const panels = createSidePanels({ dom, client: inertClient, onHome: () => {} });
+
+  await panels.enter("browser");
+  assert.match(dom.sbUrl.value, /baidu\.com/, "地址栏要补上默认首页");
+
+  // HTML 里的 src 也要是同一个地址
+  const html = readFileSync(join(ROOT, "whale-window", "renderer", "side.html"), "utf8");
+  const src = /id="sbWeb"\s+src="([^"]+)"/.exec(html);
+  assert.ok(src !== null, "side.html 里 webview 应带 src");
+  assert.match(src[1], /baidu\.com/, "webview 的默认首页也要是百度");
+});
+
+test("浏览器：地址栏已有内容时不覆盖（用户输过的留着）", async () => {
+  const { WhaleSidePanels: { createSidePanels } } = loadPanels();
+  const dom = mkDom();
+  dom.sbUrl.value = "https://example.com";
+  const panels = createSidePanels({ dom, client: inertClient, onHome: () => {} });
+  await panels.enter("browser");
+  assert.equal(dom.sbUrl.value, "https://example.com", "不该把用户输的地址顶掉");
+});
+
+test("文件区：桥说 bad-request 时给**人话**，不是甩一个 code", async () => {
+  /*
+   * 用户报「文件区域读不到当前工作区」时，界面显示的是
+   * 「读不到这个目录：bad-request」—— 那串 code 对用户毫无意义，
+   * 也让人判断不出是「会话没选上」还是「桥挂了」。
+   */
+  const {
+    WhaleSidePanels: { createSidePanels },
+    WhaleFilePreview: preview,
+    WhaleSideFiles: { explainCode },
+  } = loadPanels();
+  const dom = mkDom();
+  const panels = createSidePanels({
+    dom,
+    preview,
+    client: {
+      workspaceFiles: async () => ({ ok: false, code: "bad-request" }),
+      panel: nothing, openWorkspacePath: nothing, readWorkspaceFile: nothing,
+      send: nothing, createSession: nothing, sessionList: async () => ({ ok: true, sessions: [] }),
+    },
+    onHome: () => {},
+  });
+  await panels.enter("files");
+  const text = dom.sfBody.children.map((c) => c.textContent).join(" ");
+  assert.match(text, /还没拿到当前会话/, "要说清楚是什么情况");
+  assert.match(text, /bad-request/, "code 保留，便于排查");
+  assert.ok(explainCode("bad-request").length > "bad-request".length, "不能只回一个 code");
 });
 
 test("文件区：点「返回」必须回到侧边栏首页", async () => {

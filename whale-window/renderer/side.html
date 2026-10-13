@@ -78,7 +78,13 @@
           <button class="sgo" id="sbGo">打开</button>
         </div>
         <div class="sweb-wrap" id="sbWebWrap">
-          <webview class="sweb" id="sbWeb" src="about:blank" allowpopups="false"></webview>
+          <!--
+            首页默认百度（用户要求）。
+            ⚠️ 注意：`src` 一写上，webview 在**页面加载时就会去请求这个地址** ——
+            即使用户没点浏览器按钮。这是「默认首页」必须付的代价；
+            换来的是点开浏览器立刻就有内容、不用先输地址。
+          -->
+          <webview class="sweb" id="sbWeb" src="https://www.baidu.com" allowpopups="false"></webview>
         </div>
       </section>
 
