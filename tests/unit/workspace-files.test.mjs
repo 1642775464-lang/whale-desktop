@@ -18,8 +18,50 @@ import {
   normalizeDirPrefix,
   normalizeEntries,
   parentDir,
+  resolveInsideRoot,
   safeRelativePath,
 } from "../../whale-bridge/lib/workspace-files.mjs";
+
+test("resolveInsideRoot：真实路径在工作区内时放行", () => {
+  /*
+   * 这是读文件内容的最后一道闸（防符号链接绕过）——
+   * `safeRelativePath` 只做**字符串**检查，`link -> C:\\Windows` 这种
+   * 段里没有 `..`，字符串层看不出来。所以要用 realpath 再核一次前缀。
+   */
+  const realpath = (p) => p; // 用恒等函数模拟「链接不存在」
+  const out = resolveInsideRoot("D:/proj", "docs/a.md", realpath, "/");
+  assert.deepEqual(out, { ok: true, abs: "D:/proj/docs/a.md" });
+});
+
+test("resolveInsideRoot：**符号链接指向工作区外时拒绝**", () => {
+  /*
+   * 模拟：`D:/proj/link` 是个链接，realpath 解析后落到 `C:/Windows/system32`。
+   * 字符串层看不出问题（路径里没有 `..`），必须靠 realpath 拦。
+   */
+  const realpath = (p) => (p === "D:/proj/link/evil.txt" ? "C:/Windows/system32/evil.txt" : p);
+  const out = resolveInsideRoot("D:/proj", "link/evil.txt", realpath, "/");
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "path-escapes");
+});
+
+test("resolveInsideRoot：文件不存在时给 not-found（不猜别的原因）", () => {
+  const realpath = () => { throw new Error("ENOENT"); };
+  const out = resolveInsideRoot("D:/proj", "nope.md", realpath, "/");
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "not-found");
+});
+
+test("resolveInsideRoot：拼出来正好是工作区根时拒绝（那是目录不是文件）", () => {
+  /*
+   * 正常情况下 `safeRelativePath` 不会放进空路径（上游已挡），
+   * 但本函数**自己也要能挡住** —— 它是读文件的最后一道闸，
+   * 不该依赖上游一定正确。
+   */
+  const realpath = (p) => p;
+  const out = resolveInsideRoot("D:/proj", "", realpath, "/");
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "path-is-directory");
+});
 
 test("normalizeEntries：路径 / 名字 / 类型齐备", () => {
   const out = normalizeEntries([

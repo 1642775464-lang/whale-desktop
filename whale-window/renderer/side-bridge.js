@@ -182,6 +182,12 @@
             workspaceTitle: typeof s.workspaceTitle === "string" ? s.workspaceTitle : "",
             workspacePath: typeof s.workspacePath === "string" ? s.workspacePath : "",
             updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : 0,
+            /*
+             * ⚠️ 必须把 `archived` 带出来：调用方要靠它滤掉归档会话
+             * （用户报「继承下拉里出现很多已归档的不存在的会话」）。
+             * 早先这里没这个字段，过滤条件就永远拿不到 true、形同虚设。
+             */
+            archived: s.archived === true,
           })),
         };
       });

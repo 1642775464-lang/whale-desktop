@@ -93,7 +93,7 @@ function mkDom() {
   const ids = [
     "sHome", "sbTitle", "sClose", "sBrowser", "sFiles", "sChat",
     "sbBack", "sbUrl", "sbGo", "sbWeb", "sfBack", "sfCrumb", "sfCount", "sfBody",
-    "scBack", "scTitle", "scState", "scStream", "scInput", "scSend",
+    "scBack", "scTitle", "scState", "scInherit", "scStream", "scInput", "scSend",
   ];
   const dom = {};
   for (const id of ids) dom[id] = fakeEl();
@@ -239,6 +239,71 @@ test("浏览器：地址栏已有内容时不覆盖（用户输过的留着）",
   const panels = createSidePanels({ dom, client: inertClient, onHome: () => {} });
   await panels.enter("browser");
   assert.equal(dom.sbUrl.value, "https://example.com", "不该把用户输的地址顶掉");
+});
+
+test("继承下拉：**归档会话不能出现**（用户报「很多已归档的不存在的会话」）", async () => {
+  /*
+   * 实测桥的清单 15 条里 **9 条是 `archived: true`** —— 它们已经没有可继承的
+   * 上下文，列出来只会让用户挑到死会话。
+   *
+   * ⚠️ 这条也顺带钉住「`archived` 字段真的从桥传到了渲染层」：
+   * 早先 `side-bridge.js` 的 sessionList **根本没带这个字段**，
+   * 于是过滤条件永远拿不到 true、形同虚设。
+   */
+  const { WhaleSidePanels: { createSidePanels }, WhaleFilePreview: preview } = loadPanels();
+  const dom = mkDom();
+  const panels = createSidePanels({
+    dom,
+    preview,
+    currentSessionId: () => "s-live",
+    client: {
+      createSession: async () => ({ ok: true, sessionId: "s-new" }),
+      panel: async () => ({ ok: true, messages: [], running: false }),
+      sessionList: async () => ({
+        ok: true,
+        sessions: [
+          { sessionId: "s-live", title: "在用的", workspaceTitle: "ws", archived: false },
+          { sessionId: "s-arch1", title: "已归档甲", workspaceTitle: "ws", archived: true },
+          { sessionId: "s-arch2", title: "已归档乙", workspaceTitle: "ws", archived: true },
+          { sessionId: "s-other", title: "另一个", workspaceTitle: "ws2", archived: false },
+        ],
+      }),
+      workspaceFiles: nothing, openWorkspacePath: nothing, readWorkspaceFile: nothing, send: nothing,
+    },
+    onHome: () => {},
+  });
+
+  await panels.enter("chat");
+  await new Promise((r) => setImmediate(r));
+
+  const values = dom.scInherit.children.map((c) => c.value);
+  assert.deepEqual(values, ["s-live", "s-other"], `归档的必须被滤掉，实际：${JSON.stringify(values)}`);
+});
+
+test("继承下拉：当前会话恰好是归档时仍保留（它是默认项兜底）", async () => {
+  const { WhaleSidePanels: { createSidePanels }, WhaleFilePreview: preview } = loadPanels();
+  const dom = mkDom();
+  const panels = createSidePanels({
+    dom,
+    preview,
+    currentSessionId: () => "s-arch",
+    client: {
+      createSession: async () => ({ ok: true, sessionId: "s-new" }),
+      panel: async () => ({ ok: true, messages: [], running: false }),
+      sessionList: async () => ({
+        ok: true,
+        sessions: [{ sessionId: "s-arch", title: "当前（已归档）", workspaceTitle: "ws", archived: true }],
+      }),
+      workspaceFiles: nothing, openWorkspacePath: nothing, readWorkspaceFile: nothing, send: nothing,
+    },
+    onHome: () => {},
+  });
+
+  await panels.enter("chat");
+  await new Promise((r) => setImmediate(r));
+
+  const values = dom.scInherit.children.map((c) => c.value);
+  assert.ok(values.includes("s-arch"), "当前会话即便归档也要留着当默认项");
 });
 
 test("文件区：桥说 bad-request 时给**人话**，不是甩一个 code", async () => {

@@ -12,8 +12,28 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import ua from "../../whale-window/lib/side-ua.cjs";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const { TABLET_USER_AGENT, browserUserAgent, shouldOpenInBrowser } = ua;
+
+test("side.html 的 webview useragent 与常量**一字不差**", () => {
+  /*
+   * ⚠️ 这两处必须一致，而且**必须写在 HTML 属性上**：
+   * 只靠主进程 `did-attach-webview` + `setUserAgent` 太晚（那时页面已按
+   * 默认桌面 UA 开始加载），百度会返回桌面版 —— 表现为「桌面版缩小图」
+   * （用户报「浏览器比例还是不对」）。
+   *
+   * HTML 是静态文件、引用不到常量，所以只能各写一份，靠这条测试钉住。
+   */
+  const html = readFileSync(join(ROOT, "whale-window", "renderer", "side.html"), "utf8");
+  const m = /useragent="([^"]*)"/.exec(html);
+  assert.ok(m !== null, "side.html 的 webview 必须带 useragent 属性");
+  assert.equal(m[1], TABLET_USER_AGENT, "HTML 里的 UA 与常量不一致，会各说各话");
+});
 
 test("UA 是**平板**口径（含 iPad），不是手机也不是桌面", () => {
   /*

@@ -474,6 +474,15 @@ body.joined .swin {
 }
 
 /* ── 侧边对话：继承上下文下拉 ─────────────────────── */
+/*
+ * 继承上下文一行：标签 + 下拉。
+ *
+ * ⚠️ 用户报「选择框的边缘超出了侧边栏的区域」—— 原因是这一行是 flex 容器，
+ * 而 `<select>` 的内容（长标题）会把它的**固有宽度**撑起来；只写
+ * `flex: 1 1 auto` 不够，还必须 `min-width: 0`（否则 flex 子项不会收缩到
+ * 内容宽度以下，这是 flex 的默认行为）。同时容器本身要 `overflow: hidden`
+ * 兜住极端情况。
+ */
 .sc-inherit {
   flex: 0 0 auto;
   display: flex;
@@ -481,6 +490,8 @@ body.joined .swin {
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .sc-inherit-label {
@@ -491,7 +502,9 @@ body.joined .swin {
 
 .sc-inherit-sel {
   flex: 1 1 auto;
+  /* 关键：允许收缩到内容宽度以下，否则长标题会把 select 顶出容器 */
   min-width: 0;
+  max-width: 100%;
   padding: 5px 7px;
   border: 1px solid var(--line-soft);
   border-radius: 7px;
@@ -499,6 +512,10 @@ body.joined .swin {
   color: var(--ink);
   background: #fff;
   outline: none;
+  /* 长标题截断成省略号，而不是把宽度撑开 */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .sc-inherit-sel:focus {

@@ -218,10 +218,32 @@
      *   · 列表来自桥的会话清单（**全部工作区**，带工作区名便于区分同名标题）；
      *   · 默认选中**当前小窗展示的会话**（`deps.currentSessionId()`）；
      *   · 拿不到清单时保留一项「当前会话」，不让下拉变空 —— 空下拉比没得选更糟。
+     *
+     * ⚠️ **必须过滤归档会话**（用户报「出现了很多已归档的不存在的会话」）：
+     * 实测桥的清单 15 条里 **9 条是 `archived: true`** ——
+     * 它们已经没有可继承的上下文（点进去也新建不出有意义的东西），
+     * 列出来只会让用户挑到死会话。
+     *
+     * 注意**不能顺手把「当前会话」也滤掉**：它可能恰好是归档的，
+     * 而我们仍需要它作为默认项的兜底。
      */
     function fillInheritOptions() {
       if (dom.scInherit === null || dom.scInherit === undefined) return Promise.resolve(null);
       const current = typeof deps.currentSessionId === "function" ? deps.currentSessionId() : null;
+      /*
+       * 防御：客户端没这个方法时**不炸整个对话面板** ——
+       * 下拉只是辅助功能，拿不到清单就退回「当前会话」一项。
+       * （单测里用精简桩时踩到过这个：`sessionList is not a function`。）
+       */
+      if (typeof client.sessionList !== "function") {
+        dom.scInherit.innerHTML = "";
+        const opt = global.document.createElement("option");
+        opt.value = current ?? "";
+        opt.textContent = current === null ? "当前会话" : "当前会话";
+        opt.selected = true;
+        dom.scInherit.appendChild(opt);
+        return Promise.resolve(null);
+      }
       return client.sessionList().then(function (out) {
         dom.scInherit.innerHTML = "";
         const add = (value, label, selected) => {
@@ -232,17 +254,23 @@
           dom.scInherit.appendChild(opt);
         };
 
-        if (out.ok !== true || out.sessions.length === 0) {
+        // 归档的一律不列（当前会话除外，它要留作默认项兜底）
+        const usable = out.ok === true
+          ? out.sessions.filter((s) => s.archived !== true || s.sessionId === current)
+          : [];
+
+        if (out.ok !== true || usable.length === 0) {
           // 清单读不到也要能用：至少列出「当前会话」
           add(current ?? "", current === null ? "当前会话（读不到清单）" : "当前会话", true);
           return out;
         }
-        for (const s of out.sessions) {
+        const options = usable;
+        for (const s of options) {
           const ws = s.workspaceTitle !== "" ? `｜${s.workspaceTitle}` : "";
           add(s.sessionId, `${s.title}${ws}`, s.sessionId === current);
         }
         // 当前会话不在清单里时也补一项，避免「默认」落空
-        if (current !== null && !out.sessions.some((s) => s.sessionId === current)) {
+        if (current !== null && !options.some((s) => s.sessionId === current)) {
           add(current, "当前会话", true);
         }
         return out;
