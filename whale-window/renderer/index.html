@@ -223,15 +223,11 @@
       <!-- 上传清单（＋/拖拽/粘贴 共用）：列出已选文件，随消息一并发送 -->
       <div class="upl-list" id="uplList" hidden></div>
 
-      <!-- 左缘「资料」抽屉入口（F8） -->
-      <button class="drawer-tab" id="btnInfo">资料</button>
-
-      <!-- 资料抽屉（F8）：会话 id / 桥地址 / 事件计数 -->
-      <div class="info-drawer" id="infoDrawer" hidden>
-        <div class="row"><span class="k">会话 id</span><span class="v" id="infoSession">–</span></div>
-        <div class="row"><span class="k">桥地址</span><span class="v" id="infoBridge">–</span></div>
-        <div class="row"><span class="k">事件计数</span><span class="v" id="infoEvents">–</span></div>
-      </div>
+      <!--
+        原先这里有一个左缘「资料」抽屉（会话 id / 桥地址 / 事件计数），
+        用户要求去掉：「界面上这个资料部分不需要」。
+        它显示的是开发期诊断信息，对使用者没有价值。
+      -->
     </div>
 
     <!--

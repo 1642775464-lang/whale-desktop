@@ -59,7 +59,6 @@
       btnModel: $("btnModel"),
       urFg: $("urFg"),
       usagePct: $("usagePct"),
-      btnInfo: $("btnInfo"),
       slashPanel: $("slashPanel"),
       slashQuery: $("slashQuery"),
       slashList: $("slashList"),
@@ -84,10 +83,6 @@
       ovBody: $("ovBody"),
       ovClose: $("ovClose"),
       uplList: $("uplList"),
-      infoDrawer: $("infoDrawer"),
-      infoSession: $("infoSession"),
-      infoBridge: $("infoBridge"),
-      infoEvents: $("infoEvents"),
       // 侧边栏按钮（顶栏左侧边栏开关）
       btnSideLeft: $("btnSideLeft"),
     };

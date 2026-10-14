@@ -78,7 +78,7 @@ export function fakeDom() {
   const ids = [
     "tbTitle", "stream", "streamEmpty", "status", "statusText",
     "dock", "dockList", "dockCount", "dockProg", "dockCaret", "input", "btnSend",
-    "btnPerm", "urFg", "usagePct", "infoSession", "infoBridge", "infoEvents",
+    "btnPerm", "urFg", "usagePct",
   ];
   const dom = {};
   for (const id of ids) dom[id] = el();

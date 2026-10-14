@@ -230,14 +230,6 @@
       dom.btnPerm.textContent = PERMISSION_TEXT[p] ?? p;
     }
 
-    /** 资料抽屉三行。 */
-    function infoDrawer(state, bridgeBase) {
-      dom.infoSession.textContent = state.sessionId ?? "–";
-      dom.infoBridge.textContent = bridgeBase;
-      dom.infoEvents.textContent =
-        typeof state.eventsSeen === "number" ? String(state.eventsSeen) : "–";
-    }
-
     /** 整屏渲染。 */
     function all(state) {
       header(state);
@@ -253,7 +245,6 @@
       all,
       dock,
       header,
-      infoDrawer,
       permission: permissionText,
       sendButton,
       status,

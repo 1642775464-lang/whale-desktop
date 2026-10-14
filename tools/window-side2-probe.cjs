@@ -169,7 +169,9 @@ async function main() {
   })()`);
   say(`  webview 元素存在：${uaInfo.hasWebview}`);
   // webview 内部的 UA 由主进程 did-attach-webview 设置，这里读宿主侧记录
-  say(`  设定给 webview 的 UA 含 iPad：${sideUa.browserUserAgent().includes("iPad")}`);
+  // UA 现为**手机**口径（百度不把 iPad 当移动设备，会返回桌面版 —— 见 lib/side-ua.cjs）
+  const uaMobile = /iPhone|Android/.test(sideUa.browserUserAgent()) && /Mobile/.test(sideUa.browserUserAgent());
+  say(`  设定给 webview 的 UA 是移动端口径：${uaMobile}`);
 
   // 首页默认百度（用户要求）：webview 的 src 与地址栏都该是它
   const homeInfo = await srun(`(() => {
@@ -251,7 +253,7 @@ async function main() {
   if (inherit.exists === true && inherit.count < 1) problems.push("第 3 条：下拉是空的");
   if (defaultOk !== true) problems.push("第 3 条：默认项不是当前会话");
   if (sideGeometry.DRAWER_MS > 100) problems.push("第 5 条：动画没加快");
-  if (!sideUa.browserUserAgent().includes("iPad")) problems.push("第 1 条：UA 不是平板口径");
+  if (!uaMobile) problems.push("第 1 条：UA 不是移动端口径");
 
   say("");
   say("=== 4) bug：关小窗时侧栏要跟着关 ===");

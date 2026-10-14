@@ -30,9 +30,6 @@
    */
   const permission = null;
 
-  /** 桥地址（资料抽屉要显示）。 */
-  const BRIDGE_BASE = `http://127.0.0.1:${global.WhaleBridge.portFromLocation()}`;
-
   /** 渲染器。必须在任何渲染调用之前建好。 */
   const renderer = global.WhaleRender.createRenderer({
     dom,
@@ -385,16 +382,6 @@
       dom.dockList.hidden = !dom.dock.classList.contains("open");
     });
 
-    // 资料抽屉（F8）
-    dom.btnInfo.addEventListener("click", () => {
-      if (dom.infoDrawer.hidden) {
-        renderer.infoDrawer(client.getState(), BRIDGE_BASE);
-        dom.infoDrawer.hidden = false;
-      } else {
-        dom.infoDrawer.hidden = true;
-      }
-    });
-
     // 点面板外区域关掉菜单（无边框窗口里没有系统菜单，得自己收）
     global.document.addEventListener("mousedown", (ev) => {
       if (dom.menuBox.hidden) return;
@@ -484,7 +471,6 @@
     // 唤醒倒计时（F9）：「唤醒中 3s」每秒推进；抽屉开着时同步事件计数
     global.setInterval(() => {
       panels.tickWaking();
-      if (!dom.infoDrawer.hidden) renderer.infoDrawer(client.getState(), BRIDGE_BASE);
     }, 1000);
   }
 
