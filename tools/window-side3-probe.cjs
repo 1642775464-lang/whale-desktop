@@ -161,6 +161,17 @@ async function main() {
   say(`  正文字号：${webInfo.fs}（手机版应 ≥14px）→ ${fsOk}`);
   say(`  横向溢出：${webInfo.sw - webInfo.cw}px`);
 
+  /*
+   * 网页**内部**的滚动条也要消失（用户追加：「浏览器也的滚动条也不需要」）。
+   *
+   * ⚠️ webview 里是另一个独立文档，侧窗 CSS 那条管不到它 ——
+   * 必须靠注入到 webview 内部的样式。这里直接量网页自己的
+   * `innerWidth - clientWidth`（>0 就是还有滚动条占位）。
+   */
+  const innerGap = webInfo.vw - webInfo.cw;
+  const innerBarOk = innerGap <= 1;
+  say(`  网页内部滚动条占位：${innerGap}px → ${innerBarOk ? "已去掉" : "还在"}`);
+
   try {
     const img = await sideWin.webContents.capturePage();
     const out = path.join(REPO_ROOT, "tmp-side3-shot.png");
@@ -179,6 +190,7 @@ async function main() {
   if (!hasMeta) problems.push("④ 站点没返回响应式布局（大概率还是桌面版）");
   if (!fsOk) problems.push(`④ 正文字号只有 ${webInfo.fs}，是桌面版特征`);
   if (!overflowOk) problems.push("④ 页面横向溢出");
+  if (!innerBarOk) problems.push("④ 网页内部还有滚动条（注入没生效）");
 
   say(problems.length === 0 ? "结论：外观与滚动全部正常 ✓" : `结论：${problems.join("；")}`);
   app.exit(problems.length === 0 ? 0 : 1);

@@ -38,6 +38,7 @@ const fs = require("node:fs");
 
 const sideGeometry = require("./side-geometry.cjs");
 const geometry = require("./geometry.cjs");
+const { HIDE_SCROLLBAR_CSS } = require("./side-web-style.cjs");
 
 /** 等页面加载的上限（与 window.cjs 同因：漏了会让等待者永久挂住）。 */
 const LOAD_TIMEOUT_MS = 8000;
@@ -178,18 +179,27 @@ function createSideWindow(deps) {
     win.loadFile(rendererFile, { query });
 
     /*
-     * `<webview>` 里的页面用**平板 UA**（用户要求「适配当前页面比例，类似
-     * 平板或者手机」）。只在 webview 附加时改它自己的 webContents ——
-     * 不动外层页面，也不注入脚本。
+     * `<webview>` 里的页面用**手机 UA**（实测百度不把 iPad 当移动设备，
+     * 会返回桌面版 —— 见 lib/side-ua.cjs 的对比表）。
+     *
+     * 同时把「无感滚动」的样式**注入到网页内部** ——
+     * ⚠️ 这是必须的：webview 里是另一个独立文档，侧窗自己 CSS 的那条
+     * `::-webkit-scrollbar` **管不到它**（用户报「浏览器也的滚动条也不需要」）。
+     * 注入的只是样式字符串，不执行脚本、不碰页面数据。
      */
     const ua = deps.userAgent;
-    if (typeof ua === "string" && ua !== "") {
-      win.webContents.on("did-attach-webview", (_e, wc) => {
-        if (wc !== null && wc !== undefined && typeof wc.setUserAgent === "function") {
-          wc.setUserAgent(ua);
-        }
-      });
-    }
+    win.webContents.on("did-attach-webview", (_e, wc) => {
+      if (wc === null || wc === undefined) return;
+      if (typeof ua === "string" && ua !== "" && typeof wc.setUserAgent === "function") {
+        wc.setUserAgent(ua);
+      }
+      if (typeof wc.insertCSS === "function") {
+        wc.insertCSS(HIDE_SCROLLBAR_CSS).catch(() => {
+          // 注入失败不致命：最多滚动条还在，不该影响页面本身能打开
+          log.warn("向 webview 注入隐藏滚动条样式失败");
+        });
+      }
+    });
 
     /*
      * 等页面加载（带超时兜底，与 window.cjs 同因）：
