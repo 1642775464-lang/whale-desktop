@@ -130,18 +130,36 @@ async function main() {
   say("=== ④ 浏览器渲染（截图复核）===");
   await srun(`document.getElementById("sBrowser").click()`);
   await new Promise((r) => setTimeout(r, 6000));
+  /*
+   * ⚠️ 判据必须换成「站点给的是哪一版」，不能只看「有没有被缩放」。
+   *
+   * 上一轮我用「视口宽 == 元素宽」判定「没被缩放」并据此说「已修好」，
+   * 但用户**仍然看到桌面版缩小图** —— 因为那个判据只能证明**没有缩放**，
+   * 证明不了**站点返回的是哪一版布局**。实测（iPad UA 打开百度）：
+   *   视口 526 == 元素 526（没被缩放），但页面无 viewport meta、字号 12px
+   *   → 站点给的就是桌面版。
+   *
+   * 所以这里看两件事：
+   *   1. 页面有没有响应式 viewport meta（站点按窄屏出布局才会带）；
+   *   2. 正文字号是否达到手机版量级（≥14px；桌面版是 12px）。
+   */
   const webInfo = await srun(`(async () => {
     const wv = document.getElementById("sbWeb");
-    const r = await wv.executeJavaScript("JSON.stringify({ua: navigator.userAgent, vw: innerWidth})");
+    const r = await wv.executeJavaScript("JSON.stringify({ua: navigator.userAgent, vw: innerWidth, cw: document.documentElement.clientWidth, sw: document.documentElement.scrollWidth, meta: (function(){var t=document.querySelector('meta[name=viewport]');return t?t.getAttribute('content'):null;})(), fs: document.body?getComputedStyle(document.body).fontSize:null})");
     const j = JSON.parse(r);
-    return { ua: j.ua, vw: j.vw, box: (() => { const b = wv.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) }; })() };
+    return { ...j, box: (() => { const b = wv.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) }; })() };
   })()`);
-  const uaOk = /iPad/.test(webInfo.ua);
-  say(`  webview UA 含 iPad：${uaOk}`);
-  say(`  webview 视口宽：${webInfo.vw}px   元素尺寸：${webInfo.box.w}x${webInfo.box.h}`);
-  // 页面视口宽应当接近元素宽（差得太多说明被缩放）
-  const ratioOk = Math.abs(webInfo.vw - webInfo.box.w) <= 4;
-  say(`  视口宽 == 元素宽：${ratioOk}（不相等说明被缩放）`);
+  const uaOk = /iPhone|Android/.test(webInfo.ua) && /Mobile/.test(webInfo.ua);
+  const hasMeta = webInfo.meta !== null && /width=device-width/.test(webInfo.meta);
+  const fsPx = parseFloat(String(webInfo.fs ?? "0"));
+  const fsOk = fsPx >= 14;
+  const overflowOk = webInfo.sw - webInfo.cw <= 2;
+
+  say(`  webview UA：${String(webInfo.ua).slice(0, 52)}…`);
+  say(`  含移动端特征：${uaOk}`);
+  say(`  响应式 viewport meta：${hasMeta}（${webInfo.meta ?? "无"}）`);
+  say(`  正文字号：${webInfo.fs}（手机版应 ≥14px）→ ${fsOk}`);
+  say(`  横向溢出：${webInfo.sw - webInfo.cw}px`);
 
   try {
     const img = await sideWin.webContents.capturePage();
@@ -155,10 +173,12 @@ async function main() {
   say("");
   const problems = [];
   if (!topAligned) problems.push("① 顶栏高度没对齐");
-  if (!composeOk) problems.push("② 输入区高度差得太多");
+  if (!composeOk) problems.push("② 输入框高度不在设计量级内");
   if (!allZeroMain || !allZeroSide) problems.push("⑤ 还有滚动条占位");
-  if (!uaOk) problems.push("④ webview UA 不是平板");
-  if (!ratioOk) problems.push("④ 页面被缩放（视口宽与元素宽差得太多）");
+  if (!uaOk) problems.push("④ webview UA 不是移动端口径");
+  if (!hasMeta) problems.push("④ 站点没返回响应式布局（大概率还是桌面版）");
+  if (!fsOk) problems.push(`④ 正文字号只有 ${webInfo.fs}，是桌面版特征`);
+  if (!overflowOk) problems.push("④ 页面横向溢出");
 
   say(problems.length === 0 ? "结论：外观与滚动全部正常 ✓" : `结论：${problems.join("；")}`);
   app.exit(problems.length === 0 ? 0 : 1);

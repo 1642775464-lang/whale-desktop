@@ -84,18 +84,22 @@
             ⚠️ UA 必须用 **`useragent` 属性**写在这里，不能只在主进程
             `did-attach-webview` 里 `setUserAgent` —— 后者的时机太晚：
             `src` 一写在 HTML 里，页面**已经开始加载**（那时还是默认的桌面 UA），
-            等 webview 附加再设已经晚了，百度会按桌面版返回页面，
-            在 460px 宽的侧栏里就成了「桌面版缩小图」（用户报「比例还是不对」）。
+            等 webview 附加再设已经晚了。
 
-            ⚠️ 这个字符串与 `lib/side-ua.cjs` 的 `TABLET_USER_AGENT`
-            **必须一致**（有契约测试核对）。
+            ⚠️ 这里是**手机 UA** 而不是平板 UA：实测百度**不把 iPad UA 当移动
+            设备**（返回桌面版：无响应式 meta、字号 12px），正是用户连报两轮的
+            「缩放不对」；换手机 UA 后才返回真正的移动版（字号 16px）。
+            对比数据见 `lib/side-ua.cjs`。
+
+            ⚠️ 这个字符串与 `lib/side-ua.cjs` 的 `PHONE_USER_AGENT`
+            **必须一字不差**（有契约测试核对）。
           -->
           <webview
             class="sweb"
             id="sbWeb"
             src="https://www.baidu.com"
             allowpopups="false"
-            useragent="Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+            useragent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
           ></webview>
         </div>
       </section>
