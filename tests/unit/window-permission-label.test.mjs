@@ -52,7 +52,7 @@ function loadClient(fetchImpl) {
    */
   const files = [
     "bridge-shapes.js", "bridge-workspace.js", "bridge-capabilities.js",
-    "follow.js", "stream.js", "bridge-client.js",
+    "follow.js", "stream.js", "stream-link.js", "bridge-client.js",
   ];
   for (const f of files) {
     runInContext(readFileSync(join(RENDERER, f), "utf8"), sandbox, { filename: f });

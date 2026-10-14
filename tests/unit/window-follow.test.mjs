@@ -96,6 +96,8 @@ function loadClient(env) {
   runInContext(readFileSync(CAP_FILE, "utf8"), sandbox, { filename: CAP_FILE });
   runInContext(readFileSync(FOLLOW_FILE, "utf8"), sandbox, { filename: FOLLOW_FILE });
   runInContext(readFileSync(STREAM_FILE, "utf8"), sandbox, { filename: STREAM_FILE });
+  const LINK_FILE = join(ROOT, "whale-window", "renderer", "stream-link.js");
+  runInContext(readFileSync(LINK_FILE, "utf8"), sandbox, { filename: LINK_FILE });
   runInContext(readFileSync(CLIENT_FILE, "utf8"), sandbox, { filename: CLIENT_FILE });
   return sandbox.window.WhaleBridge;
 }

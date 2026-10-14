@@ -20,9 +20,6 @@
   /** 默认端口，与桥的 PORT 一致；主进程可用 ?port= 覆盖。 */
   const DEFAULT_PORT = 19387;
 
-  /** 重连退避上限（F4：1s → 15s 退避）。 */
-  const RECONNECT_MAX_MS = 15000;
-
   /** 从 URL 查询串取桥端口。 */
   function portFromLocation() {
     try {
@@ -87,8 +84,7 @@
     };
 
     let pollHandle = null;
-    let stream = null;
-    let reconnectDelay = 1000;
+    let link = null;
 
     /**
      * 把「当前会话 + 工作区」上报给主进程。
@@ -252,40 +248,55 @@
     }
 
     /** 接上增量流（断线按 1s→15s 退避重连）。 */
+    /**
+     * 连桥的事件流（协议细节在 stream-link.js，这里只接业务回调）。
+     *
+     * ⚠️ 具名事件（`touch` / `tick`）必须由那边的 `addEventListener` 接 ——
+     * 用 `onmessage` 会**永远不被调用**（用户报「最新消息没同步」的根因）。
+     */
     function connect() {
-      if (typeof global.EventSource !== "function") {
-        global.console.warn("环境没有 EventSource，退化为轮询");
-        return;
-      }
-      stream = new global.EventSource(`${base  }/whale/events`);
-
-      stream.onopen = function () {
-        reconnectDelay = 1000;
-        // 重连成功后必须补拉全量：断线期间的口径可能已经变了
-        refresh();
-      };
-
-      stream.onmessage = function (event) {
-        let payload;
-        try {
-          payload = JSON.parse(event.data);
-        } catch {
-          return;
-        }
-        if (payload === null || typeof payload !== "object") return;
-        state.eventsSeen += 1;
-        // 折事件是纯规则，放在 stream.js（可单测，不必搭假 EventSource）
-        global.WhaleStream.applyEventTo(state, payload);
-        state.offline = false;
-        state.renderedOffline = false;
-        onChange(state);
-      };
-
-      stream.onerror = function () {
-        markOffline();
-        // EventSource 自己会重连，这里只把退避间隔记下来供界面显示
-        if (reconnectDelay < RECONNECT_MAX_MS) reconnectDelay *= 2;
-      };
+      link = global.WhaleStreamLink.createStreamLink({
+        url: `${base}/whale/events`,
+        eventSourceCtor: global.EventSource,
+        onOpen() {
+          // 重连成功后补拉全量：断线期间的口径可能已经变了
+          void refresh();
+        },
+        onTouch(payload) {
+          state.eventsSeen += 1;
+          state.offline = false;
+          state.renderedOffline = false;
+          /*
+           * 只对**当前会话**的事件拉面板：别的会话在动不该让本窗刷屏。
+           * 会话还没绑上时（首帧）也当作「本会话」处理 —— 宁可多拉一次，
+           * 也别漏掉开机瞬间的消息。
+           */
+          const current = state.sessionId;
+          if (current !== null && current !== undefined && current !== "" && payload.sessionId !== current) {
+            onChange(state);
+            return;
+          }
+          void refreshPanel();
+        },
+        onTick(payload) {
+          // 心跳只把「在线」这个事实带进来，并让速度/占用等字段更新
+          state.offline = false;
+          state.renderedOffline = false;
+          global.WhaleStream.applyEventTo(state, payload);
+          onChange(state);
+        },
+        onMessage(payload) {
+          state.eventsSeen += 1;
+          global.WhaleStream.applyEventTo(state, payload);
+          state.offline = false;
+          state.renderedOffline = false;
+          onChange(state);
+        },
+        onError() {
+          markOffline();
+        },
+      });
+      link.open();
     }
 
     /** 起轮询兜底。 */
@@ -416,15 +427,15 @@
       });
     }
 
-    /** 断开增量流。 */
+    /** 断开增量流（轮询与事件流一起停）。 */
     function close() {
       if (pollHandle !== null) {
         global.clearInterval(pollHandle);
         pollHandle = null;
       }
-      if (stream !== null) {
-        stream.close();
-        stream = null;
+      if (link !== null) {
+        link.close();
+        link = null;
       }
     }
 
@@ -482,7 +493,6 @@
 
   global.WhaleBridge = {
     DEFAULT_PORT,
-    RECONNECT_MAX_MS,
     createClient,
     portFromLocation,
   };

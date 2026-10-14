@@ -118,20 +118,66 @@ test("切片 3 SSE 与全路由端到端", async (t) => {
     // 断线期间事件继续发生
     ctx.emit("session/event", session, { seq: 3, time: Date.now(), type: "step/start", data: { step: 1 } });
 
-    // 带 Last-Event-ID 重连：必须补回 idA 之后的帧。
-    // 注意重连同样会先收到 `: connected` 注释帧（服务端连上就写），
-    // 所以第一帧是它，回补帧在第二帧——漏读这一帧会误判成「没有续传」。
+    /*
+     * ⚠️ 重连后会先收到 `: connected` 注释帧；随后可能夹着 **`touch` 帧**
+     * （桥在事件到达时立即推的轻量通知，见 host.js 的 pipeline.subscribe）。
+     *
+     * 所以这里**不能按序号取帧** —— 要按事件类型找到 session 帧。
+     * 原先写的是「第二帧就是回补帧」，加了 touch 之后那条断言会错位。
+     */
     const second = await openSse(PORT, "/whale/events", { headers: { "last-event-id": String(idA) } });
     try {
       const hello = await second.readFrame(1500);
       assert.equal(hello, ": connected");
-      const replayed = await second.readFrame(1500);
+
+      let replayed = null;
+      for (let i = 0; i < 5; i += 1) {
+        const frame = await second.readFrame(1500);
+        if (frame === null) break;
+        if (/event: touch/.test(frame)) continue; // 轻量通知，跳过
+        replayed = frame;
+        break;
+      }
       assert.ok(replayed !== null, "应回补断线期间的事件");
       assert.match(replayed, /"type":"step\/start"/);
       const idB = Number(/^id: (\d+)$/m.exec(replayed)?.[1]);
       assert.ok(idB > idA, "回补帧的 id 必须大于客户端上报的 id");
     } finally {
       await second.close();
+    }
+  });
+
+  await t.test("SSE：宿主事件一到就推 touch（小窗据此立即拉面板，不必等 5 秒轮询）", async () => {
+    /*
+     * 用户报「小窗重启后，这个会话的最新消息没有同步」。
+     *
+     * 根因是**消息从来不产生 SSE 事件**：桥只推 2 秒一次的 `tick`
+     * （只带速度/占用/窗口），小窗于是只能靠 5 秒轮询拿到新消息 ——
+     * 用户发完话后要等好几秒才看到，感受就是「没同步」。
+     *
+     * 修法是在装配处把折叠管线的「立即分发」接到 SSE 上，推一个轻量
+     * `touch`（只带 sessionId，不带内容）。这条测试钉住那个信号真的会出去。
+     */
+    const sse = await openSse(PORT, "/whale/events");
+    try {
+      await sse.readFrame(1000); // `: connected`
+      const session = sessionRef("s-live");
+      ctx.emit("session/event", session, {
+        seq: 9, time: Date.now(), type: "user/message", data: { content: [] },
+      });
+      // 帧可能被拆开读到（`id:` 一行、`event:`+`data:` 下一行），所以循环找
+      let frame = null;
+      for (let i = 0; i < 6; i += 1) {
+        const f = await sse.readFrame(1500);
+        if (f === null) break;
+        if (/event: touch/.test(f)) { frame = f; break; }
+        frame = f;
+      }
+      assert.ok(frame !== null, "事件到达后应推一帧");
+      assert.match(frame, /event: touch/, `应是 touch 事件，实际：${frame}`);
+      assert.match(frame, /"sessionId":"s-live"/, "要带上会话 id，小窗据此判断该不该刷新");
+    } finally {
+      await sse.close();
     }
   });
 

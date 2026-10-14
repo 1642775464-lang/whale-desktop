@@ -196,6 +196,32 @@ export async function apply(ctx, options = {}) {
 
   // 订阅宿主事件：必须在服务起来之前挂上，避免漏掉启动窗口期的事件
   const disposers = pipeline.attach(ctx);
+
+  /*
+   * 事件到达就**立刻推一条 SSE 通知**给小窗。
+   *
+   * 为什么必须有这一条：桥原先只推 2 秒一次的 `tick`（只带速度/占用/窗口），
+   * 消息本身**从不产生 SSE 事件** —— 小窗于是只能靠 5 秒轮询拿到新消息，
+   * 用户在主界面发完话后小窗要等好几秒才出现，感受就是「消息没同步」。
+   *
+   * 而桥的折叠管线**本来就有「立即分发、不等心跳」的监听机制**
+   * （见 events.mjs 的 listeners），所以在装配处接一下即可，
+   * 不必改动折叠逻辑本身。
+   *
+   * ⚠️ 只推「有新事件」这个**信号**，不带事件内容：小窗收到后自己去拉
+   * `/whale/panel`（那里有完整的投影与裁剪规则）。这样 SSE 载荷保持轻量，
+   * 也避免两处各实现一份「消息怎么折」。
+   */
+  pipeline.subscribe((event, meta) => {
+    const sessionId = meta?.sessionId;
+    if (typeof sessionId !== "string" || sessionId === "") return;
+    try {
+      sse.broadcast(CHANNEL_EVENTS, "touch", { sessionId });
+    } catch (err) {
+      // 推送失败不影响折叠与其余通路
+      log(`[桥] 推 touch 失败：${err?.message ?? err}`);
+    }
+  });
   // 审批瀑布监听器与事件订阅同批管理，卸载时一起撤
   disposers.push(...approval.attach(ctx));
 
