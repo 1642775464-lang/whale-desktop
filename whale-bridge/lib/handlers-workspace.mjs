@@ -37,6 +37,7 @@ import { realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 
 import { register } from "./routes.mjs";
+import { resolveWorkspaceRoot } from "./workspace-root.mjs";
 import {
   normalizeDirPrefix,
   normalizeEntries,
@@ -219,10 +220,17 @@ async function workspaceRead({ host, query }) {
     throw err;
   }
 
-  // 工作区根：从会话拿（与列目录用的是同一个来源）
-  const root = typeof session.cwd === "string" && session.cwd !== ""
-    ? session.cwd
-    : (typeof session.workspace === "string" ? session.workspace : "");
+  /*
+   * 工作区根。
+   *
+   * ⚠️ **不能只读 `session.cwd` / `session.workspace`** —— 实测宿主
+   * `getSession()` 返回的对象里这两个字段都是空的，于是列表能进、
+   * 文件却永远打不开（用户报的 `no-workspace`）。
+   *
+   * 改走 `resolveWorkspaceRoot()`：它与侧边栏的会话清单**同源**
+   * （那是界面上已经证明可用的来源），拿不到才返回空串、如实报错。
+   */
+  const root = await resolveWorkspaceRoot({ host, sessionId, session });
   if (root === "") {
     const err = new Error("这个会话没有工作区路径，读不到文件");
     err.code = "no-workspace";

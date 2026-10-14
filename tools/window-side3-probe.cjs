@@ -172,6 +172,25 @@ async function main() {
   const innerBarOk = innerGap <= 1;
   say(`  网页内部滚动条占位：${innerGap}px → ${innerBarOk ? "已去掉" : "还在"}`);
 
+  /*
+   * ⚠️ **导航之后**再测一次 —— 这才是这次修的核心。
+   *
+   * `insertCSS` 注入的样式**跟着文档走**：只在 webview 附加那一刻注入，
+   * 很可能落在旧文档（about:blank）上，一旦导航到目标页就失效
+   * （用户两次报「滚动条还在」）。修法改成每次 `dom-ready` 都注入。
+   * 所以只测初始加载**不够** —— 必须换个页面，看注入是否跟着走。
+   */
+  await srun(`(() => { const wv = document.getElementById("sbWeb"); wv.loadURL("https://www.baidu.com/s?wd=test"); })()`);
+  await new Promise((r) => setTimeout(r, 8000));
+  const afterNav = await srun(`(async () => {
+    const wv = document.getElementById("sbWeb");
+    const r = await wv.executeJavaScript("JSON.stringify({vw: innerWidth, cw: document.documentElement.clientWidth, url: location.href})");
+    return JSON.parse(r);
+  })()`);
+  const navGap = afterNav.vw - afterNav.cw;
+  const navBarOk = navGap <= 1;
+  say(`  导航后滚动条占位：${navGap}px → ${navBarOk ? "仍已去掉" : "又出现了（注入没跟着导航走）"}`);
+
   try {
     const img = await sideWin.webContents.capturePage();
     const out = path.join(REPO_ROOT, "tmp-side3-shot.png");
@@ -191,6 +210,7 @@ async function main() {
   if (!fsOk) problems.push(`④ 正文字号只有 ${webInfo.fs}，是桌面版特征`);
   if (!overflowOk) problems.push("④ 页面横向溢出");
   if (!innerBarOk) problems.push("④ 网页内部还有滚动条（注入没生效）");
+  if (!navBarOk) problems.push("④ 导航后网页滚动条又出现（注入没跟着导航走）");
 
   say(problems.length === 0 ? "结论：外观与滚动全部正常 ✓" : `结论：${problems.join("；")}`);
   app.exit(problems.length === 0 ? 0 : 1);

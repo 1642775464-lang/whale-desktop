@@ -184,8 +184,13 @@ function createSideWindow(deps) {
      *
      * 同时把「无感滚动」的样式**注入到网页内部** ——
      * ⚠️ 这是必须的：webview 里是另一个独立文档，侧窗自己 CSS 的那条
-     * `::-webkit-scrollbar` **管不到它**（用户报「浏览器也的滚动条也不需要」）。
-     * 注入的只是样式字符串，不执行脚本、不碰页面数据。
+     * `::-webkit-scrollbar` **管不到它**。
+     *
+     * ⚠️ **注入时机才是关键**：只在 `did-attach-webview` 注入一次**不够** ——
+     * 那一刻 `src`（写在 HTML 里）**已经开始加载**，注入很可能落在旧文档
+     * （about:blank）上，真正导航到目标页后就失效了（用户报「滚动条还在」）。
+     * 所以**每个文档就绪时都注入一次**：`dom-ready` 最早可用，
+     * `did-finish-load` 兜底；并在注入前撤掉上一份，避免同文档内累积。
      */
     const ua = deps.userAgent;
     win.webContents.on("did-attach-webview", (_e, wc) => {
@@ -193,12 +198,36 @@ function createSideWindow(deps) {
       if (typeof ua === "string" && ua !== "" && typeof wc.setUserAgent === "function") {
         wc.setUserAgent(ua);
       }
-      if (typeof wc.insertCSS === "function") {
-        wc.insertCSS(HIDE_SCROLLBAR_CSS).catch(() => {
+
+      /** 已注入样式的 key；导航后旧 key 失效，用后即弃。 */
+      let cssKey = null;
+
+      const applyCss = () => {
+        wc.insertCSS(HIDE_SCROLLBAR_CSS).then((key) => {
+          if (cssKey !== null && typeof wc.removeInsertedCSS === "function") {
+            wc.removeInsertedCSS(cssKey).catch(() => {});
+          }
+          cssKey = key;
+        }).catch(() => {
           // 注入失败不致命：最多滚动条还在，不该影响页面本身能打开
           log.warn("向 webview 注入隐藏滚动条样式失败");
         });
-      }
+      };
+
+      const injectHideScrollbar = () => {
+        if (typeof wc.insertCSS !== "function") return;
+        if (cssKey !== null && typeof wc.removeInsertedCSS === "function") {
+          const stale = cssKey;
+          cssKey = null;
+          wc.removeInsertedCSS(stale).catch(() => {}).then(applyCss);
+          return;
+        }
+        applyCss();
+      };
+
+      injectHideScrollbar();                          // 当前文档先试一次
+      wc.on("dom-ready", injectHideScrollbar);        // 每次导航：DOM 就绪即注入
+      wc.on("did-finish-load", injectHideScrollbar);  // 兜底
     });
 
     /*

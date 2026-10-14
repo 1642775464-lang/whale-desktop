@@ -49,24 +49,33 @@
   /**
    * 把桥的失败 code 翻成**用户能看懂的一句话**（附 code 便于排查）。
    *
-   * 为什么值得单列：`bad-request` 这种串对用户毫无意义，而它恰恰最容易
-   * 出现在「会话还没就绪」这种可自愈的场景里 —— 说清楚用户就知道
-   * 「不是坏了，是还在连」。
+   * 为什么值得单列：`bad-request` / `no-workspace` 这种串对用户毫无意义，
+   * 而它们恰恰出现在「会话还没就绪」「会话没有工作区」这类可解释的场景里 ——
+   * 说清楚用户就知道「不是坏了，是缺前置条件」。
+   *
+   * ⚠️ 列目录与读文件的措辞要分开（用户截图里「读不到这个**文件**：
+   * no-workspace」就是两种场景混用同一句话的结果）。
    *
    * @param {string} code
+   * @param {"dir"|"file"} [kind] 场景：列目录 / 读文件
    * @returns {string}
    */
-  function explainCode(code) {
+  function explainCode(code, kind) {
+    const what = kind === "file" ? "这个文件" : (kind === "dir" ? "这个目录" : "这里");
     const table = {
       "bad-request": "还没拿到当前会话，稍等一下再试（或先让小窗连上会话）",
       "session-not-found": "当前会话已不存在，换一个会话再试",
-      "no-workspace": "这个会话没有工作区路径",
-      "not-found": "这个目录读不到",
+      "no-workspace": "这个会话没有工作区路径，读不到里面的文件",
+      "file-not-found": `${what}读不到（可能已被移动或删除）`,
+      "not-found": `${what}读不到（可能已被移动或删除）`,
+      "not-a-file": "这不是一个文件",
+      "file-too-large": "文件太大，无法在窗内预览（可用系统程序打开）",
+      "bad-path": "路径不被允许，出于安全考虑已拒绝",
       network: "连不上桥，稍后重试",
     };
     const human = table[code];
     return human === undefined
-      ? `读不到这个目录（${code}）`
+      ? `${what}读不到（${code}）`
       : `${human}（${code}）`;
   }
 
@@ -161,7 +170,7 @@
            * 也让人没法判断是「会话没选上」还是「桥挂了」。
            * 这里把最常见的那种翻成人话，并保留 code 便于排查。
            */
-          showFailure(explainCode(out.code));
+          showFailure(explainCode(out.code, "dir"));
           return out;
         }
         dir = typeof out.dir === "string" ? out.dir : "";
@@ -260,8 +269,12 @@
       return client.readWorkspaceFile(path, wantBinary).then(function (out) {
         dom.sfBody.innerHTML = "";
         if (out.ok !== true) {
-          // 读不到就说原因（含桥的 code），不留空白
-          dom.sfBody.appendChild(el("div", "sf-empty", `读不到这个文件：${out.code}`));
+          /*
+           * 读不到就说**人话**（含桥的 code 便于排查），不留空白。
+           * ⚠️ 与列目录那条同样处理 —— 用户截图里看到的
+           * 「读不到这个文件：no-workspace」就是这里原先直接甩 code。
+           */
+          dom.sfBody.appendChild(el("div", "sf-empty", explainCode(out.code, "file")));
           onNotify(`读不到文件（${out.code}）`);
           return out;
         }
