@@ -42,6 +42,27 @@
   box-sizing: border-box;
 }
 
+/*
+ * 隐藏滚动条，但**保留滚动能力**（用户要求：「所有的涉及上下滑动查看的，
+ * 都不需要滚动条，做成无感的，鼠标滚轮滚动就行」）。
+ *
+ * ⚠️ 两条规则缺一不可：
+ *   1. `::-webkit-scrollbar { width: 0 }` —— 把轨道压成 0 宽；
+ *   2. `scrollbar-width: none` —— 新版 Chromium 里前一条对滚动条自身
+ *      仍然会**占位**（15px），不写这条内容区会无端窄一截。
+ *
+ * 为什么不直接用 `overflow: hidden`：那会**连滚动都没了**，
+ * 用户滚不动、内容也看不到 —— 与要求正好相反。
+ */
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+* {
+  scrollbar-width: none;
+}
+
 /* 与主窗同一条纪律：`hidden` 属性必须真的隐藏，不因元素自己写了 display 而失效 */
 [hidden] {
   display: none !important;
@@ -129,9 +150,16 @@ body.joined .swin {
 }
 
 /* ── 顶栏（拖拽区 + 收起按钮）────────────────────── */
+/*
+ * ⚠️ 高度必须与主小窗的 `.topbar` **一致（55px）** —— 用户报
+ * 「侧边栏和小窗的顶栏高度需要对齐」。侧窗贴在小窗右边、两块看起来是
+ * 一条面板，顶栏差 11px 就会在交界处出现明显的台阶。
+ *
+ * 主窗那边在 `skin.css` 的 `.topbar`；两处要一起改，有测试核对这两个数字。
+ */
 .sbar {
   flex: 0 0 auto;
-  height: 44px;
+  height: 55px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -634,37 +662,58 @@ body.joined .swin {
   line-height: 1.7;
 }
 
+/*
+ * 输入区。
+ *
+ * ⚠️ 要与主小窗的输入框**看起来一样大**（用户报「侧边对话区对话输入框的
+ * 高度大小需要和小窗的一致」）。主窗那边的数值（`skin.css`）：
+ *   · 输入框字号 12.5px、行高 1.55（`.ri`）；
+ *   · 输入区外边距 `padding: 8px 12px 11px`（`.composer`）。
+ *
+ * 这里除了对齐字号与行高，**还要把输入控件撑到与主窗同量级的高度**：
+ * 只对齐字号行高的话，单行 input 只有 ~35px，而主窗那个输入框视觉上
+ * 约 44px（它外面还包着一层），并排看仍会觉得「侧边这个小一号」。
+ */
 .sc-compose {
   flex: 0 0 auto;
   display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 8px 12px 11px;
   border-top: 1px solid var(--line-soft);
 }
 
 .sc-input {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 8px 10px;
+  /* 与主窗对齐：同一字号与行高，高度才一致 */
+  font-size: 12.5px;
+  line-height: 1.55;
+  /* 上下各 12px：配合行高把控件撑到 ~44px，与主窗输入框同量级 */
+  padding: 12px 12px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  font-size: 12.5px;
   outline: none;
   user-select: text;
+  background: #fff;
+  color: var(--ink);
 }
 
 .sc-input:focus {
   border-color: var(--brand);
 }
 
+/* 发送键：高度与输入框对齐（同一条水平线，不一大一小） */
 .sc-send {
   flex: 0 0 auto;
+  align-self: stretch;
   border: 0;
   background: var(--brand);
   color: #fff;
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 0 16px;
   font-size: 12.5px;
+  line-height: 1.55;
   cursor: pointer;
 }
 

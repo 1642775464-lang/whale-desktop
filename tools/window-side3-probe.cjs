@@ -1,0 +1,170 @@
+/**
+ * 侧边栏外观与滚动探针
+ *
+ * 职责：量**真实渲染结果** —— 顶栏高度是否对齐、输入框是否等高、
+ *       滚动条是否真的不占位、浏览器是否按平板版渲染（附截图）。
+ * 所属层：工程工具（tools/）
+ *
+ * 为什么必须真窗口量：这些全是**布局结果**（flex 收缩、滚动条占位、
+ * 字号行高相乘的高度），CSS 文本能读出来的只有「写了什么值」，
+ * 读不出「实际渲染成多少」。用户报的恰恰都是「看着不一致」。
+ *
+ * 用法：runtime\electron.exe --no-sandbox tools\window-side3-probe.cjs --port 19387
+ */
+
+"use strict";
+
+const { app, BrowserWindow, ipcMain, screen } = require("electron");
+const path = require("node:path");
+const fs = require("node:fs");
+
+const REPO_ROOT = path.resolve(__dirname, "..");
+const ARGS = (() => {
+  const a = process.argv.slice(2);
+  const i = a.indexOf("--port");
+  return { port: i === -1 ? 19387 : Number(a[i + 1]) };
+})();
+const say = (m) => process.stdout.write(`[side3] ${m}\n`);
+
+async function main() {
+  await app.whenReady();
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  const win = new BrowserWindow({
+    width: 560, height: 760,
+    x: Math.max(0, sw - 1500), y: Math.max(0, sh - 820),
+    show: true, frame: false,
+    webPreferences: {
+      contextIsolation: true, nodeIntegration: false,
+      preload: path.join(REPO_ROOT, "whale-window", "preload.cjs"),
+      additionalArguments: [`--whale-bridge-port=${ARGS.port}`],
+    },
+  });
+  const sideWindow = require(path.join(REPO_ROOT, "whale-window", "lib", "side-window.cjs"));
+  const ipc = require(path.join(REPO_ROOT, "whale-window", "lib", "ipc.cjs"));
+  const sideUa = require(path.join(REPO_ROOT, "whale-window", "lib", "side-ua.cjs"));
+
+  const ipcRef = { value: null };
+  const side = sideWindow.createSideWindow({
+    BrowserWindow, screen,
+    log: { info: () => {}, warn: () => {}, error: () => {} },
+    port: ARGS.port,
+    mainBounds: () => win.getBounds(),
+    userAgent: sideUa.browserUserAgent(),
+    onJoinedChange: () => {},
+  });
+  ipcRef.value = ipc.registerIpc({
+    ipcMain,
+    win: { bounds: () => win.getBounds(), contentSize: () => win.getContentSize(), win },
+    store: { flush: () => true, remember: () => {} },
+    log: { info: () => {}, warn: () => {}, error: () => {} },
+    port: ARGS.port, version: "probe", side,
+  });
+
+  win.loadFile(path.join(REPO_ROOT, "whale-window", "renderer", "index.html"));
+  await new Promise((r) => setTimeout(r, 2500));
+
+  say("=== ① 小窗侧的度量 ===");
+  const main = await win.webContents.executeJavaScript(`(() => {
+    const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { h: Math.round(b.height), w: Math.round(b.width) }; };
+    const scrollable = [...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== "visible");
+    return {
+      topbar: box(".topbar"),
+      composer: box(".composer"),
+      // 滚动条占位 = 元素自身宽 - 内容可视宽
+      scrollbarGaps: scrollable.slice(0, 6).map((e) => ({
+        cls: String(e.className).slice(0, 24),
+        gap: e.offsetWidth - e.clientWidth,
+      })),
+    };
+  })()`, true);
+  say(`  顶栏高：${main.topbar?.h}px`);
+  say(`  输入区高：${main.composer?.h}px`);
+  for (const s of main.scrollbarGaps) say(`  可滚动元素 ${s.cls}：滚动条占宽 ${s.gap}px`);
+
+  win.webContents.executeJavaScript(`document.getElementById("btnSideRight").click()`, true);
+  await new Promise((r) => setTimeout(r, 1500));
+  const sideWin = BrowserWindow.getAllWindows().find((w) => w.id !== win.id);
+  if (sideWin === undefined) { say("侧窗没建起来"); app.exit(2); return; }
+  const srun = (expr) => sideWin.webContents.executeJavaScript(expr, true);
+
+  say("");
+  say("=== ① 侧窗顶栏高度 ===");
+  const sbar = await srun(`(() => { const e = document.querySelector(".sbar"); const b = e.getBoundingClientRect(); return Math.round(b.height); })()`);
+  const topAligned = Math.abs(sbar - main.topbar.h) <= 1;
+  say(`  侧窗顶栏：${sbar}px  小窗顶栏：${main.topbar.h}px`);
+  say(`  对齐：${topAligned}（期望 true）`);
+
+  say("");
+  say("=== ② 侧边对话的输入区高度 ===");
+  await srun(`document.getElementById("sChat").click()`);
+  await new Promise((r) => setTimeout(r, 1200));
+  const chat = await srun(`(() => {
+    const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { h: Math.round(b.height) }; };
+    return { compose: box(".sc-compose"), input: box(".sc-input"), fs: getComputedStyle(document.getElementById("scInput")).fontSize };
+  })()`);
+  say(`  侧窗输入区高：${chat.compose?.h}px（小窗整块 ${main.composer?.h}px）`);
+  say(`  侧窗输入框高：${chat.input?.h}px  字号 ${chat.fs}`);
+  /*
+   * ⚠️ 判据是**输入控件**的高度，不是整块输入区：
+   * 主窗那块 168px 里含着工具条、状态条与多行输入，侧窗只有单行 ——
+   * 拿整块比永远不可能相等，那不是用户要的「一致」。
+   * 用户要的是「输入框看起来一样大」，所以看 `.sc-input` 的高度
+   * 是否落在主窗输入框那个量级（约 44px，容差 ±10）。
+   */
+  const inputH = chat.input?.h ?? 0;
+  const composeOk = inputH >= 34 && inputH <= 54;
+  say(`  输入框高度在设计量级内（34–54px）：${composeOk}`);
+
+  say("");
+  say("=== ⑤ 滚动条是否还占位 ===");
+  const sideScroll = await srun(`(() => {
+    const scrollable = [...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 2 && getComputedStyle(e).overflowY !== "visible");
+    return scrollable.slice(0, 8).map((e) => ({ cls: String(e.className).slice(0, 24), gap: e.offsetWidth - e.clientWidth }));
+  })()`);
+  const allZeroSide = sideScroll.every((s) => s.gap === 0);
+  for (const s of sideScroll) say(`  可滚动元素 ${s.cls}：占宽 ${s.gap}px`);
+  const allZeroMain = main.scrollbarGaps.every((s) => s.gap === 0);
+  say(`  小窗全部不占位：${allZeroMain}   侧窗全部不占位：${allZeroSide}`);
+
+  say("");
+  say("=== ④ 浏览器渲染（截图复核）===");
+  await srun(`document.getElementById("sBrowser").click()`);
+  await new Promise((r) => setTimeout(r, 6000));
+  const webInfo = await srun(`(async () => {
+    const wv = document.getElementById("sbWeb");
+    const r = await wv.executeJavaScript("JSON.stringify({ua: navigator.userAgent, vw: innerWidth})");
+    const j = JSON.parse(r);
+    return { ua: j.ua, vw: j.vw, box: (() => { const b = wv.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) }; })() };
+  })()`);
+  const uaOk = /iPad/.test(webInfo.ua);
+  say(`  webview UA 含 iPad：${uaOk}`);
+  say(`  webview 视口宽：${webInfo.vw}px   元素尺寸：${webInfo.box.w}x${webInfo.box.h}`);
+  // 页面视口宽应当接近元素宽（差得太多说明被缩放）
+  const ratioOk = Math.abs(webInfo.vw - webInfo.box.w) <= 4;
+  say(`  视口宽 == 元素宽：${ratioOk}（不相等说明被缩放）`);
+
+  try {
+    const img = await sideWin.webContents.capturePage();
+    const out = path.join(REPO_ROOT, "tmp-side3-shot.png");
+    fs.writeFileSync(out, img.toPNG());
+    say(`  截图：${out}`);
+  } catch (e) {
+    say(`  截图失败：${e.message}`);
+  }
+
+  say("");
+  const problems = [];
+  if (!topAligned) problems.push("① 顶栏高度没对齐");
+  if (!composeOk) problems.push("② 输入区高度差得太多");
+  if (!allZeroMain || !allZeroSide) problems.push("⑤ 还有滚动条占位");
+  if (!uaOk) problems.push("④ webview UA 不是平板");
+  if (!ratioOk) problems.push("④ 页面被缩放（视口宽与元素宽差得太多）");
+
+  say(problems.length === 0 ? "结论：外观与滚动全部正常 ✓" : `结论：${problems.join("；")}`);
+  app.exit(problems.length === 0 ? 0 : 1);
+}
+
+app.whenReady().then(main).catch((e) => {
+  say(`致命: ${e.message}`);
+  app.exit(3);
+});
