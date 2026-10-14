@@ -55,16 +55,32 @@ test("档位从工作区改成完全权限时，标签要跟着变（切完必�
   );
 });
 
-test("真值还没有时（首帧）退回启动占位值，不显示空白", () => {
-  const { dom, renderer } = makeRenderer("read-only");
+test("真值还没有时（首帧）显示占位「—」，**不编一个档位**", () => {
+  /*
+   * ⚠️ 这条改过，原因是用户反馈：
+   * 「小窗打开后的初始权限和宿主的没匹配上，要完全一致」。
+   *
+   * 旧行为是「退回注入的启动占位值」—— 而那个占位值是写死的
+   * `workspace-write`，于是首帧永远显示「工作区内修改」，
+   * 宿主实际可能是「完全权限」。
+   *
+   * 新行为：拿不到真值就显示占位「—」，让「还没拿到」与
+   * 「就是这个档位」在视觉上分得开。真值仍只认 `/whale/presets` 的 current。
+   */
+  const { dom, renderer } = makeRenderer(null);
   renderer.all({ ...baseState, permission: null });
-  assert.equal(dom.btnPerm.textContent, "仅可查看", "首帧用注入的占位值，不是编一个");
+  assert.equal(dom.btnPerm.textContent, "—", "没有真值时显示占位，不编档位");
 });
 
-test("宿主给了没见过的档位值时，退回占位值而不是显示空白", () => {
-  // 宿主将来加档位时，小窗不认识就显示占位值——总比空白好，
-  // 且不会把未知值当已知文案渲染出去。
+test("宿主给了没见过的档位值时，**照实显示**而不是硬套成某一档", () => {
+  /*
+   * ⚠️ 这条也改过。旧行为是「退回占位值」→ 未知档位被硬套成
+   * 「工作区内修改」，用户看到的就是一个**假的**档位。
+   *
+   * 新行为：照实显示宿主给的值。宁可显示一个内部名（可查），
+   * 也不能显示一个看起来像答案、其实是编的档位。
+   */
   const { dom, renderer } = makeRenderer("workspace-write");
   renderer.all({ ...baseState, permission: "some-new-preset" });
-  assert.equal(dom.btnPerm.textContent, "工作区内修改");
+  assert.equal(dom.btnPerm.textContent, "some-new-preset", "未知档位照实显示，不硬套");
 });

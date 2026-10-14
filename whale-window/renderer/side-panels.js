@@ -300,6 +300,42 @@
       });
     }
 
+    /**
+     * 归档当前侧边对话（顶部「归档」入口）。
+     *
+     * 用户要求：「侧边对话里能归档会话，给它一个归档入口」。
+     *
+     * 归档走桥 → 宿主 `workspaceRegistry.archiveSession`，效果就是
+     * 这条会话从宿主的会话列表里收起（与主界面里的归档是同一份数据）。
+     *
+     * ⚠️ 成功后必须**另起一条新对话**：这条已归档，继续在里面说话会
+     * 把它重新唤醒，用户看到「归档了还在这儿聊」会以为没生效。
+     */
+    function archiveChat() {
+      if (chatSessionId === null) {
+        onNotify("会话还没建好，无法归档");
+        return Promise.resolve(null);
+      }
+      dom.scArchive.disabled = true;
+      return client.archiveSession(chatSessionId).then(function (out) {
+        dom.scArchive.disabled = false;
+        if (out.ok !== true) {
+          /*
+           * 失败**如实报**（含原因），不静默、不假装成功。
+           * 常见原因：桥没装配归档能力（503）、会话正在活动（409）。
+           */
+          dom.scState.textContent = `归档失败：${out.code}`;
+          onNotify(`归档失败（${out.code}）`);
+          return out;
+        }
+        chatSessionId = null;
+        stopChatPoll();
+        dom.scStream.innerHTML = "";
+        dom.scStream.appendChild(el("div", "sc-empty", "已归档，正在新建会话…"));
+        return openChat();
+      });
+    }
+
     /** 发一条消息。 */
     function sendChat() {
       const text = String(dom.scInput.value ?? "").trim();
@@ -327,6 +363,16 @@
     dom.scBack.addEventListener("click", function () {
       deps.onHome("chat");
     });
+
+    /*
+     * 归档键：可能不存在（旧 DOM / 精简页面）—— 存在才绑，
+     * 不在 null 上绑事件（那会抛错并让后面所有绑定都不执行）。
+     */
+    if (dom.scArchive !== null && dom.scArchive !== undefined) {
+      dom.scArchive.addEventListener("click", function () {
+        void archiveChat();
+      });
+    }
 
     return {
       /** 面板显示时调用（起各自的拉取）。 */

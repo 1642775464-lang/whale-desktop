@@ -115,6 +115,18 @@ export function createHostAccess(ctx) {
   const attachments = optionalServiceOf(ctx, "attachments");
 
   /**
+   * 工作区注册表（**可选服务**）。
+   *
+   * 侧边对话的「归档」用它 —— 归档集合与工作区归属的唯一权威就是它
+   * （见 workspace-registry.mjs 的头注释：为什么不能按会话 cwd 反推）。
+   *
+   * ⚠️ 延迟解析：`workspaceRegistry` 由启动顺序可能在桥之后的插件提供，
+   * 在 apply 时缓存快照会永远取不到（已踩过，见 catalog 的同类注释）。
+   * 所以每次调用都现取。
+   */
+  const registryService = () => optionalServiceOf(ctx, "workspaceRegistry");
+
+  /**
    * 模型目录/切换、权限档位、附件上传都走可选服务
    * （sessionController / permissionPresets / attachments）。
    * 它们的实现在 host-catalog.mjs —— 按业务域拆出去（强制 14），
@@ -410,6 +422,32 @@ export function createHostAccess(ctx) {
     accountInfoViaTypert: typert.accountInfo,
     // 用系统默认程序打开工作区文件（走宿主 session/openWorkspacePath）
     openWorkspacePath: typert.openWorkspacePath,
+    /**
+     * 归档一个会话（侧边对话的「归档」入口用）。
+     *
+     * 走宿主 `workspaceRegistry.archiveSession(sessionId, options)` ——
+     * 界面上「归档」的效果（会话从列表里收起）就来自这份注册表。
+     *
+     * ⚠️ 侧边对话往往是**运行中**的会话，而注册表对活动会话会拒绝
+     * （`WorkspaceActiveSessionError`）。所以默认带 `stopActivity: true`：
+     * 用户的意图是「这一轮聊完了，收起来」，那就该先停掉活动再归 ——
+     * 否则点了归档只会报错，用户以为坏了。
+     *
+     * @param {string} sessionId
+     * @param {{stopActivity?: boolean}} [options]
+     * @returns {Promise<void>}
+     */
+    archiveSession: async (sessionId, options) => {
+      const registry = registryService();
+      if (registry === undefined || typeof registry.archiveSession !== "function") {
+        const err = new Error("宿主未提供 workspaceRegistry，无法归档");
+        err.code = "archive-unavailable";
+        err.status = 503;
+        throw err;
+      }
+      const stopActivity = options === undefined || options.stopActivity !== false;
+      await registry.archiveSession(sessionId, stopActivity ? { stopActivity: true } : {});
+    },
     uploadFile: catalog.uploadFile,
     uploadImages: catalog.uploadImages,
     probe,

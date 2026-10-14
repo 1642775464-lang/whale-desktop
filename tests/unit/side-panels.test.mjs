@@ -87,13 +87,14 @@ const inertClient = {
   send: nothing,
   createSession: nothing,
   sessionList: async () => ({ ok: true, sessions: [] }),
+  archiveSession: nothing,
 };
 
 function mkDom() {
   const ids = [
     "sHome", "sbTitle", "sClose", "sBrowser", "sFiles", "sChat",
     "sbBack", "sbUrl", "sbGo", "sbWeb", "sfBack", "sfCrumb", "sfCount", "sfBody",
-    "scBack", "scTitle", "scState", "scInherit", "scStream", "scInput", "scSend",
+    "scBack", "scTitle", "scState", "scInherit", "scStream", "scInput", "scSend", "scArchive",
   ];
   const dom = {};
   for (const id of ids) dom[id] = fakeEl();

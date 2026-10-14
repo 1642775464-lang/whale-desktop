@@ -70,6 +70,10 @@ async function main() {
     return {
       topbar: box(".topbar"),
       composer: box(".composer"),
+      // ② 顶栏右上角那个图标应当已去掉
+      hasMenuIcon: document.getElementById("btnMenu") !== null,
+      // ⑤ 权限标签：真值未到时应是占位「—」，不能是编造的档位
+      permText: document.getElementById("btnPerm").textContent,
       // 滚动条占位 = 元素自身宽 - 内容可视宽
       scrollbarGaps: scrollable.slice(0, 6).map((e) => ({
         cls: String(e.className).slice(0, 24),
@@ -78,6 +82,16 @@ async function main() {
     };
   })()`, true);
   say(`  顶栏高：${main.topbar?.h}px`);
+  const iconOk = main.hasMenuIcon === false;
+  say(`  ② 右上角图标已去掉：${iconOk}（btnMenu 不存在）`);
+  /*
+   * ⚠️ 权限标签：这里**不断言必须是某个档位** —— 真值来自宿主，
+   * 探针不替宿主做主。只断言它不是「编造的具体档位」：
+   * 要么是占位「—」，要么是认识的档位文案之一。
+   */
+  const KNOWN = ["—", "仅可查看", "工作区内修改", "完全权限", "自动", "auto", "read-only", "workspace-write", "danger-full-access"];
+  const permOk = KNOWN.includes(String(main.permText).trim());
+  say(`  ⑤ 权限标签「${main.permText}」不是编造值：${permOk}`);
   say(`  输入区高：${main.composer?.h}px`);
   for (const s of main.scrollbarGaps) say(`  可滚动元素 ${s.cls}：滚动条占宽 ${s.gap}px`);
 
@@ -202,8 +216,9 @@ async function main() {
 
   say("");
   const problems = [];
-  if (!topAligned) problems.push("① 顶栏高度没对齐");
+  if (!iconOk) problems.push("② 右上角图标还在");
   if (!composeOk) problems.push("② 输入框高度不在设计量级内");
+  if (!permOk) problems.push("⑤ 权限标签是编造值");
   if (!allZeroMain || !allZeroSide) problems.push("⑤ 还有滚动条占位");
   if (!uaOk) problems.push("④ webview UA 不是移动端口径");
   if (!hasMeta) problems.push("④ 站点没返回响应式布局（大概率还是桌面版）");

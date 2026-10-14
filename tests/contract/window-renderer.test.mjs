@@ -63,7 +63,7 @@ test("顶栏元素齐全（F2）", () => {
    * 它们先作为占位存在，等交互定了再接绑定。
    */
   // ⚠️ `btnFolder` 已按用户要求移除（文件列表改到侧边栏里默认展示）
-  for (const id of ["btnMin", "btnPin", "btnSideLeft", "btnSideRight", "btnMenu", "tbTitle"]) {
+  for (const id of ["btnMin", "btnPin", "btnSideLeft", "btnSideRight", "tbTitle"]) {
     assert.ok(hasId(id), `缺元素 #${id}`);
   }
   assert.match(html, /class="brand-dot"/, "工作区色块必须存在");
@@ -92,7 +92,7 @@ test("顶栏布局顺序：左组按钮 → 色块 → 标题 → 右组按钮",
     .map((m) => m[1] ?? m[2]);
   assert.deepEqual(
     ids,
-    ["btnMin", "btnPin", "btnSideLeft", "brand-dot", "tbTitle", "btnSideRight", "btnMenu"],
+    ["btnMin", "btnPin", "btnSideLeft", "brand-dot", "tbTitle", "btnSideRight"],
     "顶栏顺序：最小化 → 置顶 → 左侧边栏 → 色块 → 标题 → 右侧边栏 → 更多",
   );
 

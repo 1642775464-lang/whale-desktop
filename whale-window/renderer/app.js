@@ -17,15 +17,18 @@
   const dom = global.WhaleDomTable.createDomTable();
 
   /**
-   * 权限档位的**启动占位值**。
+   * 权限档位的**启动占位值：没有值**。
    *
-   * ⚠️ 它不再是真值。真值由 `/whale/presets` 的 `current` 填进
-   * `state.permission`，渲染层优先读那个。
-   * 曾经这里是个「本地态」常量，切换后也不更新——用户报过
-   * 「切为完全权限了，输入框还是显示工作区内修改」。
-   * 这个变量现在只在「真值还没拿到」（首帧）时兜底显示。
+   * ⚠️ 这里曾经写死 `"workspace-write"`。用户报
+   * 「小窗打开后的初始权限和宿主的没匹配上，要完全一致」——
+   * 首帧显示的就是这个写死的档位，而宿主实际可能是「完全权限」。
+   *
+   * 真值只有一个来源：`/whale/presets` 的 `current`
+   * （宿主 `permissionPresets.current(session)` 算出来的）。拿到之前
+   * 渲染层显示占位「—」，**绝不编一个档位** ——
+   * 「还没拿到」和「就是这个档位」必须分得开。
    */
-  const permission = "workspace-write";
+  const permission = null;
 
   /** 桥地址（资料抽屉要显示）。 */
   const BRIDGE_BASE = `http://127.0.0.1:${global.WhaleBridge.portFromLocation()}`;
@@ -183,7 +186,7 @@
 
   /** 菜单与会话切换（F8/F9）。 */
   const panels = global.WhalePanels.createPanels({
-    dom: { menuBtn: dom.btnMenu, menuBox: dom.menuBox, menuList: dom.menuList, sessList: dom.sessList },
+    dom: { menuBox: dom.menuBox, menuList: dom.menuList, sessList: dom.sessList },
     getSessions: () => client.getState().sessions ?? [],
     getCurrentId: () => client.getState().sessionId,
     onSwitch(sessionId) {
@@ -319,8 +322,21 @@
       });
     });
 
-    // 顶栏 ☰ = 菜单（F8）；「隐藏」走「更多 → 最小化」那条路
-    dom.btnMenu.addEventListener("click", () => panels.toggleMenu());
+    /*
+     * 会话菜单（项目 / 技能 / 插件 / 更多）改用 **F10 快捷键**唤起。
+     *
+     * 用户要求去掉顶栏右上角那个「三条横线」图标（「右上角这个设置的图标
+     * 不需要了」）。但那个菜单里有**独有操作** ——「重新加载界面」「退出小窗」
+     * 只有它一个入口，直接连菜单一起删会**丢功能**。
+     *
+     * 所以留功能、去图标：改由 F10 唤起。菜单的其余入口（项目 = 会话列表）
+     * 与左侧边栏重复，用户真正想省的是顶栏那个按钮。
+     */
+    global.document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "F10") return;
+      ev.preventDefault();
+      panels.toggleMenu();
+    });
 
     // 四个浮层键统一在 OVERLAY_BUTTONS 里接线（含权限键）。
     //
@@ -382,7 +398,7 @@
     // 点面板外区域关掉菜单（无边框窗口里没有系统菜单，得自己收）
     global.document.addEventListener("mousedown", (ev) => {
       if (dom.menuBox.hidden) return;
-      if (dom.menuBox.contains(ev.target) || ev.target === dom.btnMenu) return;
+      if (dom.menuBox.contains(ev.target)) return;
       panels.closeMenu();
     });
 
@@ -426,6 +442,23 @@
      * 补这一次是为了覆盖「用户不是从菜单点、而是自己手打命令名」的情况。
      */
     void client.refresh().then(() => inputArea.rememberHostCommands());
+
+    /*
+     * 启动就拉一次**权限真值**。
+     *
+     * ⚠️ 这一步是必须的：`permissionPresets()` 原先只在用户点开权限浮层时
+     * 才被调用（`overlays.js`），于是启动后永远拿不到真值 ——
+     * 用户报「小窗打开后的初始权限和宿主的没匹配上，要完全一致」正是这个：
+     * 首帧显示的是写死的档位，而不是宿主实际档位。
+     *
+     * 真值只有一个来源：`/whale/presets` 的 `current`
+     * （宿主 `permissionPresets.current(session)` 算出来的）。
+     * 放在 refresh 之后调，是因为它需要 sessionId。
+     *
+     * 失败**不重试、不编值**：拿不到就继续显示占位「—」，
+     * 5 秒轮询与用户交互都会再给它机会。
+     */
+    void client.permissionPresets();
 
     /**
      * 取走「唤起请求」（切片 7 第三批）。

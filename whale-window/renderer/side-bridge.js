@@ -223,8 +223,32 @@
       });
     }
 
+    /**
+     * 归档一条会话（侧边对话顶部的「归档」入口用）。
+     *
+     * 走桥的 `POST /whale/session/archive` → 宿主
+     * `workspaceRegistry.archiveSession` —— 界面上「归档」的效果
+     * （会话从列表里收起）就来自那份注册表。
+     *
+     * ⚠️ 侧边对话往往是**运行中**的会话，而注册表对活动会话会拒绝
+     * （`session-active`）。所以默认带 `stopActivity`：用户的意图是
+     * 「这一轮聊完了，收起来」——否则点了只会报错，看着像坏了。
+     *
+     * @param {string} id 要归档的会话 id
+     * @returns {Promise<{ok: boolean, code?: string}>}
+     */
+    function archiveSession(id) {
+      if (typeof id !== "string" || id === "") {
+        return Promise.resolve({ ok: false, code: "bad-request" });
+      }
+      return post("/whale/session/archive", { sessionId: id, stopActivity: true }).then((out) => (
+        out.ok ? { ok: true } : { ok: false, code: out.code }
+      ));
+    }
+
     return {
       activeContext,
+      archiveSession,
       base,
       createSession,
       getSessionId: () => sessionId,

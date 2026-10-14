@@ -297,9 +297,70 @@ async function workspaceRead({ host, query }) {
   return { ok: true, path: safe.path, size: info.size, text: buf.toString("utf8") };
 }
 
+/**
+ * POST /whale/session/archive —— 归档一个会话（侧边对话的「归档」入口）
+ *
+ * body `{ sessionId, stopActivity? }`。
+ *
+ * 为什么单开一条而不是复用 workspace 前缀：语义上是**会话操作**，
+ * 与工作区文件无关（路由前缀要对得上调用方的心理模型）。
+ *
+ * ⚠️ 失败要**分档**，不能都报一个 502：
+ *   · 缺 sessionId → 400；
+ *   · 宿主没有注册表能力 → 503（能力未接通，不是故障）；
+ *   · 宿主不认识这个会话 → 404；
+ *   · 会话正在活动且没允许停 → 409（让界面提示「先停下再归档」）。
+ *
+ * @param {object} ctx
+ * @param {object} ctx.body
+ * @param {object} ctx.host
+ * @returns {Promise<object>}
+ */
+async function sessionArchive({ host, body }) {
+  const sessionId = body?.sessionId;
+  if (typeof sessionId !== "string" || sessionId === "") {
+    const err = new Error("缺少 sessionId");
+    err.code = "bad-request";
+    err.status = 400;
+    throw err;
+  }
+  if (typeof host.archiveSession !== "function") {
+    const err = new Error("桥未装配归档能力");
+    err.code = "archive-unavailable";
+    err.status = 503;
+    throw err;
+  }
+
+  try {
+    await host.archiveSession(sessionId, { stopActivity: body?.stopActivity !== false });
+  } catch (cause) {
+    /*
+     * 宿主抛的是它自己的错误类型，这里按**名字**识别（跨包 instanceof 不可靠）。
+     * 识别不出来就原样抛出，由上层按通用 502 处理 —— 不吞、不假装成功。
+     */
+    const name = cause?.constructor?.name ?? "";
+    if (name === "WorkspaceUnknownSessionError") {
+      const err = new Error("这个会话不存在");
+      err.code = "session-not-found";
+      err.status = 404;
+      throw err;
+    }
+    if (name === "WorkspaceActiveSessionError") {
+      const err = new Error("这个会话正在活动，先停下再归档");
+      err.code = "session-active";
+      err.status = 409;
+      throw err;
+    }
+    throw cause;
+  }
+
+  return { ok: true, sessionId, archived: true };
+}
+
 /** 注册工作区文件路由。 */
 export function registerWorkspaceRoutes() {
   register("GET", "/whale/workspace/files", workspaceFiles);
   register("GET", "/whale/workspace/read", workspaceRead);
   register("POST", "/whale/workspace/open", workspaceOpen);
+  register("POST", "/whale/session/archive", sessionArchive);
 }

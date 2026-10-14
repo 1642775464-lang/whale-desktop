@@ -186,11 +186,14 @@ function createSideWindow(deps) {
      * ⚠️ 这是必须的：webview 里是另一个独立文档，侧窗自己 CSS 的那条
      * `::-webkit-scrollbar` **管不到它**。
      *
-     * ⚠️ **注入时机才是关键**：只在 `did-attach-webview` 注入一次**不够** ——
-     * 那一刻 `src`（写在 HTML 里）**已经开始加载**，注入很可能落在旧文档
-     * （about:blank）上，真正导航到目标页后就失效了（用户报「滚动条还在」）。
-     * 所以**每个文档就绪时都注入一次**：`dom-ready` 最早可用，
-     * `did-finish-load` 兜底；并在注入前撤掉上一份，避免同文档内累积。
+     * ⚠️ **注入时机 + 不要管 key**（这两点都踩过）：
+     *   · 只在 `did-attach-webview` 注入一次**不够** —— 那一刻 `src`（写在
+     *     HTML 里）已经开始加载，注入多半落在旧文档上、导航后失效；
+     *   · 于是改成每个文档就绪都注入（`dom-ready` + `did-finish-load` 兜底）；
+     *   · **但不要用 `removeInsertedCSS(key)` 去重** —— 那个 key 在导航后
+     *     已经失效，remove 会失败或异步很慢，反而把后续的 insert 拖掉，
+     *     表现为「导航之后滚动条又出现了」（探针实测抓到 15px）。
+     *     重复注入同一条规则没有任何副作用，比「精确去重」可靠得多。
      */
     const ua = deps.userAgent;
     win.webContents.on("did-attach-webview", (_e, wc) => {
@@ -198,31 +201,14 @@ function createSideWindow(deps) {
       if (typeof ua === "string" && ua !== "" && typeof wc.setUserAgent === "function") {
         wc.setUserAgent(ua);
       }
+      if (typeof wc.insertCSS !== "function") return;
 
-      /** 已注入样式的 key；导航后旧 key 失效，用后即弃。 */
-      let cssKey = null;
-
-      const applyCss = () => {
-        wc.insertCSS(HIDE_SCROLLBAR_CSS).then((key) => {
-          if (cssKey !== null && typeof wc.removeInsertedCSS === "function") {
-            wc.removeInsertedCSS(cssKey).catch(() => {});
-          }
-          cssKey = key;
-        }).catch(() => {
+      /** 往**当前文档**插一条隐藏滚动条的规则。 */
+      const injectHideScrollbar = () => {
+        wc.insertCSS(HIDE_SCROLLBAR_CSS).catch(() => {
           // 注入失败不致命：最多滚动条还在，不该影响页面本身能打开
           log.warn("向 webview 注入隐藏滚动条样式失败");
         });
-      };
-
-      const injectHideScrollbar = () => {
-        if (typeof wc.insertCSS !== "function") return;
-        if (cssKey !== null && typeof wc.removeInsertedCSS === "function") {
-          const stale = cssKey;
-          cssKey = null;
-          wc.removeInsertedCSS(stale).catch(() => {}).then(applyCss);
-          return;
-        }
-        applyCss();
       };
 
       injectHideScrollbar();                          // 当前文档先试一次

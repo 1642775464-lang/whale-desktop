@@ -618,6 +618,34 @@ body.joined .swin {
   color: var(--ink-disabled);
 }
 
+/*
+ * 「归档」按钮（侧边对话顶部）。
+ *
+ * 视觉上比主操作弱一档（描边、无填充）：它是**破坏性较小但不易撤销**的动作
+ * （归档后这条对话会从列表里收起），不该长得像「发送」那样显眼。
+ */
+.sc-archive {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink3);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sc-archive:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.sc-archive:disabled {
+  color: var(--ink-disabled);
+  border-color: var(--line-soft);
+  cursor: default;
+}
+
 .sc-stream {
   flex: 1 1 auto;
   overflow-y: auto;

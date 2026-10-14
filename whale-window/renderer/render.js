@@ -133,16 +133,27 @@
       dom.statusText.textContent = "正在运行";
     }
 
-    /** 任务坞：有清单才出现，默认收起，计数「已完成 / 总数」。 */
+    /**
+     * 任务坞：**有未完成的清单**才出现，默认收起，计数「已完成 / 总数」。
+     *
+     * ⚠️ 全部完成也要收起来（用户要求：「任务都完成了，进会话就不要展示任务条了」）。
+     * 原先只看「清单是否为空」，于是 7/7 全做完仍然占着一条 ——
+     * 那条对用户已经没有信息量，只挤占消息区高度。
+     *
+     * 判据用「已完成数 == 总数」而不是「有没有 pending」：后者会把
+     * `in_progress` 也算成未完成，但清单被中断时可能停在 in_progress
+     * —— 那种情况确实该显示，所以这里只认「真的都完成了」。
+     */
     function dock(state) {
       const todos = Array.isArray(state.todos) ? state.todos : [];
-      if (todos.length === 0) {
+      const done = todos.filter(function (t) { return t.status === "completed"; }).length;
+      const allDone = todos.length > 0 && done === todos.length;
+      if (todos.length === 0 || allDone) {
         dom.dock.hidden = true;
         return;
       }
       dom.dock.hidden = false;
 
-      const done = todos.filter(function (t) { return t.status === "completed"; }).length;
       dom.dockProg.textContent = `${done} / ${todos.length}`;
 
       const sig = todos.map(function (t) { return `${t.status}:${t.content}`; }).join("|");
@@ -192,15 +203,31 @@
      * 而桥的面板 permission 字段又恒为 null（处理器从没传过 gates），
      * 于是真值从来没有来源，文案永远停在「工作区内修改」。
      *
-     * 真值还没拿到时（首帧、或宿主读不到）退回注入的 getPermission()
-     * ——它是启动时的已知值，不是「编一个」。
+     * 真值还没拿到时（首帧、或宿主读不到）显示**占位「—」**，
+     * **不退回任何具体档位** —— 见下面这段真实事故。
+     *
+     * 真实事故二（用户报「小窗打开后的初始权限和宿主的没匹配上，
+     * 要完全一致」）：真值没到时退回的是**写死的 `workspace-write`**，
+     * 于是首帧永远显示「工作区内修改」，而宿主实际可能是「完全权限」。
+     * 更糟的是未知档位也被 `?? PERMISSION_TEXT["workspace-write"]` 硬套成
+     * 「工作区内修改」—— 两个不同的问题挤在同一句话上。
+     *
+     * 现在：拿不到就显示「—」（让「还没拿到」与「就是这个档位」在视觉上
+     * 分得开），未知档位则**显示原文**而不是硬套一个。
      *
      * @param {object} [state]
      */
     function permissionText(state) {
       const fromState = state !== undefined && state !== null ? state.permission : undefined;
-      const p = typeof fromState === "string" && fromState !== "" ? fromState : getPermission();
-      dom.btnPerm.textContent = PERMISSION_TEXT[p] ?? PERMISSION_TEXT["workspace-write"];
+      const p = typeof fromState === "string" && fromState !== ""
+        ? fromState
+        : (typeof getPermission === "function" ? getPermission() : null);
+      if (typeof p !== "string" || p === "") {
+        dom.btnPerm.textContent = "—";
+        return;
+      }
+      // 认识的档位给中文；不认识的照实显示，不硬套成某一档
+      dom.btnPerm.textContent = PERMISSION_TEXT[p] ?? p;
     }
 
     /** 资料抽屉三行。 */

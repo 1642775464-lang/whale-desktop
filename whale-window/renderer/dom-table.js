@@ -35,7 +35,6 @@
       topbar: $("topbar"),
       btnMin: $("btnMin"),
       btnPin: $("btnPin"),
-      btnMenu: $("btnMenu"),
       // 顶栏「打开右侧边栏」→ 右侧附带窗（独立窗口）
       btnSideRight: $("btnSideRight"),
       tbTitle: $("tbTitle"),

@@ -120,6 +120,12 @@
           <button class="sback" id="scBack">‹ 返回</button>
           <span class="sc-title" id="scTitle">侧边对话</span>
           <span class="sc-state" id="scState"></span>
+          <!--
+            归档入口（用户要求：「侧边对话里能归档会话，给它一个归档入口」）。
+            归档后这条会话从宿主的会话列表收起，侧边对话随即另起一条新的 ——
+            否则归档了却还在里面说话，用户会以为没生效。
+          -->
+          <button class="sc-archive" id="scArchive" title="归档这条对话">归档</button>
         </div>
         <!--
           继承哪条会话的上下文：**下拉选标题**，默认是当前小窗展示的会话。

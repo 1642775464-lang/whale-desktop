@@ -47,6 +47,7 @@
       scBack: $("scBack"),
       scTitle: $("scTitle"),
       scState: $("scState"),
+      scArchive: $("scArchive"),
       scInherit: $("scInherit"),
       scStream: $("scStream"),
       scInput: $("scInput"),

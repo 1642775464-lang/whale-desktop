@@ -88,7 +88,7 @@ export function fakeDom() {
 }
 
 /** 在沙箱里加载 render.js 并建渲染器。 */
-export function makeRenderer(fallbackPermission = "workspace-write") {
+export function makeRenderer(fallbackPermission = null) {
   const dom = fakeDom();
   const sandbox = { window: {}, console: { warn: () => {}, log: () => {} } };
   const w = sandbox.window;
