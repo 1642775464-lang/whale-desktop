@@ -134,26 +134,33 @@
     }
 
     /**
-     * 任务坞：**有未完成的清单**才出现，默认收起，计数「已完成 / 总数」。
+     * 任务坞：**只在任务正在运行时**出现，默认收起，计数「已完成 / 总数」。
      *
-     * ⚠️ 全部完成也要收起来（用户要求：「任务都完成了，进会话就不要展示任务条了」）。
-     * 原先只看「清单是否为空」，于是 7/7 全做完仍然占着一条 ——
-     * 那条对用户已经没有信息量，只挤占消息区高度。
+     * ## 判据的两次演进（都来自用户反馈）
      *
-     * 判据用「已完成数 == 总数」而不是「有没有 pending」：后者会把
-     * `in_progress` 也算成未完成，但清单被中断时可能停在 in_progress
-     * —— 那种情况确实该显示，所以这里只认「真的都完成了」。
+     * 1. 最初只看「清单是否为空」→ 全做完仍然占着一条（用户：「任务都完成了，
+     *    进会话就不要展示任务条了」）；
+     * 2. 改成「已完成数 == 总数 就收」→ 仍然不对：**用户看到的是 0/5**
+     *    （我干完活忘了把清单标完成），而且他指出「宿主都没有，为什么小窗还要显示」。
+     *
+     * 现在的判据是**运行中**：任务条的意义是「这轮正在做什么、进行到哪」，
+     * 运行一结束它就没有信息量了 —— 不管清单里还留着什么状态。
+     * 这也与宿主一致：宿主界面平时并不挂着这样一个常驻的任务条。
+     *
+     * ⚠️ 用 `state.running`（agent 是否在跑）而不是清单自身的状态：
+     * 清单可能因为中断、忘了更新等原因停在任何状态，
+     * **运行状态才是「现在是否值得显示」的可靠信号**。
      */
     function dock(state) {
       const todos = Array.isArray(state.todos) ? state.todos : [];
-      const done = todos.filter(function (t) { return t.status === "completed"; }).length;
-      const allDone = todos.length > 0 && done === todos.length;
-      if (todos.length === 0 || allDone) {
+      const running = state.running === true;
+      if (todos.length === 0 || !running) {
         dom.dock.hidden = true;
         return;
       }
       dom.dock.hidden = false;
 
+      const done = todos.filter(function (t) { return t.status === "completed"; }).length;
       dom.dockProg.textContent = `${done} / ${todos.length}`;
 
       const sig = todos.map(function (t) { return `${t.status}:${t.content}`; }).join("|");
