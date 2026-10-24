@@ -13,8 +13,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdtempSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { makeTempDir } from "../helpers/temp-dir.mjs";
 import { join } from "node:path";
 
 import {
@@ -24,7 +24,7 @@ import {
 } from "../../whale-bridge/lib/fallback-catalog.mjs";
 
 function setup({ registry, projections }) {
-  const dir = mkdtempSync(join(tmpdir(), "whale-fb-"));
+  const dir = makeTempDir("whale-fb-");
   const regFile = join(dir, "workspace.json");
   writeFileSync(regFile, JSON.stringify(registry), "utf8");
   // projcache 是**扁平目录**：sessions/<sessionId>.json（实测布局）
@@ -152,7 +152,7 @@ test("降级清单：**不设 degraded**（清单完整，不是「不完整」�
 });
 
 test("降级清单：注册表读不到 → ok:false，不编造清单", () => {
-  const out = fallbackSessionCatalog({ registryFile: join(tmpdir(), "不存在的注册表.json") });
+  const out = fallbackSessionCatalog({ registryFile: ".tmp-tests/不存在的注册表.json" });
   assert.equal(out.ok, false);
   assert.equal(out.code, "registry-unavailable");
 });
@@ -165,7 +165,7 @@ test("projcacheDir：尊重 DSH_HOME", () => {
 });
 
 test("readProjection：读不到给 null；坏 JSON 也给 null", () => {
-  const dir = mkdtempSync(join(tmpdir(), "whale-fb-proj-"));
+  const dir = makeTempDir("whale-fb-proj-");
   assert.equal(readProjection(dir, "nope"), null);
   writeFileSync(join(dir, "bad.json"), "{ 坏了", "utf8");
   assert.equal(readProjection(dir, "bad"), null);

@@ -24,8 +24,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { makeTempDir } from "./helpers/temp-dir.mjs";
 import { join } from "node:path";
 
 import { apply, dispose } from "../whale-bridge/host.js";
@@ -37,7 +37,7 @@ const http = createHttpTools(PORT);
 
 /** 造一个真实存在的工作区目录，里面放真文件。 */
 function makeWorkspace() {
-  const root = mkdtempSync(join(tmpdir(), "whale-ws-"));
+  const root = makeTempDir("whale-ws-");
   mkdirSync(join(root, "docs"), { recursive: true });
   writeFileSync(join(root, "docs", "规范.md"), "# 标题\n\n正文内容\n", "utf8");
   return root;
@@ -65,7 +65,7 @@ function makeWorkspace() {
  * @returns {string} 临时的 DSH_HOME
  */
 function seedFallbackCatalog(root) {
-  const home = mkdtempSync(join(tmpdir(), "whale-home-"));
+  const home = makeTempDir("whale-home-");
   mkdirSync(join(home, "storages", "session_projcache", "sessions"), { recursive: true });
 
   // 注册表：工作区 + 它显式登记的会话 id（成员关系只认这里）

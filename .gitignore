@@ -48,3 +48,5 @@ _notes/
 
 # SDD 执行工作区（本地留痕，不入库）
 .superpowers/
+# === 测试临时目录（系统 %TEMP% 不可写时的回退）===
+.tmp-tests/

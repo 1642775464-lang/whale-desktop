@@ -17,15 +17,15 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
+import { makeTempDir } from "../helpers/temp-dir.mjs";
 import { join } from "node:path";
 
 import { readWorkspaceRegistry, registryPath } from "../../whale-bridge/lib/workspace-registry.mjs";
 
 /** 造一个临时注册表文件。 */
 function writeRegistry(data) {
-  const dir = mkdtempSync(join(tmpdir(), "whale-ws-"));
+  const dir = makeTempDir("whale-ws-");
   const file = join(dir, "workspace.json");
   writeFileSync(file, JSON.stringify(data), "utf8");
   return file;
@@ -72,11 +72,11 @@ test("文件不存在 / 坏 JSON → ok:false 且全空（界面据此不隐藏�
    * 那会让界面按「已确认」去裁剪与隐藏，而实际是「根本不知道」。
    * 所以要用 ok:false 区分开。
    */
-  assert.deepEqual(readWorkspaceRegistry(join(tmpdir(), "不存在的注册表.json")), {
+  assert.deepEqual(readWorkspaceRegistry(".tmp-tests/不存在的注册表.json"), {
     ok: false, workspaces: [], archivedIds: [], pinnedIds: [],
   });
 
-  const bad = mkdtempSync(join(tmpdir(), "whale-ws-bad-"));
+  const bad = makeTempDir("whale-ws-bad-");
   const badFile = join(bad, "workspace.json");
   writeFileSync(badFile, "{ 这不是 json", "utf8");
   assert.equal(readWorkspaceRegistry(badFile).ok, false);
